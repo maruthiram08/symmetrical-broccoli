@@ -1,6 +1,9 @@
 import type { Metadata, Viewport } from "next";
 import { Geist_Mono, Instrument_Sans } from "next/font/google";
 import "./globals.css";
+import "./people.css";
+import { CommandPalette } from "@/components/CommandPalette";
+import { Keys } from "@/components/Keys";
 
 const sans = Instrument_Sans({ subsets: ["latin"], weight: ["400", "500", "600"], variable: "--font-instrument-sans", display: "swap" });
 const mono = Geist_Mono({ subsets: ["latin"], weight: ["400", "500"], variable: "--font-geist-mono", display: "swap" });
@@ -20,7 +23,11 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en" className={`${sans.variable} ${mono.variable}`}>
-      <body>{children}</body>
+      <body>
+        {children}
+        <CommandPalette />
+        <Keys />
+      </body>
     </html>
   );
 }

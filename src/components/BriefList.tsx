@@ -1,5 +1,7 @@
 import type { BriefLine, ClosedLine } from "@/lib/types";
+import Link from "next/link";
 import { setStatus } from "@/app/actions";
+import { personSlug } from "@/lib/people";
 import { Mark } from "./Mark";
 
 function Act({ id, status, label, back }: { id: string; status: "done" | "wrong" | "open"; label: string; back?: string }) {
@@ -16,9 +18,11 @@ function Act({ id, status, label, back }: { id: string; status: "done" | "wrong"
 export function BriefItem({ line, back }: { line: BriefLine; back?: string }) {
   const late = line.lateLabel !== null;
   const mark = late ? "overdue" : line.kind;
-  const text = line.person && line.kind === "owe" && line.text.includes(line.person)
-    ? withBold(line.text, line.person)
+  const at = line.person ? line.text.toLowerCase().indexOf(line.person.toLowerCase()) : -1;
+  const text = line.person && at >= 0
+    ? withPerson(line.text, at, line.person.length, line.kind === "owe")
     : line.text;
+  const personLink = line.person && at < 0 ? <PersonLink name={line.person} /> : null;
   return (
     <div className={`db-item db-item--${line.kind}`}>
       <span className="db-item__icon"><Mark kind={mark} /></span>
@@ -28,6 +32,7 @@ export function BriefItem({ line, back }: { line: BriefLine; back?: string }) {
       </span>
       <span className="db-item__meta">
         <span className="db-item__quote">&ldquo;{line.quote}&rdquo;</span>
+        {personLink ? <span className="db-item__src">· {personLink}</span> : null}
         <span className="db-item__src">· {line.meetingTitle}{line.meetingTime ? `, ${line.meetingTime}` : ""}</span>
       </span>
       <span className="db-item__acts">
@@ -38,15 +43,22 @@ export function BriefItem({ line, back }: { line: BriefLine; back?: string }) {
   );
 }
 
-function withBold(text: string, person: string) {
-  const i = text.indexOf(person);
+/** The person's name in the line, linked to their page (and bold on things you owe). */
+function withPerson(text: string, i: number, len: number, bold: boolean) {
+  const name = text.slice(i, i + len);
   return (
     <>
       {text.slice(0, i)}
-      <b>{person}</b>
-      {text.slice(i + person.length)}
+      <PersonLink name={name}>{bold ? <b>{name}</b> : name}</PersonLink>
+      {text.slice(i + len)}
     </>
   );
+}
+
+function PersonLink({ name, children }: { name: string; children?: React.ReactNode }) {
+  const slug = personSlug(name);
+  if (!slug) return <>{children ?? name}</>;
+  return <Link className="db-plink" href={`/people/${encodeURIComponent(slug)}`}>{children ?? name}</Link>;
 }
 
 export function ClosedItem({ line }: { line: ClosedLine }) {
