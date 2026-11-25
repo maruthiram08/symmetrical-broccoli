@@ -38,6 +38,7 @@ export async function buildBrief(store: Store, user: User, now: Date): Promise<B
       lateLabel: lateMinutes !== null ? lateLabel(lateMinutes) : null,
       meetingId: i.meetingId,
       peek: peekInfo(i, m, tz),
+      ...(m?.shared ? { shared: true } : {}),
     };
   };
 

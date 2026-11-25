@@ -14,8 +14,11 @@ import { env } from "../env";
 import type { ExtractionInput, ExtractionResult } from "../types";
 import { QUOTE_MAX } from "../types";
 import { SYSTEM_PROMPT, TOOL_NAME, buildUserMessage } from "./prompt";
+import { withAnthropicRetry, type RetryOpts } from "./errors";
 
 export const MAX_TOKENS = 8000;
+/** One request may take this long before it counts as a (retryable) timeout. */
+export const REQUEST_TIMEOUT_MS = 180_000;
 
 /** The part of the Anthropic client this module uses, so tests can pass a fake. */
 export interface AnthropicLike {
@@ -266,25 +269,34 @@ export function postProcess(
 
 let defaultClient: Anthropic | null = null;
 function getDefaultClient(): Anthropic {
-  defaultClient ??= new Anthropic({ apiKey: env.anthropicKey });
+  // Retries are ours (withAnthropicRetry), so they can be classified and tested.
+  defaultClient ??= new Anthropic({ apiKey: env.anthropicKey, maxRetries: 0, timeout: REQUEST_TIMEOUT_MS });
   return defaultClient;
 }
 
 export async function extractMeeting(
   input: ExtractionInput,
-  deps: { client?: AnthropicLike; model?: string; report?: PostProcessReport } = {},
+  deps: { client?: AnthropicLike; model?: string; report?: PostProcessReport; retry?: RetryOpts } = {},
 ): Promise<ExtractionResult> {
-  const client = deps.client ?? getDefaultClient();
   const model = deps.model ?? env.extractionModel;
-
-  const response = await client.messages.create({
+  const body: Anthropic.MessageCreateParamsNonStreaming = {
     model,
     max_tokens: MAX_TOKENS,
     system: SYSTEM_PROMPT,
     tools: [TOOL],
     tool_choice: { type: "auto", disable_parallel_tool_use: true },
     messages: [{ role: "user", content: buildUserMessage(input) }],
-  });
+  };
+  // A missing key surfaces as an auth failure, like a rejected one.
+  const response = await withAnthropicRetry(() => {
+    let client: AnthropicLike;
+    try {
+      client = deps.client ?? getDefaultClient();
+    } catch {
+      throw Object.assign(new Error("ANTHROPIC_API_KEY is not set"), { status: 401 });
+    }
+    return client.messages.create(body);
+  }, deps.retry);
 
   const usage = {
     inputTokens:

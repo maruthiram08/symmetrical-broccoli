@@ -117,8 +117,12 @@ export function CommandPalette() {
       .filter((d) => !ws.length || matches(`${d.label} ${d.date}`, ws))
       .slice(0, ws.length ? 3 : 4)
       .map<Row>((d) => ({ id: `d-${d.date}`, group: "Earlier days", label: d.label, href: `/day/${d.date}`, hl: true }));
+    const asking: Row = q.trim()
+      ? { id: "act-ask", group: "Actions", label: `Ask “${q.trim().slice(0, 120)}”`, sub: "Claude answers from your items", href: `/ask?q=${encodeURIComponent(q.trim().slice(0, 500))}` }
+      : { id: "act-ask", group: "Actions", label: "Ask…", sub: "a question about your meetings", href: "/ask" };
     out.push(...goRows);
     if (!ws.length || matches(check.label, ws)) out.push(check);
+    out.push(asking);
     out.push(...people, ...days);
     if (ws.length) {
       for (const r of results.rows) {

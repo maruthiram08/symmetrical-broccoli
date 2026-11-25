@@ -26,3 +26,9 @@ export function costUsd(model: string, usage: ExtractionResult["usage"]): number
 export function costInr(model: string, usage: ExtractionResult["usage"]): number {
   return costUsd(model, usage) * USD_TO_INR;
 }
+
+/**
+ * What one meeting's read costs on average, in rupees, for estimates shown before reading
+ * ("about ₹3.50 per meeting" in Settings). Measured on the eval meetings; long ones cost more.
+ */
+export const COST_PER_MEETING_INR = 3.5;

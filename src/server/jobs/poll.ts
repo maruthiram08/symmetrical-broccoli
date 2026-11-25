@@ -2,6 +2,7 @@ import { WISPR_TOOLS, type WisprClient } from "@/server/wispr/client";
 import { ReconnectRequiredError } from "@/server/wispr/oauth";
 import type { Store } from "@/server/store";
 import { cacheCalendar } from "./calendar";
+import { errLine } from "@/server/local/log";
 import { logJobError, mapLimit, type Deps } from "./types";
 
 export const BACKFILL_DAYS = 7;
@@ -34,9 +35,10 @@ export async function pollUser(
     const now = deps.now();
     const since = opts.since ?? conn.lastSeenAt ?? backfillStart(now);
     const client = opts.client ?? deps.wispr(userId);
+    const includeShared = (await store.getUser(userId))?.includeShared === true;
     let meetings;
     try {
-      meetings = await client.listMeetingsSince(since);
+      meetings = await client.listMeetingsSince(since, { includeShared });
       await cacheUpcoming(store, userId, client, now);
       await refreshCalendar(store, userId, client, now, meetings);
     } finally {
@@ -60,6 +62,7 @@ export async function pollUser(
         startedAt: m.startedAt,
         participants: m.participants,
         ...(m.link ? { link: m.link } : {}),
+        ...(m.shared ? { shared: true, ...(m.ownerName ? { ownerName: m.ownerName } : {}) } : {}),
       });
       if (r.created) created++;
       if (!newestQueued || m.startedAt > newestQueued) newestQueued = m.startedAt;
@@ -76,10 +79,14 @@ export async function pollUser(
       const latest = (await store.getConnection(userId)) ?? conn;
       await store.saveConnection({ ...latest, lastSeenAt });
     }
+    await store.setHealth?.({ lastPollOkAt: now.toISOString() });
     return { userId, ok: true, found: meetings.length, created };
   } catch (e) {
     // ReconnectRequiredError is already logged by markNeedsReconnect.
-    if (!(e instanceof ReconnectRequiredError)) await logJobError(deps, userId, "poll", e);
+    if (!(e instanceof ReconnectRequiredError)) {
+      await logJobError(deps, userId, "poll", e);
+      await store.setHealth?.({ lastPollErrorAt: deps.now().toISOString() }).catch(() => undefined);
+    }
     return { userId, ok: false, error: e instanceof Error ? e.name : "Error" };
   }
 }
@@ -102,7 +109,7 @@ export async function cacheUpcoming(store: Store, userId: string, client: WisprC
     });
     await store.saveUpcoming(userId, { fetchedAt: now.toISOString(), meetings: list });
   } catch (e) {
-    console.error(`[upcoming] user=${userId} ${e instanceof Error ? `${e.name}: ${e.message.slice(0, 200)}` : "Error"}`);
+    console.error(`[upcoming] user=${userId} ${errLine(e)}`);
   }
 }
 
@@ -116,11 +123,24 @@ async function refreshCalendar(store: Store, userId: string, client: WisprClient
     const ids = [...fresh, ...known].sort((a, b) => b.startedAt.localeCompare(a.startedAt)).map((m) => m.providerMeetingId);
     await cacheCalendar(store, user, client, now, ids);
   } catch (e) {
-    console.error(`[calendar] user=${userId} ${e instanceof Error ? e.name : "Error"}`);
+    console.error(`[calendar] user=${userId} ${errLine(e)}`);
   }
 }
 
-export async function pollAll(deps: Pick<Deps, "store" | "wispr" | "now">, opts: { concurrency?: number } = {}): Promise<PollResult[]> {
-  const users = await deps.store.listUsers();
+/**
+ * Poll every user. With `waitForFirstRead`, a user who connected but hasn't started their first
+ * read (lastSeenAt still null) is left alone: the local app's /welcome asks how far back to read
+ * and shows the cost first, so the background poll must not start a 7-day read behind their back.
+ */
+export async function pollAll(
+  deps: Pick<Deps, "store" | "wispr" | "now">,
+  opts: { concurrency?: number; waitForFirstRead?: boolean } = {},
+): Promise<PollResult[]> {
+  let users = await deps.store.listUsers();
+  if (opts.waitForFirstRead) {
+    const ready: typeof users = [];
+    for (const u of users) if ((await deps.store.getConnection(u.id))?.lastSeenAt != null) ready.push(u);
+    users = ready;
+  }
   return mapLimit(users, opts.concurrency ?? 4, (u) => pollUser(deps, u.id));
 }
