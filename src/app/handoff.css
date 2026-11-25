@@ -1,0 +1,79 @@
+/* "Start this" hand-off panel. Tokens from globals.css; --shadow-pop falls back to a local shadow. */
+:root {
+  --db-handoff-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 8px 24px rgba(0, 0, 0, 0.08);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --db-handoff-shadow: 0 1px 2px rgba(0, 0, 0, 0.5), 0 12px 32px rgba(0, 0, 0, 0.55); }
+}
+:root[data-theme="dark"] { --db-handoff-shadow: 0 1px 2px rgba(0, 0, 0, 0.5), 0 12px 32px rgba(0, 0, 0, 0.55); }
+
+.db-act--start[aria-expanded="true"] { background: var(--ink); border-color: var(--ink); color: var(--on-ink); }
+
+/* While the panel is open, keep Done / Wrong / Start this visible and out of the panel's way. */
+.db-item:has(.db-handoff__panel) { background: transparent; }
+.db-item:has(.db-handoff__panel) .db-item__acts { position: static; opacity: 1; grid-column: 2 / 4; justify-self: end; margin-top: var(--space-2); }
+
+.db-handoff { grid-column: 2 / 4; display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; }
+.db-handoff:empty { display: none; }
+
+.db-handoff__started { margin: 2px 0 0; font: 400 12px/16px var(--font-sans); color: var(--ink-faint); }
+
+.db-handoff__panel {
+  margin-top: var(--space-1);
+  padding: var(--space-3);
+  border-radius: var(--radius-lg);
+  background: var(--surface-100);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-pop, var(--db-handoff-shadow));
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.db-handoff__head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.db-handoff__tabs { display: flex; flex-wrap: wrap; gap: var(--space-1); padding: 3px; border-radius: var(--radius-full); background: var(--surface-200); }
+.db-handoff__tab {
+  height: 28px; padding: 0 12px; border: 0; border-radius: var(--radius-full); background: transparent;
+  color: var(--ink-muted); font: 500 13px/16px var(--font-sans); cursor: pointer;
+  transition: background var(--duration-fast), color var(--duration-fast);
+}
+.db-handoff__tab:hover { color: var(--ink); }
+.db-handoff__tab[aria-selected="true"] { background: var(--bg); color: var(--ink); box-shadow: 0 0 0 1px var(--border); }
+.db-handoff__close {
+  height: 28px; padding: 0 10px; border: 0; border-radius: var(--radius-full); background: transparent;
+  color: var(--ink-faint); font: 500 12px/16px var(--font-sans); cursor: pointer;
+}
+.db-handoff__close:hover { color: var(--ink); background: var(--surface-200); }
+
+.db-handoff__body { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; }
+.db-handoff__label { font: 400 12px/16px var(--font-sans); color: var(--ink-muted); }
+.db-handoff__label--sr, .db-handoff__sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+.db-handoff__text, .db-handoff__input {
+  width: 100%; box-sizing: border-box; padding: 10px 12px; border-radius: var(--radius-md);
+  border: 1px solid var(--border); background: var(--bg); color: var(--ink);
+  font: 400 14px/21px var(--font-sans); resize: vertical;
+}
+.db-handoff__input { height: 38px; padding: 0 12px; }
+.db-handoff__text--mono { font: 400 12px/18px var(--font-mono); }
+.db-handoff__text:focus, .db-handoff__input:focus { outline: 2px solid var(--focus-ring); outline-offset: 1px; border-color: transparent; }
+
+.db-handoff__acts { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.db-handoff__btn {
+  display: inline-flex; align-items: center; justify-content: center; height: 32px; padding: 0 14px;
+  border-radius: var(--radius-full); border: 1px solid var(--border-strong); background: var(--bg); color: var(--ink);
+  font: 500 13px/16px var(--font-sans); text-decoration: none; cursor: pointer;
+  transition: background var(--duration-fast), opacity var(--duration-fast);
+}
+.db-handoff__btn:hover { background: var(--surface-200); }
+.db-handoff__btn--primary { background: var(--ink); border-color: var(--ink); color: var(--on-ink); }
+.db-handoff__btn--primary:hover { background: var(--ink); opacity: 0.88; }
+
+.db-handoff__foot { margin: 0; font: 400 12px/16px var(--font-sans); color: var(--ink-faint); }
+.db-handoff__note { margin: 0; font: 400 13px/18px var(--font-sans); color: var(--ink-muted); }
+
+.db-handoff__loading { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-2) 0; }
+.db-handoff__shimmer { display: block; height: 12px; width: 100%; border-radius: var(--radius-full); background: var(--surface-300); animation: db-handoff-pulse 1.2s ease-in-out infinite; }
+.db-handoff__shimmer--short { width: 60%; }
+@keyframes db-handoff-pulse { 50% { opacity: 0.45; } }
+@media (prefers-reduced-motion: reduce) { .db-handoff__shimmer { animation: none; } }
