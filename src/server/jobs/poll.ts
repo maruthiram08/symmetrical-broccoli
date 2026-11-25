@@ -1,6 +1,7 @@
 import { WISPR_TOOLS, type WisprClient } from "@/server/wispr/client";
 import { ReconnectRequiredError } from "@/server/wispr/oauth";
 import type { Store } from "@/server/store";
+import { errLine } from "@/server/local/log";
 import { logJobError, mapLimit, type Deps } from "./types";
 
 export const BACKFILL_DAYS = 7;
@@ -76,10 +77,14 @@ export async function pollUser(
       const latest = (await store.getConnection(userId)) ?? conn;
       await store.saveConnection({ ...latest, lastSeenAt });
     }
+    await store.setHealth?.({ lastPollOkAt: now.toISOString() });
     return { userId, ok: true, found: meetings.length, created };
   } catch (e) {
     // ReconnectRequiredError is already logged by markNeedsReconnect.
-    if (!(e instanceof ReconnectRequiredError)) await logJobError(deps, userId, "poll", e);
+    if (!(e instanceof ReconnectRequiredError)) {
+      await logJobError(deps, userId, "poll", e);
+      await store.setHealth?.({ lastPollErrorAt: deps.now().toISOString() }).catch(() => undefined);
+    }
     return { userId, ok: false, error: e instanceof Error ? e.name : "Error" };
   }
 }
@@ -102,7 +107,7 @@ export async function cacheUpcoming(store: Store, userId: string, client: WisprC
     });
     await store.saveUpcoming(userId, { fetchedAt: now.toISOString(), meetings: list });
   } catch (e) {
-    console.error(`[upcoming] user=${userId} ${e instanceof Error ? `${e.name}: ${e.message.slice(0, 200)}` : "Error"}`);
+    console.error(`[upcoming] user=${userId} ${errLine(e)}`);
   }
 }
 

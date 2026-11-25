@@ -17,7 +17,9 @@ Meetings others shared with you in Wispr Flow are left out unless you turn on **
 While the app is running it:
 - checks Wispr Flow for new meetings every 30 minutes (or press **Check meetings now**),
 - extracts what you owe, what you're waiting on and decisions, and closes items when a later meeting shows they're done,
-- at your brief time, writes `~/Daily Brief/YYYY-MM-DD.md`, adds the day's decisions to `decisions.md`, and shows a Mac notification. If the Mac was asleep, it catches up within an hour of waking.
+- at your brief time, writes `~/Daily Brief/YYYY-MM-DD.md`, adds the day's decisions to `decisions.md`, and shows a Mac notification. If the Mac was asleep (or offline) at brief time, today's brief still goes out once after it wakes, after a fresh check of Wispr Flow.
+
+When something needs you, every page says so with a button: Wispr Flow signed you out (**Reconnect Wispr Flow**), the Anthropic key was rejected or the account is out of credit, or a meeting couldn't be read after a few tries (**Retry**). Busy or overloaded API calls are retried with backoff by themselves. **Settings › Health** shows the last check, last meeting read, last brief, errors in the last 24 hours, the data file size and the app version.
 
 ## Your data
 
@@ -25,6 +27,8 @@ While the app is running it:
 - `2026-11-25.md`, one plain Markdown note per day. Open it in any editor.
 - `decisions.md`, every decision with its quote.
 - `.daily-brief/state.json`, items and meetings (no transcripts, ever). Readable only by you.
+- `.daily-brief/state.json.bak` and `state.json.bak-daily`, hourly and daily copies of it. If `state.json` is ever damaged, the app keeps it as `state.json.corrupt-<time>`, restores the newest good copy and tells you on every page.
+- `.daily-brief/scheduler.lock`, so only one copy of the app (say, the Mac app and the launchd agent) checks meetings and sends the brief.
 - `.daily-brief/key`, a local key for the Wispr Flow sign-in step.
 
 To start over, quit the app and delete `.daily-brief/`.
@@ -63,7 +67,7 @@ npm run uninstall-login                    # if you used npm run install-login b
 cp -R "src-tauri/target/aarch64-apple-darwin/release/bundle/macos/Daily Brief.app" /Applications/
 ```
 
-The app keeps its secrets in the macOS Keychain (service `app.dailybrief`), not in files: the Anthropic API key, and the Wispr Flow token key, which moves there from `.daily-brief/key` on first start. `EXTRACTION_MODEL` and `WISPR_MCP_URL` go in `.daily-brief/settings.env` (`keychain:import` copies them). `npm start` still reads `.env.local` and falls back to the Keychain. The app always uses `~/Daily Brief`. The log is `~/Library/Logs/daily-brief.log`.
+The app keeps its secrets in the macOS Keychain (service `app.dailybrief`), not in files: the Anthropic API key, and the Wispr Flow token key, which moves there from `.daily-brief/key` on first start. `EXTRACTION_MODEL` and `WISPR_MCP_URL` go in `.daily-brief/settings.env` (`keychain:import` copies them). `npm start` still reads `.env.local` and falls back to the Keychain. The app always uses `~/Daily Brief`. The log is `~/Library/Logs/daily-brief.log`; the app rotates it at 5 MB and keeps three old copies (`.1` to `.3`). It never holds keys, tokens or transcript text.
 
 **First launch.** The app isn't signed with an Apple Developer ID. A copy you built yourself opens normally. If macOS says it can't be opened (say, you copied it from another Mac): right-click (or Control-click) the app in Finder, choose **Open**, then **Open** again. Or allow it under System Settings › Privacy & Security › **Open Anyway**, or run `xattr -dr com.apple.quarantine "/Applications/Daily Brief.app"`.
 

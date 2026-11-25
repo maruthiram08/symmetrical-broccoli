@@ -7,8 +7,9 @@ import { z } from "zod";
 import { buildDeps, getStore, me, saveMe, wisprAuthContext } from "@/server/local/app";
 import { estimateRead, type ReadEstimate } from "@/server/jobs/estimate";
 import { PENDING_COOKIE, sealPending, startWisprAuth } from "@/server/wispr/oauth";
-import { checkNow, startPullSince, startRebuild } from "@/server/local/scheduler";
+import { checkNow, retryReading, startPullSince, startRebuild } from "@/server/local/scheduler";
 import { BRIEF_TIMES, isValidTimeZone, startOfDayIso, todayIn } from "./_lib/time";
+import { errLine } from "@/server/local/log";
 
 const setupSchema = z.object({
   name: z.string().trim().min(1).max(80),
@@ -55,7 +56,7 @@ async function connectWispr(userId: string, onError = "/setup?error=wispr"): Pro
     (await cookies()).set(PENDING_COOKIE, sealPending(pending), { httpOnly: true, sameSite: "lax", path: "/api/wispr", maxAge: 600 });
     url = authorizationUrl.toString();
   } catch (e) {
-    console.error("[wispr/connect]", e instanceof Error ? e.message : e);
+    console.error(`[wispr/connect] ${errLine(e)}`);
     redirect(onError);
   }
   redirect(url);
@@ -147,4 +148,21 @@ export async function startFirstRead(formData: FormData): Promise<void> {
   await getStore().updateUser(user.id, { includeShared: formData.get("includeShared") === "on" });
   startPullSince(user.id, date, since);
   redirect("/welcome");
+}
+
+/** Banner: read the meetings that couldn't be read again (after fixing the key or adding credit). */
+export async function retryFailedMeetings(): Promise<void> {
+  const user = await me();
+  if (!user) redirect("/setup");
+  await retryReading(user.id);
+  revalidatePath("/", "layout");
+  redirect("/");
+}
+
+/** Banner: hide the "restored from backup" notice. */
+export async function dismissRecoveryNotice(formData: FormData): Promise<void> {
+  await getStore().dismissRecovery();
+  revalidatePath("/", "layout");
+  const back = String(formData.get("back") ?? "/");
+  redirect(back.startsWith("/") && !back.startsWith("//") ? back : "/");
 }

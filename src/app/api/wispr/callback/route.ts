@@ -6,6 +6,7 @@ import { backfillUser } from "@/server/jobs/backfill";
 import { runExclusive } from "@/server/local/scheduler";
 import { logJobError } from "@/server/jobs/types";
 import { finishWisprAuth, openPending, PENDING_COOKIE } from "@/server/wispr/oauth";
+import { errLine } from "@/server/local/log";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -35,7 +36,7 @@ export async function GET(req: Request) {
     const pending = openPending((await cookies()).get(PENDING_COOKIE)?.value, new Date());
     await finishWisprAuth(wisprAuthContext(user.id), { pending, code, state });
   } catch (e) {
-    console.error("[wispr/callback]", e instanceof Error ? e.message : e);
+    console.error(`[wispr/callback] ${errLine(e)}`);
     return done(failed);
   }
   if (firstRun) return done("/welcome");

@@ -6,7 +6,9 @@ import { getStore, me } from "@/server/local/app";
 import { redirect } from "next/navigation";
 import { SubmitOnChange } from "@/components/SubmitOnChange";
 import { pullMeetingsSince, rereadAllMeetings, saveIncludeShared, saveSetup } from "../actions";
-import { pullState } from "@/server/local/scheduler";
+import { pullState, schedulerStatus } from "@/server/local/scheduler";
+import { formatBytes, summarizeHealth } from "@/server/local/health";
+import { formatTime, localDate } from "@/lib/brief/time";
 import { BRIEF_TIMES, formatBriefTime, timeZones, todayIn } from "../_lib/time";
 
 export const dynamic = "force-dynamic";
@@ -27,6 +29,14 @@ export default async function Setup({ searchParams }: { searchParams: Promise<{ 
   const sharedSince = oldest ? todayIn(tz, new Date(oldest)) : todayIn(tz, new Date(Date.now() - 7 * 24 * 60 * 60_000));
   // Guess from the browser only until the user has saved a name (i.e. first visit).
   const firstVisit = !user?.name;
+  const store = getStore();
+  const health = user ? summarizeHealth({ health: await store.getHealth(), events: await store.listEvents(), statePath: store.path, now: new Date() }) : null;
+  const jobs = schedulerStatus();
+  const at = (iso: string | null) => {
+    if (!iso) return "Not yet";
+    const d = localDate(new Date(iso), tz);
+    return `${d === today ? "Today" : d}, ${formatTime(iso, tz)}`;
+  };
   return (
     <Page title="Set up your brief">
       <p className="db-lead">{connected ? "Change your details. Your meetings stay connected." : "A few things, then connect your meetings. Everything stays on this Mac."}</p>
@@ -137,6 +147,26 @@ export default async function Setup({ searchParams }: { searchParams: Promise<{ 
             </Button>
           </div>
         </form>
+      ) : null}
+      {health ? (
+        <section className="db-stack db-subsection" aria-labelledby="health">
+          <h2 className="db-section__title" id="health">Health</h2>
+          <dl className="db-health">
+            <dt>Last check of Wispr Flow</dt><dd>{at(health.lastPollOkAt)}</dd>
+            <dt>Last meeting read</dt><dd>{at(health.lastExtractOkAt)}</dd>
+            <dt>Last brief</dt><dd>{at(health.lastBriefAt)}</dd>
+            <dt>Errors, last 24 hours</dt>
+            <dd>
+              {health.errors24h
+                ? `${health.errors24h} (${health.errorsByJob.map(([j, n]) => `${j} ${n}`).join(" · ")}), last at ${at(health.lastErrorAt)}`
+                : "None"}
+            </dd>
+            <dt>Data file</dt><dd className="db-mono">{health.dataBytes === null ? "Not written yet" : formatBytes(health.dataBytes)}</dd>
+            <dt>Background jobs</dt>
+            <dd>{!jobs.running ? "Not started" : jobs.owner ? "Running here" : `Run by another Daily brief (pid ${jobs.holderPid ?? "?"})`}</dd>
+            <dt>Version</dt><dd className="db-mono">{health.version}</dd>
+          </dl>
+        </section>
       ) : null}
     </Page>
   );

@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
-import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { chmodSync, copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { basename, dirname, join } from "node:path";
 import type { OAuthClientInformationMixed } from "@modelcontextprotocol/sdk/shared/auth.js";
-import type { Connection, Item, LastLook, Meeting, UpcomingCache, User } from "@/lib/types";
+import type { Connection, Health, Item, LastLook, Meeting, UpcomingCache, User } from "@/lib/types";
 import { MemoryStore } from "@/server/store";
 import type { OAuthClientStore } from "@/server/wispr/oauth";
 
@@ -22,6 +22,46 @@ interface State {
   /** Added with the prep card: missing in older files. */
   upcoming?: Array<[string, UpcomingCache]>;
   prepNotified?: string[];
+  /** Added with the Health section: missing in older files. */
+  health?: Health;
+  /** Set when state.json couldn't be read and was restored; shown as a banner until dismissed. */
+  recovery?: Recovery | null;
+}
+
+/** What happened when state.json couldn't be read. */
+export interface Recovery {
+  at: string;
+  /** The backup the data came back from (file name), or null when there was none and the app started empty. */
+  from: string | null;
+  /** Where the unreadable file was kept (file name in the data folder). */
+  corruptFile: string | null;
+}
+
+/** Rolling copies of the last good state: hourly and daily. Tried in this order after a bad read. */
+export const BACKUPS: Array<{ suffix: string; everyMs: number }> = [
+  { suffix: ".bak", everyMs: 60 * 60_000 },
+  { suffix: ".bak-daily", everyMs: 24 * 60 * 60_000 },
+];
+const KEEP_CORRUPT = 5;
+
+class BadStateError extends Error {
+  constructor(why: string) { super(why); this.name = "BadStateError"; }
+}
+
+/** Parse and sanity-check a state file. Throws BadStateError when it isn't a usable state. */
+export function parseState(text: string): State {
+  let s: unknown;
+  try {
+    s = JSON.parse(text);
+  } catch {
+    throw new BadStateError("not valid JSON");
+  }
+  const o = s as Partial<State> | null;
+  if (!o || typeof o !== "object" || Array.isArray(o)) throw new BadStateError("not an object");
+  for (const k of ["users", "connections", "meetings", "items", "briefs"] as const) {
+    if (!Array.isArray(o[k])) throw new BadStateError(`missing ${k}`);
+  }
+  return o as State;
 }
 
 /** A hand-made Done/Wrong that should survive the meeting being read again. */
@@ -83,20 +123,83 @@ export class FileStore extends MemoryStore implements OAuthClientStore {
   marks: Mark[] = [];
   protected newId = () => randomUUID();
 
-  private loadedMtime = 0;
+  recovery: Recovery | null = null;
 
-  constructor(readonly path: string) {
+  private loadedMtime = 0;
+  private readonly clock: () => number;
+
+  constructor(readonly path: string, opts: { now?: () => number } = {}) {
     super();
+    this.clock = opts.now ?? Date.now;
     this.reload();
     if (dedupeBatches(this.items)) this.flush();
   }
 
-  /** Pick up writes made by another copy of the store (Next can load this module more than once). */
+  /**
+   * Pick up writes made by another copy of the store (Next can load this module more than once).
+   * A state.json that can't be parsed is never silently replaced: it is kept as
+   * state.json.corrupt-<time>, the newest good backup is restored, and `recovery` says so.
+   * A missing state.json next to a backup (deleted by hand, or lost) is restored the same way.
+   */
   private reload(): void {
-    if (!existsSync(this.path)) return;
+    if (!existsSync(this.path)) {
+      if (this.loadedMtime === 0 && this.users.size === 0 && BACKUPS.some((b) => existsSync(this.path + b.suffix))) this.recover(false);
+      return;
+    }
     const mtime = statSync(this.path).mtimeMs;
     if (mtime === this.loadedMtime) return;
-    const s = JSON.parse(readFileSync(this.path, "utf8")) as State;
+    let s: State;
+    try {
+      s = parseState(readFileSync(this.path, "utf8"));
+    } catch (e) {
+      if (!(e instanceof BadStateError)) throw e;
+      this.recover(true);
+      return;
+    }
+    this.apply(s);
+    this.loadedMtime = mtime;
+  }
+
+  private recover(corrupt: boolean): void {
+    const at = new Date(this.clock()).toISOString();
+    let corruptFile: string | null = null;
+    if (corrupt) {
+      corruptFile = `${basename(this.path)}.corrupt-${at.replace(/[:.]/g, "-")}`;
+      copyFileSync(this.path, join(dirname(this.path), corruptFile));
+      this.pruneCorrupt();
+    }
+    for (const b of BACKUPS) {
+      const p = this.path + b.suffix;
+      if (!existsSync(p)) continue;
+      try {
+        this.apply(parseState(readFileSync(p, "utf8")));
+      } catch {
+        continue;
+      }
+      this.recovery = { at, from: basename(p), corruptFile };
+      console.error(`[store] ${basename(this.path)} ${corrupt ? "couldn't be read" : "was missing"}; restored from ${basename(p)}${corruptFile ? `, kept the bad file as ${corruptFile}` : ""}`);
+      this.flush();
+      return;
+    }
+    // Nothing to restore from. Start empty, but keep the bad copy and say so on every page.
+    this.apply({ version: 1, users: [], connections: [], meetings: [], items: [], briefs: [], oauthClients: [], events: [] });
+    this.recovery = { at, from: null, corruptFile };
+    console.error(`[store] ${basename(this.path)} couldn't be read and there is no backup; kept it as ${corruptFile}, starting empty`);
+    this.flush();
+  }
+
+  private pruneCorrupt(): void {
+    try {
+      const dir = dirname(this.path);
+      const prefix = `${basename(this.path)}.corrupt-`;
+      const old = readdirSync(dir).filter((f) => f.startsWith(prefix)).sort();
+      for (const f of old.slice(0, Math.max(0, old.length - KEEP_CORRUPT))) unlinkSync(join(dir, f));
+    } catch {
+      // best effort
+    }
+  }
+
+  private apply(s: State): void {
     this.users = new Map(s.users.map((u) => [u.id, u]));
     this.connections = new Map(s.connections.map((c) => [c.userId, c]));
     this.meetings = new Map(s.meetings.map((m) => [m.id, m]));
@@ -108,7 +211,8 @@ export class FileStore extends MemoryStore implements OAuthClientStore {
     this.marks = s.marks ?? [];
     this.upcoming = new Map(s.upcoming ?? []);
     this.prepNotified = new Set(s.prepNotified ?? []);
-    this.loadedMtime = mtime;
+    this.health = s.health ?? {};
+    this.recovery = s.recovery ?? null;
   }
 
   /** Write the whole state. Synchronous so two jobs can't interleave half-written files. */
@@ -126,13 +230,28 @@ export class FileStore extends MemoryStore implements OAuthClientStore {
       marks: this.marks,
       upcoming: [...this.upcoming.entries()],
       prepNotified: [...this.prepNotified].slice(-MAX_PREP_NOTIFIED),
+      health: this.health,
+      recovery: this.recovery,
     };
     mkdirSync(dirname(this.path), { recursive: true, mode: 0o700 });
-    const tmp = `${this.path}.tmp`;
-    writeFileSync(tmp, JSON.stringify(state), { mode: 0o600 });
-    renameSync(tmp, this.path);
-    chmodSync(this.path, 0o600);
+    const json = JSON.stringify(state);
+    writeAtomic(this.path, json);
     this.loadedMtime = statSync(this.path).mtimeMs;
+    // After starting empty with nothing to restore, don't let the empty state replace old backups.
+    if (!this.recovery || this.recovery.from) this.backup(json);
+  }
+
+  /** Refresh each rolling backup that is older than its interval. Never throws. */
+  private backup(json: string): void {
+    for (const b of BACKUPS) {
+      const p = this.path + b.suffix;
+      try {
+        if (existsSync(p) && this.clock() - statSync(p).mtimeMs < b.everyMs) continue;
+        writeAtomic(p, json);
+      } catch (e) {
+        console.error(`[store] couldn't write ${basename(p)}: ${e instanceof Error ? e.name : "Error"}`);
+      }
+    }
   }
 
   // Reads: refresh from disk first.
@@ -211,8 +330,24 @@ export class FileStore extends MemoryStore implements OAuthClientStore {
     return n;
   }
 
+  async getHealth() { this.reload(); return super.getHealth(); }
+  async setHealth(patch: Partial<Health>) { this.reload(); await super.setHealth(patch); this.flush(); }
+  async recordMeetingFailure(meetingId: string, failure: string, at: string) { this.reload(); await super.recordMeetingFailure(meetingId, failure, at); this.flush(); }
+  async resetMeetingFailures(userId: string) { this.reload(); const n = await super.resetMeetingFailures(userId); if (n) this.flush(); return n; }
+  /** The "restored from backup" notice, until the user dismisses it. */
+  async getRecovery() { this.reload(); return this.recovery; }
+  async dismissRecovery() { this.reload(); if (this.recovery) { this.recovery = null; this.flush(); } }
+
   async getOAuthClient(userId: string) { this.reload(); return this.oauthClients.get(userId) ?? null; }
   async saveOAuthClient(userId: string, info: OAuthClientInformationMixed) { this.reload(); this.oauthClients.set(userId, info); this.flush(); }
+}
+
+/** Write to <path>.tmp, then rename over path: a reader never sees half a file. Private mode. */
+function writeAtomic(path: string, data: string): void {
+  const tmp = `${path}.tmp`;
+  writeFileSync(tmp, data, { mode: 0o600 });
+  renameSync(tmp, path);
+  chmodSync(path, 0o600);
 }
 
 /**
