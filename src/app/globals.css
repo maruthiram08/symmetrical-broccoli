@@ -220,3 +220,4 @@ select.db-input { padding-right: 36px; background-image: linear-gradient(45deg, 
 .db-md{margin:0;padding:0 var(--space-4);white-space:pre-wrap;font:400 14px/22px var(--font-sans);color:var(--ink)}
 @media (max-width:720px){.db-shell{grid-template-columns:1fr}.db-side{position:static;height:auto;flex-direction:row;flex-wrap:wrap;border-right:0;border-bottom:1px solid var(--border)}.db-side__brand{width:100%;padding-bottom:var(--space-2)}.db-side__group{display:none}.db-side__foot{margin:0;flex-direction:row;padding:0}.db-main{padding:var(--space-8) var(--space-4)}}
 .db-subsection{margin-top:48px;padding-top:32px;border-top:1px solid var(--border)}
+.db-group{margin-bottom:var(--space-4)}.db-group__title{margin:var(--space-4) 0 0;padding:0 var(--space-4);font:600 14px/20px var(--font-sans);color:var(--ink-muted)}

@@ -2,17 +2,18 @@ import type { BriefLine, ClosedLine } from "@/lib/types";
 import { setStatus } from "@/app/actions";
 import { Mark } from "./Mark";
 
-function Act({ id, status, label }: { id: string; status: "done" | "wrong" | "open"; label: string }) {
+function Act({ id, status, label, back }: { id: string; status: "done" | "wrong" | "open"; label: string; back?: string }) {
   return (
     <form action={setStatus}>
       <input type="hidden" name="id" value={id} />
       <input type="hidden" name="status" value={status} />
+      {back ? <input type="hidden" name="back" value={back} /> : null}
       <button className="db-act" type="submit">{label}</button>
     </form>
   );
 }
 
-export function BriefItem({ line }: { line: BriefLine }) {
+export function BriefItem({ line, back }: { line: BriefLine; back?: string }) {
   const late = line.lateLabel !== null;
   const mark = late ? "overdue" : line.kind;
   const text = line.person && line.kind === "owe" && line.text.includes(line.person)
@@ -30,8 +31,8 @@ export function BriefItem({ line }: { line: BriefLine }) {
         <span className="db-item__src">· {line.meetingTitle}{line.meetingTime ? `, ${line.meetingTime}` : ""}</span>
       </span>
       <span className="db-item__acts">
-        {line.kind !== "decision" ? <Act id={line.itemId} status="done" label="Done" /> : null}
-        <Act id={line.itemId} status="wrong" label="Wrong" />
+        {line.kind !== "decision" ? <Act id={line.itemId} status="done" label="Done" back={back} /> : null}
+        <Act id={line.itemId} status="wrong" label="Wrong" back={back} />
       </span>
     </div>
   );

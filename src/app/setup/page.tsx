@@ -3,7 +3,7 @@ import { Field } from "@/components/Field";
 import { Page } from "@/components/Page";
 import { TimeZoneSelect } from "@/components/TimeZoneSelect";
 import { getStore, me } from "@/server/local/app";
-import { pullMeetingsSince, saveSetup } from "../actions";
+import { pullMeetingsSince, rereadAllMeetings, saveSetup } from "../actions";
 import { pullState } from "@/server/local/scheduler";
 import { BRIEF_TIMES, formatBriefTime, timeZones, todayIn } from "../_lib/time";
 
@@ -83,6 +83,20 @@ export default async function Setup({ searchParams }: { searchParams: Promise<{ 
               Pick a date that isn&apos;t in the future.
             </p>
           ) : null}
+        </form>
+      ) : null}
+      {connected ? (
+        <form action={rereadAllMeetings} className="db-stack db-subsection">
+          <h2 className="db-section__title">Re-read all meetings in order</h2>
+          <p className="db-note" style={{ marginTop: 0 }}>
+            Reads every meeting again, oldest first, so later meetings can close earlier promises. Use it after pulling in older
+            meetings. Items you marked Done or Wrong are read again too. About ₹1 to ₹2 per meeting.
+          </p>
+          <div className="db-row">
+            <Button type="submit" variant="secondary" disabled={pulling}>
+              {pulling ? "Working…" : "Re-read all meetings"}
+            </Button>
+          </div>
         </form>
       ) : null}
     </Page>

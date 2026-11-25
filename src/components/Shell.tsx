@@ -2,7 +2,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 
 /** Sidebar and reading column. `days` are past daily notes, newest first. */
-export function Shell({ days, current, children, footer }: { days: Array<{ date: string; label: string }>; current: string; children: ReactNode; footer?: ReactNode }) {
+export function Shell({ days, current, children, footer, openCount }: { days: Array<{ date: string; label: string }>; current: string; children: ReactNode; footer?: ReactNode; openCount?: number }) {
   return (
     <div className="db-shell">
       <nav className="db-side" aria-label="Days">
@@ -10,6 +10,9 @@ export function Shell({ days, current, children, footer }: { days: Array<{ date:
           <span><i aria-hidden="true" />Daily brief</span>
         </div>
         <Link className="db-nav" href="/" aria-current={current === "today" ? "page" : undefined}>Today</Link>
+        <Link className="db-nav" href="/open" aria-current={current === "open" ? "page" : undefined}>
+          All open{openCount ? <span className="db-nav__n">{openCount}</span> : null}
+        </Link>
         {days.length ? <div className="db-side__group">Earlier</div> : null}
         {days.map((d) => (
           <Link key={d.date} className="db-nav" href={`/day/${d.date}`} aria-current={current === d.date ? "page" : undefined}>

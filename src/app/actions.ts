@@ -6,7 +6,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { getStore, me, saveMe, wisprAuthContext } from "@/server/local/app";
 import { PENDING_COOKIE, sealPending, startWisprAuth } from "@/server/wispr/oauth";
-import { checkNow, startPullSince } from "@/server/local/scheduler";
+import { checkNow, startPullSince, startRebuild } from "@/server/local/scheduler";
 import { BRIEF_TIMES, isValidTimeZone, startOfDayIso, todayIn } from "./_lib/time";
 
 const setupSchema = z.object({
@@ -62,6 +62,7 @@ export async function setStatus(formData: FormData): Promise<void> {
   if (!item) redirect("/");
   await store.setItemStatus(item.id, p.data.status, new Date().toISOString());
   revalidatePath("/");
+  if (formData.get("back") === "/open") redirect("/open");
   redirect(p.data.status === "open" ? "/" : `/?undo=${encodeURIComponent(item.id)}&was=${p.data.status}`);
 }
 
@@ -79,6 +80,15 @@ export async function pullMeetingsSince(formData: FormData): Promise<void> {
   const since = startOfDayIso(date, user.timeZone);
   if (!since || date > todayIn(user.timeZone)) redirect("/setup?pull=bad");
   startPullSince(user.id, date, since);
+  revalidatePath("/");
+  redirect("/");
+}
+
+/** Settings: read every meeting again, oldest first. */
+export async function rereadAllMeetings(): Promise<void> {
+  const user = await me();
+  if (!user) redirect("/setup");
+  startRebuild(user.id);
   revalidatePath("/");
   redirect("/");
 }

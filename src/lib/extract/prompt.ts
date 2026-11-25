@@ -29,9 +29,10 @@ How to write each item
 
 Closing the user's open items
 - The request lists the user's open items from earlier meetings, each with an id.
-- Add a close only when THIS transcript shows clear evidence that the item is done: it was delivered, confirmed received, or explicitly dropped ("I got the file, thanks", "already merged that", "we don't need that anymore"). A mention, a status update or "working on it" is not a close.
+- Close an item when THIS transcript shows it is done or no longer needed. Good evidence: the person responsible says they did it ("sent it", "maine share kar diya", "fixed that yesterday", "already merged"); the other side confirms receiving it ("got the file, thanks"); the meeting talks about the result as something that already happened (the doc is being reviewed, the access works, the release went out); or it is explicitly dropped or replaced ("we don't need that anymore", "let's skip it").
+- Do not close on a bare mention, a plan, or "working on it" / "will do it today".
 - Use only ids from the list. Never invent or alter an id. quote = the verbatim words that show it is done, at most ${QUOTE_MAX} characters.
-- Do not also record a closed item as a new item.
+- Do not record an open item again as a new item, whether it was closed or just repeated. Only record a new item when it is a genuinely new promise or a clearly different deadline.
 
 If there is nothing to record, return empty lists.`;
 

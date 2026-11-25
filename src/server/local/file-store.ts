@@ -116,6 +116,19 @@ export class FileStore extends MemoryStore implements OAuthClientStore {
   async logEvent(e: Parameters<MemoryStore["logEvent"]>[0]) { this.reload(); await super.logEvent({ ...e, at: new Date().toISOString() }); this.flush(); }
   async deleteUser(userId: string) { this.reload(); await super.deleteUser(userId); this.oauthClients.delete(userId); this.flush(); }
 
+  /**
+   * Forget every extracted item and mark all meetings unread, so they can be read again oldest
+   * first (later meetings then close earlier promises). Meetings and the connection are kept.
+   */
+  async resetExtraction(userId: string): Promise<number> {
+    this.reload();
+    for (const [id, i] of this.items) if (i.userId === userId) this.items.delete(id);
+    let n = 0;
+    for (const m of this.meetings.values()) if (m.userId === userId) { m.processedAt = null; n++; }
+    this.flush();
+    return n;
+  }
+
   async getOAuthClient(userId: string) { this.reload(); return this.oauthClients.get(userId) ?? null; }
   async saveOAuthClient(userId: string, info: OAuthClientInformationMixed) { this.reload(); this.oauthClients.set(userId, info); this.flush(); }
 }

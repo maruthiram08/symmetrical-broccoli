@@ -74,3 +74,19 @@ describe("processMeeting", () => {
     expect(store.meetings.get(meeting.id)?.processedAt).not.toBeNull();
   });
 });
+
+describe("which open items a meeting may close", () => {
+  it("offers only promises from earlier meetings, never decisions", async () => {
+    const { deps, meeting, store, user, extractCalls, wispr } = await setup();
+    const later = (await store.upsertMeeting({ userId: user.id, providerMeetingId: "p2", title: "Later", startedAt: "2026-11-25T11:00:00.000Z", participants: [] })).meeting;
+    const earlier = (await store.upsertMeeting({ userId: user.id, providerMeetingId: "p0", title: "Earlier", startedAt: "2026-11-20T09:00:00.000Z", participants: [] })).meeting;
+    wispr.transcripts.set("p2", "x");
+    await store.commitExtraction({ meetingId: later.id, userId: user.id, at: NOW.toISOString(), closes: [], newItems: [{ kind: "owe", text: "From later", person: null, quote: "q", meetingId: later.id, dueAt: null }] });
+    await store.commitExtraction({ meetingId: earlier.id, userId: user.id, at: NOW.toISOString(), closes: [], newItems: [
+      { kind: "owe", text: "From earlier", person: null, quote: "q", meetingId: earlier.id, dueAt: null },
+      { kind: "decision", text: "A decision", person: null, quote: "q", meetingId: earlier.id, dueAt: null },
+    ] });
+    await processMeeting(deps, meeting.id);
+    expect(extractCalls[0].openItems.map((i) => i.text)).toEqual(["From earlier"]);
+  });
+});

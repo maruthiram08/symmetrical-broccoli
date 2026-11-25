@@ -1,4 +1,4 @@
-import { QUOTE_MAX, type ExtractionResult } from "@/lib/types";
+import { QUOTE_MAX, type ExtractionResult, type Item } from "@/lib/types";
 import type { WisprClient } from "@/server/wispr/client";
 import { ReconnectRequiredError } from "@/server/wispr/oauth";
 import { logJobError, mapLimit, type Deps } from "./types";
@@ -66,7 +66,14 @@ async function processMeetingOnce(
       throw new ProcessError("transcript", e instanceof Error ? e.name : "Error");
     }
 
-    const open = await store.listItems(meeting.userId, { status: "open" });
+    // Only promises made before this meeting can be closed by it, and decisions are never "open work".
+    const startOf = new Map<string, string>();
+    const open: Item[] = [];
+    for (const i of await store.listItems(meeting.userId, { status: "open" })) {
+      if (i.kind === "decision") continue;
+      if (!startOf.has(i.meetingId)) startOf.set(i.meetingId, (await store.getMeeting(i.meetingId))?.startedAt ?? "");
+      if (startOf.get(i.meetingId)! < meeting.startedAt) open.push(i);
+    }
     openIds = new Set(open.map((i) => i.id));
     if (!transcript.trim()) {
       result = { newItems: [], closes: [], usage: { inputTokens: 0, outputTokens: 0 } };

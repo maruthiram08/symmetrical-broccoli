@@ -2,13 +2,15 @@ import { deliverDue } from "@/server/jobs/deliver";
 import { pollAll, pollUser } from "@/server/jobs/poll";
 import { processAllPending, processPending } from "@/server/jobs/process";
 import { logJobError } from "@/server/jobs/types";
-import { buildDeps } from "./app";
+import { buildDeps, getStore } from "./app";
 
 const TICK_MS = 5 * 60_000;
 const POLL_EVERY_MS = 30 * 60_000;
 
 /** Progress of the last "Pull meetings since" run, shown on Settings. Lives only in this process. */
 export interface PullState {
+  /** "pull": new meetings since a date. "rebuild": every meeting read again, oldest first. */
+  mode: "pull" | "rebuild";
   /** The date the user picked, YYYY-MM-DD. */
   date: string;
   startedAt: string;
@@ -91,7 +93,7 @@ export function pullState(): PullState | null {
  */
 export function startPullSince(userId: string, date: string, sinceIso: string): boolean {
   if (g.__dbPull?.running) return false;
-  const state: PullState = { date, startedAt: new Date().toISOString(), running: true, found: null, processed: 0, failed: 0, error: null };
+  const state: PullState = { mode: "pull", date, startedAt: new Date().toISOString(), running: true, found: null, processed: 0, failed: 0, error: null };
   g.__dbPull = state;
   void runExclusive(async () => {
     const deps = buildDeps();
@@ -114,6 +116,33 @@ export function startPullSince(userId: string, date: string, sinceIso: string): 
       state.error = "Something went wrong while pulling meetings.";
       console.error("[pull]", e instanceof Error ? e.name : "Error");
       await logJobError(deps, userId, "pull", e, {}, { includeMessage: false });
+    } finally {
+      state.running = false;
+    }
+  });
+  return true;
+}
+
+/**
+ * Settings: read every meeting again, oldest first, so later meetings can close earlier promises.
+ * Needed after older meetings were pulled in after newer ones. Runs in the background.
+ */
+export function startRebuild(userId: string): boolean {
+  if (g.__dbPull?.running) return false;
+  const state: PullState = { mode: "rebuild", date: "", startedAt: new Date().toISOString(), running: true, found: null, processed: 0, failed: 0, error: null };
+  g.__dbPull = state;
+  void runExclusive(async () => {
+    const deps = buildDeps();
+    try {
+      state.found = await getStore().resetExtraction(userId);
+      const p = await processPending(deps, userId);
+      state.processed = p.processed;
+      state.failed = p.failed;
+      if (p.failed) state.error = `${p.failed} meeting${p.failed === 1 ? "" : "s"} couldn't be read. Try again later.`;
+    } catch (e) {
+      state.error = "Something went wrong while re-reading meetings.";
+      console.error("[rebuild]", e instanceof Error ? e.name : "Error");
+      await logJobError(deps, userId, "rebuild", e, {}, { includeMessage: false });
     } finally {
       state.running = false;
     }

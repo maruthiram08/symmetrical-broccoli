@@ -23,6 +23,7 @@ export default async function Today({ searchParams }: { searchParams: Promise<{ 
   const n = (k: number, one: string, many = one + "s") => `${k} ${k === 1 ? one : many}`;
   const pull = pullState();
   const unread = (await store.listUnprocessedMeetings(user.id)).length;
+  const openCount = (await store.listItems(user.id, { status: "open" })).filter((i) => i.kind !== "decision").length;
   const pullRecent = pull && Date.now() - Date.parse(pull.startedAt) < 60 * 60_000;
   const pullDate = pull ? new Date(`${pull.date}T00:00:00Z`).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }) : "";
   const owedCount = b.youOwe.length ? `${b.youOwe.length}${b.wrap.late ? ` · ${b.wrap.late} late` : ""}` : undefined;
@@ -31,6 +32,7 @@ export default async function Today({ searchParams }: { searchParams: Promise<{ 
     <Shell
       days={await pastDays(user.id, b.date)}
       current="today"
+      openCount={openCount}
       footer={
         <form action={checkMeetingsNow}>
           <button className="db-nav db-nav--button" type="submit">Check meetings now</button>
@@ -50,14 +52,19 @@ export default async function Today({ searchParams }: { searchParams: Promise<{ 
       ) : null}
       {pull?.running ? (
         <p className="db-banner" role="status">
-          {unread
-            ? `Pulling in meetings since ${pullDate}: ${n(unread, "meeting")} left to read. New promises appear here as they're read.`
-            : `Finding your meetings since ${pullDate}…`}
+          {pull.mode === "rebuild"
+            ? `Re-reading your meetings oldest first: ${n(unread, "meeting")} left. Promises close as later meetings are read.`
+            : unread
+              ? `Pulling in meetings since ${pullDate}: ${n(unread, "meeting")} left to read. New promises appear here as they're read.`
+              : `Finding your meetings since ${pullDate}…`}
           <AutoRefresh seconds={8} />
         </p>
       ) : pullRecent && pull ? (
         <p className="db-banner" role="status">
-          {pull.error ?? `Pulled in your meetings since ${pullDate}: ${n(pull.found ?? 0, "meeting")} found.`}
+          {pull.error ??
+            (pull.mode === "rebuild"
+              ? `Re-read ${n(pull.found ?? 0, "meeting")} in order.`
+              : `Pulled in your meetings since ${pullDate}: ${n(pull.found ?? 0, "meeting")} found.`)}
         </p>
       ) : unread ? (
         <p className="db-banner" role="status">
@@ -91,7 +98,11 @@ export default async function Today({ searchParams }: { searchParams: Promise<{ 
       {b.stillOpenCount ? (
         <Section title="Still open" count={String(b.stillOpenCount)}>
           {b.stillOpen.map((l) => <BriefItem key={l.itemId} line={l} />)}
-          {b.stillOpenCount > b.stillOpen.length ? <p className="db-section__empty">And {b.stillOpenCount - b.stillOpen.length} more from earlier.</p> : null}
+          {b.stillOpenCount > b.stillOpen.length ? (
+            <p className="db-section__empty">
+              <a className="db-link" href="/open">See all {b.stillOpenCount} still open</a>
+            </p>
+          ) : null}
         </Section>
       ) : null}
     </Shell>
