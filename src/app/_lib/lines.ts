@@ -1,3 +1,4 @@
+import { peekInfo } from "@/lib/brief/build";
 import { dueLabel, formatTime, lateLabel } from "@/lib/brief/time";
 import type { BriefLine, ClosedLine, Item, Meeting, User } from "@/lib/types";
 import { getStore } from "@/server/local/app";
@@ -24,6 +25,7 @@ export function toLine(i: Item, meetings: Map<string, Meeting>, user: User, now:
     meetingTime: m ? formatTime(m.startedAt, user.timeZone) : "",
     dueLabel: i.dueAt && late === null && i.kind !== "decision" ? dueLabel(i.dueAt, now, user.timeZone) : null,
     lateMinutes: late, lateLabel: late !== null ? lateLabel(late) : null,
+    meetingId: i.meetingId, peek: peekInfo(i, m ?? null, user.timeZone),
   };
 }
 

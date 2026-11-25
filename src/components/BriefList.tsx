@@ -3,6 +3,7 @@ import Link from "next/link";
 import { setStatus } from "@/app/actions";
 import { personSlug } from "@/lib/people";
 import { Mark } from "./Mark";
+import { QuotePeek } from "./QuotePeek";
 import { HandoffSlot } from "./HandoffSlot";
 import { StartThisButton } from "./StartThis";
 
@@ -33,7 +34,14 @@ export function BriefItem({ line, back }: { line: BriefLine; back?: string }) {
         {late ? <span className="db-item__late">{line.lateLabel}</span> : line.dueLabel ? <span className="db-item__time">{line.dueLabel}</span> : null}
       </span>
       <span className="db-item__meta">
-        <span className="db-item__quote">&ldquo;{line.quote}&rdquo;</span>
+        <QuotePeek
+          quote={line.quote}
+          kind={line.kind}
+          speaker={line.peek?.speaker ?? null}
+          meetingTitle={line.meetingTitle}
+          when={line.peek?.when ?? line.meetingTime}
+          link={line.peek?.link ?? null}
+        />
         {personLink ? <span className="db-item__src">· {personLink}</span> : null}
         <span className="db-item__src">· {line.meetingTitle}{line.meetingTime ? `, ${line.meetingTime}` : ""}</span>
       </span>
