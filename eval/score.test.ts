@@ -21,6 +21,9 @@ describe("matchers", () => {
   it("token overlap ignores stopwords and plurals", () => {
     expect(tokenOverlap("Send the banners to Nitin", "send banner Nitin")).toBe(1);
     expect(tokenOverlap("Fix login bug", "Write release notes")).toBe(0);
+    expect(tokenOverlap("Review front-end items", "review frontend item")).toBe(1);
+    expect(tokenOverlap("Target deploying on the 30th", "target deploy 30th")).toBe(1);
+    expect(tokenOverlap("Get confirmation", "get confirm")).toBe(1);
   });
 
   it("key noun skips verbs and the person's name", () => {
@@ -106,5 +109,49 @@ describe("scoreMeeting / totals", () => {
       precision: 1,
       recall: 1,
     });
+  });
+
+  it("takes the best pair first, so a loose key-noun match can't steal an item", () => {
+    const s = scoreMeeting(
+      {
+        newItems: [
+          { kind: "owe", text: "Change the corporate action title", person: "Ravi" },
+          { kind: "owe", text: "Create a ticket for other corporate actions", person: "Ravi" },
+        ],
+        closes: [],
+      },
+      { newItems: [item("owe", "Create ticket for the other corporate actions", "Ravi")], closes: [] },
+    );
+    expect(s.correct.map((c) => c.expected.text)).toEqual(["Create a ticket for other corporate actions"]);
+    expect(s.missed.map((m) => m.text)).toEqual(["Change the corporate action title"]);
+  });
+
+  it("accepts any listed person, and optional items and closes are not counted", () => {
+    const s = scoreMeeting(
+      {
+        newItems: [{ kind: "owe", text: "Check with Asha about the blog", person: ["Asha", "Nitin"] }],
+        closes: ["a"],
+        optionalItems: [{ kind: "decision", text: "Label it Beta", person: null }],
+        optionalCloses: ["b"],
+      },
+      {
+        newItems: [item("owe", "Ask Asha about the launch blog", "Nitin"), item("decision", "Call the label Beta", null)],
+        closes: [
+          { itemId: "a", quote: "q" },
+          { itemId: "b", quote: "q" },
+        ],
+      },
+    );
+    expect(s.correct).toHaveLength(1);
+    expect(s.optional).toHaveLength(1);
+    expect(s.wrong).toHaveLength(0);
+    expect(s.optionalCloses).toEqual(["b"]);
+    expect(s.wrongCloses).toEqual([]);
+    const t = totals([s]);
+    expect(t).toMatchObject({ precision: 1, recall: 1, itemPrecision: 1, closeRecall: 1 });
+  });
+
+  it("null in a person list allows an item with no person", () => {
+    expect(itemMatches({ kind: "owe", text: "Confirm the fill type", person: [null, "Ravi"] }, item("owe", "Confirm fill type", null))).toBe(true);
   });
 });
