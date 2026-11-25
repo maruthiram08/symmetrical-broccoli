@@ -62,7 +62,7 @@ export function buildDeps(): Deps {
     model: env.extractionModel,
     buildBrief,
     renderMarkdown,
-    publish: (user, model, markdown) => publishLocal(notesDir(), user, model, markdown),
+    publish: (user, model, markdown, week) => publishLocal(notesDir(), user, model, markdown, undefined, week),
     now,
   };
 }

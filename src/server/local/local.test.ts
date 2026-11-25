@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, statSync } from "node:fs";
+import { mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -88,5 +88,31 @@ describe("FileStore across copies", () => {
     for (const i of [mk("a1", "2026-11-25T06:00:00Z"), mk("a2", "2026-11-25T06:00:00Z"), mk("b1", "2026-11-25T06:00:01Z")]) a.items.set(i.id, i);
     a.flush();
     expect((await new FileStore(path).listItems(u.id)).map((i) => i.id).sort()).toEqual(["a1", "a2"]);
+  });
+});
+
+describe("last look and weekly note", () => {
+  it("keeps the last look across restarts and still loads a state file without one", async () => {
+    const path = join(tmp(), "state.json");
+    const a = new FileStore(path);
+    const u = a.addUser({ email: "x" });
+    expect(await a.getLastLook(u.id)).toBeNull();
+    // An older state.json has no "looks" key.
+    const raw = JSON.parse(readFileSync(path, "utf8"));
+    expect(raw.looks).toEqual([]);
+    delete raw.looks;
+    writeFileSync(path, JSON.stringify(raw));
+    const b = new FileStore(path);
+    expect(await b.getUser(u.id)).not.toBeNull();
+    expect(await b.getLastLook(u.id)).toBeNull();
+    await b.saveLastLook(u.id, { lastLookedAt: "2026-11-25T12:00:00.000Z", since: null });
+    expect(await new FileStore(path).getLastLook(u.id)).toEqual({ lastLookedAt: "2026-11-25T12:00:00.000Z", since: null });
+  });
+
+  it("publishLocal writes the week note when given one", async () => {
+    const dir = tmp();
+    await publishLocal(dir, {} as never, model(), "# Friday\n", () => {}, { key: "2026-W48", markdown: "# Week 48\n" });
+    expect(readFileSync(join(dir, "week-2026-W48.md"), "utf8")).toBe("# Week 48\n");
+    expect(readFileSync(join(dir, "2026-11-25.md"), "utf8")).toBe("# Friday\n");
   });
 });

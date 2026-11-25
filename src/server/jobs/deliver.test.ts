@@ -82,3 +82,17 @@ describe("deliverDue", () => {
     expect(store.events).toContainEqual(expect.objectContaining({ type: "job_error", payload: expect.objectContaining({ job: "deliver" }) }));
   });
 });
+
+describe("weekly recap", () => {
+  it("hands Friday's brief the week note, and no other day's", async () => {
+    const weeks: Array<string | undefined> = [];
+    const { deps } = setup(at("2026-11-27T12:30:00Z"));
+    deps.publish = async (_u, _m, _md, week) => { weeks.push(week?.key); if (week) expect(week.markdown).toContain("# Week 48, 23–29 November"); return { id: "x" }; };
+    await deliverDue(deps, at("2026-11-27T12:30:00Z")); // Friday 6 PM in Kolkata
+    expect(weeks).toEqual(["2026-W48"]);
+    const thu = setup(at("2026-11-26T12:30:00Z"));
+    thu.deps.publish = async (_u, _m, _md, week) => { weeks.push(week?.key); return { id: "x" }; };
+    await deliverDue(thu.deps, at("2026-11-26T12:30:00Z"));
+    expect(weeks).toEqual(["2026-W48", undefined]);
+  });
+});

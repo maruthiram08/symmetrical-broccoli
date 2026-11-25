@@ -1,4 +1,4 @@
-import type { Connection, Item, Meeting, User } from "@/lib/types";
+import type { Connection, Item, LastLook, Meeting, User } from "@/lib/types";
 
 /**
  * Data access used by the jobs. Two implementations:
@@ -43,6 +43,8 @@ export class MemoryStore implements Store {
   items = new Map<string, Item>();
   briefs = new Map<string, { date: string; markdown: string; sentAt: string | null; emailId: string | null }>();
   events: Array<Record<string, unknown>> = [];
+  /** When each user last looked at Today. Not part of Store: only the local app reads it. */
+  looks = new Map<string, LastLook>();
 
   addUser(u: Partial<User> & { email: string }): User {
     const user: User = { id: this.newId(), name: "", aliases: [], timeZone: "Asia/Kolkata", briefTime: "18:00", createdAt: new Date().toISOString(), ...u };
@@ -90,8 +92,10 @@ export class MemoryStore implements Store {
   async saveBrief(userId: string, date: string, markdown: string, sentAt: string | null, emailId: string | null) { this.briefs.set(`${userId}:${date}`, { date, markdown, sentAt, emailId }); }
   async listBriefs(userId: string) { return [...this.briefs.entries()].filter(([k]) => k.startsWith(userId + ":")).map(([, v]) => ({ date: v.date, markdown: v.markdown })); }
   async logEvent(e: Record<string, unknown>) { this.events.push(e); }
+  async getLastLook(userId: string): Promise<LastLook | null> { return this.looks.get(userId) ?? null; }
+  async saveLastLook(userId: string, look: LastLook): Promise<void> { this.looks.set(userId, look); }
   async deleteUser(userId: string) {
-    this.users.delete(userId); this.connections.delete(userId);
+    this.users.delete(userId); this.connections.delete(userId); this.looks.delete(userId);
     for (const [k, m] of this.meetings) if (m.userId === userId) this.meetings.delete(k);
     for (const [k, i] of this.items) if (i.userId === userId) this.items.delete(k);
     for (const k of this.briefs.keys()) if (k.startsWith(userId + ":")) this.briefs.delete(k);
