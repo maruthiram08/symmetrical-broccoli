@@ -2,6 +2,7 @@ import { dismissRecoveryNotice, retryFailedMeetings } from "@/app/actions";
 import { formatTime, localDate } from "@/lib/brief/time";
 import type { User } from "@/lib/types";
 import { getStore } from "@/server/local/app";
+import { RECOVERED_FROM_MEMORY } from "@/server/local/file-store";
 import { alertsFor, type Alert } from "@/server/local/health";
 
 /** The problems only the user can fix, on every page, each with what to do and a button. */
@@ -36,7 +37,9 @@ export function Alerts({ alerts, user }: { alerts: Alert[]; user: User }) {
             return (
               <form key={a.kind} action={dismissRecoveryNotice} className="db-banner" role="alert">
                 <span>
-                  {a.from
+                  {a.from === RECOVERED_FROM_MEMORY
+                    ? "Your data file was damaged, so Daily brief wrote it again from the copy it had open. Nothing should be missing."
+                    : a.from
                     ? `Your data file was damaged, so Daily brief restored the last backup (${a.from}). Changes from just before that may be missing; recent meetings are read again.`
                     : "Your data file couldn't be read and there was no backup, so Daily brief started fresh."}
                   {a.corruptFile ? ` The damaged file is kept in ~/Daily Brief/.daily-brief/${a.corruptFile}.` : null}

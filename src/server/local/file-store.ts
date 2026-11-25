@@ -46,6 +46,13 @@ export const BACKUPS: Array<{ suffix: string; everyMs: number }> = [
   { suffix: ".bak-daily", everyMs: 24 * 60 * 60_000 },
 ];
 const KEEP_CORRUPT = 5;
+/** A state.json that doesn't parse is read again this many times, this far apart, before it counts as damaged. */
+const READ_RETRIES = 3;
+const READ_RETRY_MS = 100;
+/** How many times a change is made again because another process wrote state.json meanwhile. */
+const CHANGE_RETRIES = 5;
+/** `Recovery.from` when the damaged file was written again from the state this process had open. */
+export const RECOVERED_FROM_MEMORY = "memory";
 
 class BadStateError extends Error {
   constructor(why: string) { super(why); this.name = "BadStateError"; }
@@ -119,6 +126,8 @@ export function applyMarks(items: Item[], marks: Mark[]): Mark[] {
 }
 
 const MAX_EVENTS = 2000;
+/** How alike two items of one meeting must be to count as the same item read twice. */
+const DUPLICATE_SIMILARITY = 0.6;
 const MAX_PREP_NOTIFIED = 500;
 
 /**
@@ -133,7 +142,10 @@ export class FileStore extends MemoryStore implements OAuthClientStore {
 
   recovery: Recovery | null = null;
 
-  private loadedMtime = 0;
+  /** The file as this copy last read or wrote it; null before the first good read. */
+  private loaded: FileSig | null = null;
+  /** Counts recover() calls, so change() can tell its own reload restored the file. */
+  private recoveries = 0;
   private readonly clock: () => number;
 
   constructor(readonly path: string, opts: { now?: () => number } = {}) {
@@ -144,37 +156,53 @@ export class FileStore extends MemoryStore implements OAuthClientStore {
   }
 
   /**
-   * Pick up writes made by another copy of the store (Next can load this module more than once).
-   * A state.json that can't be parsed is never silently replaced: it is kept as
-   * state.json.corrupt-<time>, the newest good backup is restored, and `recovery` says so.
+   * Pick up writes made by another copy of the store: another module copy in this process, the
+   * MCP server, a second app process, or a hand edit. A change is seen by inode (every atomic write
+   * is a new file), size or mtime, so two writes within one timestamp tick are not missed.
+   * A state.json that can't be parsed is never silently replaced: it is read again after a moment
+   * (someone may be writing it in place), then kept as state.json.corrupt-<time> and restored from
+   * this copy's own state when it has one, else from the newest good backup; `recovery` says so.
    * A missing state.json next to a backup (deleted by hand, or lost) is restored the same way.
    */
   private reload(): void {
-    if (!existsSync(this.path)) {
-      if (this.loadedMtime === 0 && this.users.size === 0 && BACKUPS.some((b) => existsSync(this.path + b.suffix))) this.recover(false);
+    let sig = fileSig(this.path);
+    if (!sig) {
+      if (!this.loaded && this.users.size === 0 && BACKUPS.some((b) => existsSync(this.path + b.suffix))) this.recover(false);
       return;
     }
-    const mtime = statSync(this.path).mtimeMs;
-    if (mtime === this.loadedMtime) return;
-    let s: State;
-    try {
-      s = parseState(readFileSync(this.path, "utf8"));
-    } catch (e) {
-      if (!(e instanceof BadStateError)) throw e;
-      this.recover(true);
-      return;
+    if (sameSig(sig, this.loaded)) return;
+    for (let attempt = 0; ; attempt++) {
+      try {
+        this.apply(parseState(readFileSync(this.path, "utf8")));
+        this.loaded = sig;
+        return;
+      } catch (e) {
+        if (!(e instanceof BadStateError) && (e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
+        if (attempt >= READ_RETRIES) break;
+      }
+      sleepSync(READ_RETRY_MS);
+      sig = fileSig(this.path);
+      if (!sig) return; // gone while we waited: handled on the next read
     }
-    this.apply(s);
-    this.loadedMtime = mtime;
+    if (fileSig(this.path)) this.recover(true);
   }
 
   private recover(corrupt: boolean): void {
+    this.recoveries++;
     const at = new Date(this.clock()).toISOString();
     let corruptFile: string | null = null;
     if (corrupt) {
       corruptFile = `${basename(this.path)}.corrupt-${at.replace(/[:.]/g, "-")}`;
       copyFileSync(this.path, join(dirname(this.path), corruptFile));
       this.pruneCorrupt();
+    }
+    // This copy already holds a good state at least as new as any backup: write that back rather
+    // than rolling back to a backup that may be an hour (or a day) older.
+    if (corrupt && this.loaded) {
+      this.recovery = { at, from: RECOVERED_FROM_MEMORY, corruptFile };
+      console.error(`[store] ${basename(this.path)} couldn't be read; wrote it again from the copy in memory, kept the bad file as ${corruptFile}`);
+      this.flush();
+      return;
     }
     for (const b of BACKUPS) {
       const p = this.path + b.suffix;
@@ -224,6 +252,33 @@ export class FileStore extends MemoryStore implements OAuthClientStore {
     this.recovery = s.recovery ?? null;
   }
 
+  /** True when state.json is no longer the file this copy last read or wrote. */
+  private changedOnDisk(): boolean {
+    return !sameSig(fileSig(this.path), this.loaded);
+  }
+
+  /**
+   * Every change goes through here: read the file, apply the change, write the whole file. If
+   * another process wrote state.json while the change was being made, the change is made again on
+   * top of that version instead of writing a stale copy over it (a lost update).
+   * `fn` changes only this store's maps, so running it again on fresh ones is safe.
+   */
+  private async change<T>(fn: () => T | Promise<T>, write: (r: T) => boolean = () => true): Promise<T> {
+    let r!: T;
+    for (let attempt = 0; ; attempt++) {
+      const recoveries = this.recoveries;
+      this.reload();
+      // The other write left a damaged file, and it was written again from memory, which already
+      // held this change: don't make it twice.
+      if (attempt > 0 && this.recoveries !== recoveries) return r;
+      r = await fn();
+      if (!write(r)) return r;
+      if (attempt < CHANGE_RETRIES && this.changedOnDisk()) continue;
+      this.flush();
+      return r;
+    }
+  }
+
   /** Write the whole state. Synchronous so two jobs can't interleave half-written files. */
   flush(): void {
     const state: State = {
@@ -246,7 +301,7 @@ export class FileStore extends MemoryStore implements OAuthClientStore {
     mkdirSync(dirname(this.path), { recursive: true, mode: 0o700 });
     const json = JSON.stringify(state);
     writeAtomic(this.path, json);
-    this.loadedMtime = statSync(this.path).mtimeMs;
+    this.loaded = fileSig(this.path);
     // After starting empty with nothing to restore, don't let the empty state replace old backups.
     if (!this.recovery || this.recovery.from) this.backup(json);
   }
@@ -278,61 +333,63 @@ export class FileStore extends MemoryStore implements OAuthClientStore {
   async listBriefs(userId: string) { this.reload(); return super.listBriefs(userId); }
 
   addUser(u: Partial<User> & { email: string }): User {
-    this.reload();
-    const user = super.addUser(u);
-    this.flush();
-    return user;
+    // Synchronous (setup and tests call it so); same re-apply rule as change().
+    for (let attempt = 0; ; attempt++) {
+      this.reload();
+      const user = super.addUser(u);
+      if (attempt < CHANGE_RETRIES && this.changedOnDisk()) continue;
+      this.flush();
+      return user;
+    }
   }
   async updateUser(id: string, patch: Partial<Omit<User, "id">>): Promise<User | null> {
-    this.reload();
-    const u = this.users.get(id);
-    if (!u) return null;
-    Object.assign(u, patch);
-    this.flush();
-    return u;
+    return this.change(() => {
+      const u = this.users.get(id);
+      if (u) Object.assign(u, patch);
+      return u ?? null;
+    }, (u) => !!u);
   }
-  async saveConnection(c: Connection) { this.reload(); await super.saveConnection(c); this.flush(); }
-  async upsertMeeting(m: Omit<Meeting, "id" | "processedAt">) {
-    this.reload();
-    const r = await super.upsertMeeting(m);
-    if (r.created) this.flush();
-    return r;
-  }
+  async saveConnection(c: Connection) { await this.change(() => super.saveConnection(c)); }
+  async upsertMeeting(m: Omit<Meeting, "id" | "processedAt">) { return this.change(() => super.upsertMeeting(m), (r) => r.created); }
   async commitExtraction(args: Parameters<MemoryStore["commitExtraction"]>[0]) {
-    this.reload();
-    const m = this.meetings.get(args.meetingId);
-    if (m?.processedAt) return; // idempotent: a meeting is only ever committed once
-    await super.commitExtraction(args);
-    const mine = this.marks.filter((k) => k.meetingId === args.meetingId);
-    if (mine.length) {
-      const fresh = [...this.items.values()].filter((i) => i.meetingId === args.meetingId && i.createdAt === args.at && i.status === "open");
-      const left = applyMarks(fresh, mine);
-      this.marks = [...this.marks.filter((k) => k.meetingId !== args.meetingId), ...left];
-    }
-    this.flush();
+    await this.change(async () => {
+      const m = this.meetings.get(args.meetingId);
+      if (m?.processedAt) return false; // idempotent: a meeting is only ever committed once
+      await super.commitExtraction(args);
+      const mine = this.marks.filter((k) => k.meetingId === args.meetingId);
+      if (mine.length) {
+        const fresh = [...this.items.values()].filter((i) => i.meetingId === args.meetingId && i.createdAt === args.at && i.status === "open");
+        const left = applyMarks(fresh, mine);
+        this.marks = [...this.marks.filter((k) => k.meetingId !== args.meetingId), ...left];
+      }
+      return true;
+    }, (done) => done);
   }
-  async setItemStatus(itemId: string, status: Item["status"], at: string) { this.reload(); await super.setItemStatus(itemId, status, at); this.flush(); }
-  async addManualItem(userId: string, input: ManualInput, at: string) { this.reload(); const i = await super.addManualItem(userId, input, at); this.flush(); return i; }
-  async updateItem(...a: Parameters<MemoryStore["updateItem"]>) { this.reload(); const i = await super.updateItem(...a); if (i) this.flush(); return i; }
-  async deleteItem(itemId: string) { this.reload(); const ok = await super.deleteItem(itemId); if (ok) this.flush(); return ok; }
-  async saveBrief(...a: Parameters<MemoryStore["saveBrief"]>) { this.reload(); await super.saveBrief(...a); this.flush(); }
-  async logEvent(e: Parameters<MemoryStore["logEvent"]>[0]) { this.reload(); await super.logEvent({ ...e, at: new Date().toISOString() }); this.flush(); }
+  async setItemStatus(itemId: string, status: Item["status"], at: string) { await this.change(() => super.setItemStatus(itemId, status, at)); }
+  async addManualItem(userId: string, input: ManualInput, at: string) { return this.change(() => super.addManualItem(userId, input, at)); }
+  async updateItem(...a: Parameters<MemoryStore["updateItem"]>) { return this.change(() => super.updateItem(...a), (i) => !!i); }
+  async deleteItem(itemId: string) { return this.change(() => super.deleteItem(itemId), (ok) => ok); }
+  async saveBrief(...a: Parameters<MemoryStore["saveBrief"]>) { await this.change(() => super.saveBrief(...a)); }
+  async logEvent(e: Parameters<MemoryStore["logEvent"]>[0]) { const at = new Date().toISOString(); await this.change(() => super.logEvent({ ...e, at })); }
   async getLastLook(userId: string) { this.reload(); return super.getLastLook(userId); }
-  async saveLastLook(userId: string, look: LastLook) { this.reload(); await super.saveLastLook(userId, look); this.flush(); }
-  async saveUpcoming(userId: string, cache: UpcomingCache) { this.reload(); await super.saveUpcoming(userId, cache); this.flush(); }
+  async saveLastLook(userId: string, look: LastLook) { await this.change(() => super.saveLastLook(userId, look)); }
+  async saveUpcoming(userId: string, cache: UpcomingCache) { await this.change(() => super.saveUpcoming(userId, cache)); }
   async getUpcoming(userId: string) { this.reload(); return super.getUpcoming(userId); }
-  async saveCalendar(userId: string, cache: CalendarCache) { this.reload(); await super.saveCalendar(userId, cache); this.flush(); }
+  async saveCalendar(userId: string, cache: CalendarCache) { await this.change(() => super.saveCalendar(userId, cache)); }
   async getCalendar(userId: string) { this.reload(); return super.getCalendar(userId); }
-  async setItemDue(userId: string, itemId: string, dueAt: string | null) { this.reload(); const ok = await super.setItemDue(userId, itemId, dueAt); if (ok) this.flush(); return ok; }
-  async markPrepNotified(key: string) { this.reload(); const fresh = await super.markPrepNotified(key); if (fresh) this.flush(); return fresh; }
-  async deleteUser(userId: string) { this.reload(); await super.deleteUser(userId); this.oauthClients.delete(userId); this.flush(); }
+  async setItemDue(userId: string, itemId: string, dueAt: string | null) { return this.change(() => super.setItemDue(userId, itemId, dueAt), (ok) => ok); }
+  async markPrepNotified(key: string) { return this.change(() => super.markPrepNotified(key), (fresh) => fresh); }
+  async deleteUser(userId: string) { await this.change(async () => { await super.deleteUser(userId); this.oauthClients.delete(userId); }); }
 
   /**
    * Forget every extracted item and mark all meetings unread, so they can be read again oldest
    * first (later meetings then close earlier promises). Meetings and the connection are kept, and so are hand-made Done/Wrong marks (see applyMarks).
    */
   async resetExtraction(userId: string): Promise<number> {
-    this.reload();
+    return this.change(() => this.resetExtractionInMemory(userId));
+  }
+
+  private resetExtractionInMemory(userId: string): number {
     // Keep what the user marked by hand so the re-read doesn't undo it.
     for (const i of this.items.values()) {
       if (i.userId !== userId || isManual(i)) continue;
@@ -345,20 +402,38 @@ export class FileStore extends MemoryStore implements OAuthClientStore {
     for (const [id, i] of this.items) if (i.userId === userId && !isManual(i)) this.items.delete(id);
     let n = 0;
     for (const m of this.meetings.values()) if (m.userId === userId) { m.processedAt = null; n++; }
-    this.flush();
     return n;
   }
 
   async getHealth() { this.reload(); return super.getHealth(); }
-  async setHealth(patch: Partial<Health>) { this.reload(); await super.setHealth(patch); this.flush(); }
-  async recordMeetingFailure(meetingId: string, failure: string, at: string) { this.reload(); await super.recordMeetingFailure(meetingId, failure, at); this.flush(); }
-  async resetMeetingFailures(userId: string) { this.reload(); const n = await super.resetMeetingFailures(userId); if (n) this.flush(); return n; }
+  async setHealth(patch: Partial<Health>) { await this.change(() => super.setHealth(patch)); }
+  async recordMeetingFailure(meetingId: string, failure: string, at: string) { await this.change(() => super.recordMeetingFailure(meetingId, failure, at)); }
+  async resetMeetingFailures(userId: string) { return this.change(() => super.resetMeetingFailures(userId), (n) => n > 0); }
   /** The "restored from backup" notice, until the user dismisses it. */
   async getRecovery() { this.reload(); return this.recovery; }
-  async dismissRecovery() { this.reload(); if (this.recovery) { this.recovery = null; this.flush(); } }
+  async dismissRecovery() { await this.change(() => { const had = !!this.recovery; this.recovery = null; return had; }, (had) => had); }
 
   async getOAuthClient(userId: string) { this.reload(); return this.oauthClients.get(userId) ?? null; }
-  async saveOAuthClient(userId: string, info: OAuthClientInformationMixed) { this.reload(); this.oauthClients.set(userId, info); this.flush(); }
+  async saveOAuthClient(userId: string, info: OAuthClientInformationMixed) { await this.change(() => { this.oauthClients.set(userId, info); }); }
+}
+
+/** What identifies one version of a file on disk. */
+interface FileSig { ino: number; size: number; mtimeMs: number }
+
+function fileSig(path: string): FileSig | null {
+  try {
+    const st = statSync(path);
+    return { ino: st.ino, size: st.size, mtimeMs: st.mtimeMs };
+  } catch {
+    return null;
+  }
+}
+
+const sameSig = (a: FileSig | null, b: FileSig | null) =>
+  a === b || (!!a && !!b && a.ino === b.ino && a.size === b.size && a.mtimeMs === b.mtimeMs);
+
+function sleepSync(ms: number): void {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 }
 
 /** Write to <path>.tmp, then rename over path: a reader never sees half a file. Private mode. */
@@ -369,9 +444,21 @@ function writeAtomic(path: string, data: string): void {
   chmodSync(path, 0o600);
 }
 
+const norm = (s: string) => s.toLowerCase().replace(/\s+/g, " ").trim();
+
+/** The same item read twice: same kind, and the same text or quote, or both very alike. */
+function sameItem(a: Item, b: Item): boolean {
+  if (a.kind !== b.kind) return false;
+  if (norm(a.text) === norm(b.text) || (a.quote && norm(a.quote) === norm(b.quote))) return true;
+  return similarity(a.text, b.text) >= DUPLICATE_SIMILARITY && similarity(a.quote, b.quote) >= DUPLICATE_SIMILARITY;
+}
+
 /**
- * A meeting read twice leaves two batches of items with different createdAt. Keep the first batch
- * (and any batch whose items the user already acted on). Returns true if anything was removed.
+ * A meeting read twice leaves two batches of items with different createdAt. Keep the first batch,
+ * and remove an item of a later batch only when it is a copy: an untouched open item with a
+ * matching item (see sameItem) in the first batch. An item with no such copy
+ * is never removed, so a batch that only looks like a re-read (an item added by hand, by another
+ * tool or by a later feature with its own createdAt) loses nothing. Returns true if anything was removed.
  */
 export function dedupeBatches(items: Map<string, Item>): boolean {
   const byMeeting = new Map<string, Map<string, Item[]>>();
@@ -384,11 +471,17 @@ export function dedupeBatches(items: Map<string, Item>): boolean {
   let removed = false;
   for (const batches of byMeeting.values()) {
     if (batches.size < 2) continue;
-    const ordered = [...batches.entries()].sort(([a], [b]) => a.localeCompare(b));
-    for (const [, batch] of ordered.slice(1)) {
-      if (batch.some((i) => i.status !== "open" && !i.closedByMeetingId)) continue; // user touched it: keep
-      for (const i of batch) items.delete(i.id);
-      removed = true;
+    const [[, first], ...later] = [...batches.entries()].sort(([a], [b]) => a.localeCompare(b));
+    const used = new Set<string>();
+    for (const [, batch] of later) {
+      for (const i of batch) {
+        if (i.status !== "open" || i.starred || i.snoozedUntil || i.note) continue; // touched: keep
+        const copy = first.find((f) => !used.has(f.id) && sameItem(f, i));
+        if (!copy) continue; // the only copy: keep
+        used.add(copy.id);
+        items.delete(i.id);
+        removed = true;
+      }
     }
   }
   return removed;
