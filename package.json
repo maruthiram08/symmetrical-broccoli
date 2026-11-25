@@ -3,14 +3,14 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev -p 4242",
+    "dev": "next dev -H 127.0.0.1 -p 4242",
     "build": "next build",
-    "start": "next start -p 4242",
+    "start": "next start -H 127.0.0.1 -p 4242",
     "lint": "next lint",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "eval": "tsx eval/run.ts",
-    "app": "next build && next start -p 4242"
+    "app": "next build && next start -H 127.0.0.1 -p 4242"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.71.0",
