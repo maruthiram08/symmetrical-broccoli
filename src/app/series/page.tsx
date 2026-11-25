@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Shell } from "@/components/Shell";
@@ -8,6 +9,7 @@ import { pastDays } from "../_lib/days";
 import { loadAll, shortDate } from "../_lib/lines";
 
 export const dynamic = "force-dynamic";
+export const metadata: Metadata = { title: "Recurring meetings" };
 
 // Every recurring meeting we've recorded, the one met most recently first.
 export default async function AllSeries() {

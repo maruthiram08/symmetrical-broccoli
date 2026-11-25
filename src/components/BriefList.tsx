@@ -10,10 +10,11 @@ import { EditButton, SnoozeMenu, StarToggle } from "./ItemTools";
 import { BlockLink, DueHintRow } from "./CalendarSlot";
 import { NudgeSlot } from "./NudgeSlot";
 import { PersonPeek } from "./PersonPeek";
+import { ItemActs } from "./ItemActs";
 
-function Act({ id, status, label, back }: { id: string; status: "done" | "wrong" | "open"; label: string; back?: string }) {
+function Act({ id, status, label, back, keep }: { id: string; status: "done" | "wrong" | "open"; label: string; back?: string; keep?: boolean }) {
   return (
-    <form action={setStatus}>
+    <form action={setStatus} className={keep ? "db-act-keep" : undefined}>
       <input type="hidden" name="id" value={id} />
       <input type="hidden" name="status" value={status} />
       {back ? <input type="hidden" name="back" value={back} /> : null}
@@ -65,7 +66,7 @@ export function BriefItem({ line, back }: { line: BriefLine; back?: string }) {
         <Link className="db-item__src w3-history" href={`/item/${encodeURIComponent(line.itemId)}`}>· History</Link>
       </span>
       <DueHintRow line={line} back={back} />
-      <span className="db-item__acts">
+      <ItemActs>
         <BlockLink line={line} />
         {actionable && !line.starred ? <StarToggle itemId={line.itemId} starred={false} /> : null}
         {actionable ? <SnoozeMenu itemId={line.itemId} snoozedUntil={line.snoozedUntil} /> : null}
@@ -73,9 +74,9 @@ export function BriefItem({ line, back }: { line: BriefLine; back?: string }) {
           <EditButton edit={{ id: line.itemId, kind: line.kind, text: line.text, person: line.person, dueAt: line.dueAt ?? null, note: line.note ?? null }} />
         ) : null}
         {actionable ? <StartThisButton itemId={line.itemId} /> : null}
-        {actionable ? <Act id={line.itemId} status="done" label="Done" back={back} /> : null}
-        {line.manual ? null : <Act id={line.itemId} status="wrong" label="Wrong" back={back} />}
-      </span>
+        {actionable ? <Act id={line.itemId} status="done" label="Done" back={back} keep /> : null}
+        {line.manual ? null : <Act id={line.itemId} status="wrong" label="Wrong" back={back} keep={!actionable} />}
+      </ItemActs>
       {line.kind === "waiting" ? <NudgeSlot line={line} /> : null}
       {line.kind !== "decision" ? <HandoffSlot line={line} /> : null}
     </div>

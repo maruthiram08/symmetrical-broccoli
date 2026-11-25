@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { Section } from "@/components/BriefList";
@@ -13,6 +14,13 @@ import { pastDays } from "../../_lib/days";
 import { loadAll, shortDate } from "../../_lib/lines";
 
 export const dynamic = "force-dynamic";
+
+export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
+  const { id } = await params;
+  const user = await me();
+  const item = user ? (await loadAll(user)).items.find((i) => i.id === decodeURIComponent(id)) : undefined;
+  return { title: item?.text ?? "History" };
+}
 
 const KIND = { owe: "You owe", waiting: "Waiting on", decision: "Decision" } as const;
 

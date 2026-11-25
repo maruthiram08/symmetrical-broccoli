@@ -80,8 +80,9 @@ export function groupNames(names: Iterable<string>, exclude: Iterable<string> = 
   return [...clusters.values()].map((ks) => {
     const counts = new Map<string, number>();
     for (const k of ks) for (const [s, n] of spellings.get(k)!) counts.set(s, (counts.get(s) ?? 0) + n);
+    // A capitalised spelling wins over a more common lowercase one ("Nitin" over "nitin").
     const ranked = [...counts.entries()].sort((a, b) =>
-      b[1] - a[1] || capitalised(b[0]) - capitalised(a[0]) || b[0].length - a[0].length || a[0].localeCompare(b[0]));
+      capitalised(b[0]) - capitalised(a[0]) || b[1] - a[1] || b[0].length - a[0].length || a[0].localeCompare(b[0]));
     const name = ranked[0][0];
     return { name, slug: personSlug(name), keys: ks.sort(), spellings: ranked.map(([x]) => x) };
   });

@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
 import { AutoRefresh } from "@/components/AutoRefresh";
@@ -14,6 +15,7 @@ import { BRIEF_TIMES, formatBriefTime, nextBriefDay, startOfDayIso, timeZones, t
 import { connectWisprFlow, saveSetup, startFirstRead } from "../actions";
 
 export const dynamic = "force-dynamic";
+export const metadata: Metadata = { title: "Welcome" };
 
 const DAY_MS = 24 * 60 * 60_000;
 

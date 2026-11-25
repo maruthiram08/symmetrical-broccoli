@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { AskBox } from "@/components/AskBox";
 import { Shell } from "@/components/Shell";
@@ -5,6 +6,7 @@ import { me, getStore } from "@/server/local/app";
 import { pastDays } from "../_lib/days";
 
 export const dynamic = "force-dynamic";
+export const metadata: Metadata = { title: "Ask" };
 
 // Ask a question about your meetings; Claude answers from your items and cites them.
 export default async function Ask({ searchParams }: { searchParams: Promise<{ q?: string }> }) {

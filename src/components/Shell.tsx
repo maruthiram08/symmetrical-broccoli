@@ -14,8 +14,8 @@ export function Shell({ days, current, children, footer, openCount, query }: { d
           <input id="db-search" className="db-search__input" type="search" name="q" defaultValue={query} placeholder="Search" aria-label="Search everything" autoComplete="off" />
           <span className="db-kbd" aria-hidden="true">⌘K</span>
         </form>
-        <Link className="db-nav" href="/" aria-current={current === "today" ? "page" : undefined}>Today</Link>
-        <Link className="db-nav" href="/open" aria-current={current === "open" ? "page" : undefined}>
+        <Link className="db-nav" href="/" aria-current={current === "today" || current === "wrap" || current === "week" ? "page" : undefined}>Today</Link>
+        <Link className="db-nav" href="/open" aria-current={current === "open" || current === "item" ? "page" : undefined}>
           All open{openCount ? <span className="db-nav__n">{openCount}</span> : null}
         </Link>
         <Link className="db-nav" href="/people" aria-current={current === "people" ? "page" : undefined}>People</Link>

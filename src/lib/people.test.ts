@@ -28,6 +28,12 @@ describe("names", () => {
     expect(nitin.spellings).toEqual(["Nitin", "Nitin K", "nitin"]);
   });
 
+  it("shows the capitalised spelling even when the lowercase one is more common", () => {
+    const [g] = groupNames(["nitin", "nitin", "Nitin"]);
+    expect(g.name).toBe("Nitin");
+    expect(g.slug).toBe("nitin");
+  });
+
   it("merges an initial with the full surname", () => {
     expect(groupNames(["Nitin K", "Nitin Kumar"])).toHaveLength(1);
   });

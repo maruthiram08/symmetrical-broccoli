@@ -3,16 +3,10 @@ import type { Ribbon } from "@/lib/wow/ribbon";
 
 const plural = (n: number, one: string, many = one + "s") => `${n} ${n === 1 ? one : many}`;
 
-/** Today's meetings on one line. A dot per meeting, bigger for more items; lime when you owe something from it. */
+/** Today's meetings on one line (nothing until there is one). A dot per meeting, bigger for more items; lime when you owe something from it. */
 export function DayRibbon({ ribbon, selected }: { ribbon: Ribbon; selected?: string }) {
-  if (!ribbon.meetings.length) {
-    return (
-      <div className="rb rb--empty">
-        <div className="rb__track" aria-hidden="true">{ribbon.now !== null ? <i className="rb__now" style={{ left: `${ribbon.now * 100}%` }} /> : null}</div>
-        <p className="rb__empty">No meetings yet today. They show up here as Wispr Flow records them.</p>
-      </div>
-    );
-  }
+  // No meetings yet: the subtitle already says so, and an empty line would only look broken.
+  if (!ribbon.meetings.length) return null;
   return (
     <nav className="rb" aria-label="Today's meetings">
       <div className="rb__track">

@@ -216,6 +216,13 @@ select.db-input { padding-right: 36px; background-image: linear-gradient(45deg, 
 .db-item:hover .db-item__acts,.db-item:focus-within .db-item__acts{opacity:1}
 /* Narrow or touch screens: the actions get their own row under the quote line, always shown. */
 @media (max-width:720px),(hover:none){.db-item__acts{position:static;grid-column:2/4;flex-wrap:wrap;margin-top:var(--space-2);padding-left:0;background:none;opacity:1}}
+/* "…" shows the rest of an item's actions on phones; hidden where every action already shows. */
+.db-act--more{display:none;min-width:32px;font-weight:600;letter-spacing:.05em}
+@media (max-width:720px),(hover:none){
+  .db-act--more{display:inline-flex;align-items:center;justify-content:center}
+  .db-item__acts:not([data-open]) > :not(.db-act-keep):not(.db-act--more){display:none}
+  .db-item__acts:not(:has(> :not(.db-act-keep):not(.db-act--more))) > .db-act--more{display:none}
+}
 .db-act{height:26px;padding:0 10px;border-radius:var(--radius-full);border:1px solid var(--border);background:var(--bg);color:var(--ink-muted);font:500 12px/16px var(--font-sans);cursor:pointer}
 .db-act:hover{background:var(--surface-200);color:var(--ink)}
 .db-act:focus-visible{outline-offset:1px}
@@ -224,6 +231,7 @@ select.db-input { padding-right: 36px; background-image: linear-gradient(45deg, 
 .db-banner>.db-act,.db-banner>form{margin-left:auto;flex-shrink:0}
 a.db-act{display:inline-flex;align-items:center;text-decoration:none;white-space:nowrap}
 .db-alerts .db-banner{margin:var(--space-4) 0 0}
+.db-page .db-alerts .db-banner{margin:0 0 var(--space-8)}
 .db-health{display:grid;grid-template-columns:max-content 1fr;gap:var(--space-1) var(--space-4);margin:var(--space-3) 0 0;font-size:13px;line-height:18px}.db-health dt{color:var(--ink-muted)}.db-health dd{margin:0;color:var(--ink)}
 .db-md{margin:0;padding:0 var(--space-4);white-space:pre-wrap;font:400 14px/22px var(--font-sans);color:var(--ink)}
 .db-side__body{display:contents}

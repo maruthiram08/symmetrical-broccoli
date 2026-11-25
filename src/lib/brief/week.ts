@@ -1,3 +1,4 @@
+import { groupNames, normalizeName } from "@/lib/people";
 import type { Item, ItemKind } from "@/lib/types";
 import { meetingIndex, shortDay, type BriefData } from "./data";
 import { esc } from "./markdown";
@@ -72,14 +73,18 @@ export function buildWeek(data: BriefData, now: Date, timeZone: string): WeekMod
   const late = owe.filter((i) => i.dueAt && inWeek(i.dueAt) && i.dueAt < nowIso && (i.status === "open" || (i.closedAt ?? "") > i.dueAt));
 
   const people = (kind: "owe" | "waiting"): PersonCount[] => {
+    const rel = data.items.filter((i) => i.kind === kind && !!i.person?.trim() && (fromWeek(i) || i.status === "open"));
+    // One row per person, as on the People page: "nitin" and "Nitin" (and "Nitin K") are the same person.
+    const groups = groupNames(rel.map((i) => i.person!));
+    const groupOf = new Map(groups.flatMap((g) => g.keys.map((k) => [k, g] as const)));
     const by = new Map<string, PersonCount>();
-    for (const i of data.items) {
-      if (i.kind !== kind || !i.person?.trim() || !(fromWeek(i) || i.status === "open")) continue;
-      const k = i.person.trim();
-      const p = by.get(k) ?? { person: k, total: 0, open: 0 };
+    for (const i of rel) {
+      const g = groupOf.get(normalizeName(i.person!.trim().replace(/\s+/g, " ")));
+      if (!g) continue;
+      const p = by.get(g.slug) ?? { person: g.name, total: 0, open: 0 };
       p.total++;
       if (i.status === "open") p.open++;
-      by.set(k, p);
+      by.set(g.slug, p);
     }
     return [...by.values()].sort((a, b) => b.open - a.open || b.total - a.total || a.person.localeCompare(b.person)).slice(0, TOP_PEOPLE);
   };

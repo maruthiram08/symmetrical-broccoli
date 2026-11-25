@@ -170,4 +170,16 @@ describe("buildWeek", () => {
     expect(renderWeekMarkdown({ ...w, oweYou: [{ person: "Tarun", total: 1, open: 0 }] })).toContain("- Tarun: 1 closed");
     expect(md).toContain("## Open more than 7 days (1)\n\n- [ ] Write the launch FAQ (15d)");
   });
+  it("counts one person once however their name was written", async () => {
+    const t = await week();
+    const tue = await t.meet("m9", "Sync", "2026-11-24T05:30:00Z");
+    await t.add(tue.id, "2026-11-24T06:00:00Z", [
+      { kind: "waiting", text: "nitin sends the budget", person: "nitin" },
+      { kind: "waiting", text: "nitin checks with legal", person: " nitin " },
+      { kind: "waiting", text: "Nitin shares the plan", person: "Nitin" },
+    ]);
+    const w = buildWeek(await loadBriefData(t.s, t.user.id), friday, TZ);
+    expect(w.oweYou).toContainEqual({ person: "Nitin", total: 3, open: 3 });
+    expect(w.oweYou.filter((p) => p.person.toLowerCase() === "nitin")).toHaveLength(1);
+  });
 });

@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { BriefItem, Section } from "@/components/BriefList";
@@ -10,6 +11,13 @@ import { pastDays } from "../../_lib/days";
 import { loadAll, shortDate, toLine } from "../../_lib/lines";
 
 export const dynamic = "force-dynamic";
+
+export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
+  const { id } = await params;
+  const user = await me();
+  const cache = user ? await getStore().getCalendar(user.id) : null;
+  return { title: cache?.series.find((x) => x.id === id)?.title ?? "Recurring meeting" };
+}
 
 // One recurring meeting (a standup, a 1:1): promises and decisions from every occurrence, newest first.
 export default async function Series({ params }: { params: Promise<{ id: string }> }) {
