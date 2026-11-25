@@ -4,6 +4,7 @@ import { processAllPending, processPending } from "@/server/jobs/process";
 import { logJobError } from "@/server/jobs/types";
 import { buildDeps, getStore } from "./app";
 import { notifyPrep } from "./prep";
+import { afterJobs } from "@/server/ai";
 
 const TICK_MS = 5 * 60_000;
 const POLL_EVERY_MS = 30 * 60_000;
@@ -65,6 +66,7 @@ export function startScheduler(): void {
         }
         await deliverDue(deps);
         await notifyPrep(getStore(), deps.now());
+        await afterJobs(); // contradiction check on new decisions; nudges once a day after the brief
       });
     } catch (e) {
       console.error("[scheduler]", e instanceof Error ? `${e.name}: ${e.message}` : e);
@@ -80,6 +82,7 @@ export async function checkNow(): Promise<void> {
     const deps = buildDeps();
     await pollAll(deps);
     await processAllPending(deps, { deadline: Date.now() + 10 * 60_000 });
+    await afterJobs({ nudges: false });
     if (g.__dbScheduler) g.__dbScheduler.lastPoll = Date.now();
   });
 }

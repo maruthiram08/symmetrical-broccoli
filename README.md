@@ -45,6 +45,16 @@ Tools: `today` (the Today screen), `list_open` (by kind and person), `person` (e
 
 It reads the same `state.json` as the app (`DAILY_BRIEF_DIR` works here too), re-reading it on every call, and the app picks up `mark_item` changes on its next read. It never calls the Anthropic API or Wispr Flow, and the app doesn't need to be running.
 
+## Ask, nudges and changed decisions
+
+These use your Anthropic key and the same model as extraction (`EXTRACTION_MODEL`). Only stored items go to Claude (text, person, quote, meeting title and date), never transcripts, and nothing is ever sent to anyone.
+
+- **Ask** (`/ask`, or ⌘K then type a question and pick *Ask*): Claude answers from up to 40 matching items, found locally with search, and cites them as [1], [2], each linking to the item with its quote. When nothing matches it says "I don't see that in your meetings" without calling Claude. The page shows the estimated and actual cost; about ₹0.5-1.5 a question with the default model.
+- **Nudges**: once a day, after the brief, each thing you're waiting on that is 3+ days overdue gets a short Slack-style nudge draft (Hinglish if the quote was), shown on the item with Copy and Start this. Drafted once per item and kept in `.daily-brief/ai.json`; at most 10 a day, about ₹0.2-0.5 each.
+- **Changed decisions**: a new decision is compared with earlier ones on the same topic (word overlap, locally); only when one is similar does Claude get one small call to judge it. Today then shows "This may change the decision from 20 Nov: …" with *Keep both* or *Mark old as replaced*. About ₹0.2-0.5 per similar decision (at most 10 calls a run); decisions from before you turned this on are never checked.
+
+A Claude skill for the MCP tools is in `skills/daily-brief/SKILL.md` (meeting prep, weekly review, and how to quote evidence).
+
 ## The Mac app
 
 `Daily Brief.app` is a small Tauri window and menu bar item around the same server. It starts the server with your Node.js (Homebrew's is fine, 18.18 or later), or reuses one already running on port 4242, and stops the one it started when you quit. Closing the window keeps it in the menu bar, where you also find **Check meetings now**, **Open in browser** and **Launch at login**.

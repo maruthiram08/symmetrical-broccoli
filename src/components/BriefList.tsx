@@ -6,6 +6,7 @@ import { Mark } from "./Mark";
 import { QuotePeek } from "./QuotePeek";
 import { HandoffSlot } from "./HandoffSlot";
 import { StartThisButton } from "./StartThis";
+import { NudgeSlot } from "./NudgeSlot";
 
 function Act({ id, status, label, back }: { id: string; status: "done" | "wrong" | "open"; label: string; back?: string }) {
   return (
@@ -50,6 +51,7 @@ export function BriefItem({ line, back }: { line: BriefLine; back?: string }) {
         {line.kind !== "decision" ? <Act id={line.itemId} status="done" label="Done" back={back} /> : null}
         <Act id={line.itemId} status="wrong" label="Wrong" back={back} />
       </span>
+      {line.kind === "waiting" ? <NudgeSlot line={line} /> : null}
       {line.kind !== "decision" ? <HandoffSlot line={line} /> : null}
     </div>
   );

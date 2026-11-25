@@ -10,6 +10,7 @@ import { formatBriefTime } from "./_lib/time";
 import { pastDays } from "./_lib/days";
 import { DayRibbon, MeetingChip } from "@/components/DayRibbon";
 import { PrepCard } from "@/components/PrepCard";
+import { ContradictionCards } from "@/components/ContradictionCards";
 import { formatTime, localDayBounds } from "@/lib/brief/time";
 import { buildRibbon } from "@/lib/wow/ribbon";
 import { prepCard } from "@/server/local/prep";
@@ -81,6 +82,7 @@ export default async function Today({ searchParams }: { searchParams: Promise<{ 
       {only ? <MeetingChip title={only.title} time={formatTime(only.startedAt, user.timeZone)} /> : null}
 
       {only ? null : <CloseMoment lines={closedSinceLook} />}
+      {only ? null : <ContradictionCards user={user} />}
       <Section title="You owe" count={only ? countOf(keep(b.youOwe)) : owedCount} empty={only ? "Nothing you owe from this meeting." : b.meetingCount ? "Nothing owed. Go home." : "Nothing owed today."}>
         {keep(b.youOwe).map((l) => <BriefItem key={l.itemId} line={l} />)}
       </Section>
