@@ -27,10 +27,25 @@ export function parseBriefTime(hhmm: string): number | null {
   return m ? Number(m[1]) * 60 + Number(m[2]) : null;
 }
 
-/** True when the user's local brief time fell within the last `windowMinutes` (inclusive of now). */
-export function isBriefDue(user: Pick<User, "timeZone" | "briefTime">, now: Date, windowMinutes = DELIVER_WINDOW_MINUTES): boolean {
+/**
+ * True when the user's local brief time fell within the last `windowMinutes` (inclusive of now).
+ * With `catchUp` (the local app), it stays due for the rest of that local day, so a Mac that slept
+ * through brief time still gets today's brief once on waking. It is not due on the day the user
+ * was created if they set up after brief time (no surprise brief right after setup).
+ */
+export function isBriefDue(
+  user: Pick<User, "timeZone" | "briefTime"> & { createdAt?: string },
+  now: Date,
+  windowMinutes = DELIVER_WINDOW_MINUTES,
+  opts: { catchUp?: boolean } = {},
+): boolean {
   const target = parseBriefTime(user.briefTime) ?? 18 * 60;
   const { minutes } = localClock(now, user.timeZone);
+  if (opts.catchUp) {
+    if (minutes < target) return false;
+    const briefAt = now.getTime() - (minutes - target) * 60_000 - now.getUTCSeconds() * 1000 - now.getUTCMilliseconds();
+    return !user.createdAt || Date.parse(user.createdAt) <= briefAt;
+  }
   const sinceTarget = (minutes - target + 1440) % 1440;
   return sinceTarget < windowMinutes;
 }
@@ -56,6 +71,7 @@ export async function deliverUser(deps: Deps, user: User, now: Date): Promise<De
     const sentAt = deps.now().toISOString();
     await deps.store.saveBrief(user.id, date, markdown, sentAt, id);
     await deps.store.logEvent({ userId: user.id, type: "brief_sent", payload: { date, publishedId: id, meetings: model.meetingCount } });
+    await deps.store.setHealth?.({ lastBriefAt: sentAt });
     return { userId: user.id, status: "sent", date, publishedId: id };
   } catch (e) {
     await logJobError(deps, user.id, "deliver", e, { date });
@@ -75,10 +91,10 @@ async function weekNote(deps: Deps, user: User, now: Date): Promise<{ key: strin
 }
 
 /** Send the brief to every user whose local brief time just passed and who has none sent today. */
-export async function deliverDue(deps: Deps, now: Date = deps.now(), opts: { windowMinutes?: number; concurrency?: number } = {}): Promise<DeliverResult[]> {
+export async function deliverDue(deps: Deps, now: Date = deps.now(), opts: { windowMinutes?: number; concurrency?: number; catchUp?: boolean } = {}): Promise<DeliverResult[]> {
   const users = await deps.store.listUsers();
   return mapLimit(users, opts.concurrency ?? 4, async (u) => {
-    if (!isBriefDue(u, now, opts.windowMinutes)) return { userId: u.id, status: "not_due" as const };
+    if (!isBriefDue(u, now, opts.windowMinutes, { catchUp: opts.catchUp })) return { userId: u.id, status: "not_due" as const };
     return deliverUser(deps, u, now);
   });
 }

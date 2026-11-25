@@ -1,4 +1,4 @@
-import type { Connection, Item, LastLook, Meeting, UpcomingCache, User } from "@/lib/types";
+import type { Connection, Health, Item, LastLook, Meeting, UpcomingCache, User } from "@/lib/types";
 
 /**
  * Data access used by the jobs. Two implementations:
@@ -33,6 +33,13 @@ export interface Store {
   /** Upcoming meetings cached by the poll (prep card). Optional: stores without it skip prep. */
   saveUpcoming?(userId: string, cache: UpcomingCache): Promise<void>;
   getUpcoming?(userId: string): Promise<UpcomingCache | null>;
+  /** Count a failed read of a meeting (it stays unprocessed). Optional: stores without it never give up. */
+  recordMeetingFailure?(meetingId: string, failure: string, at: string): Promise<void>;
+  /** Retry: forget failed attempts, so set-aside meetings are read again. Returns how many. */
+  resetMeetingFailures?(userId: string): Promise<number>;
+  /** What the app last managed to do. Optional: stores without it show no Health section. */
+  getHealth?(): Promise<Health>;
+  setHealth?(patch: Partial<Health>): Promise<void>;
 }
 
 let seq = 0;
@@ -52,6 +59,7 @@ export class MemoryStore implements Store {
   upcoming = new Map<string, UpcomingCache>();
   /** "userId:calendarId:startsAt" of meetings already announced with a prep notification. */
   prepNotified = new Set<string>();
+  health: Health = {};
 
   addUser(u: Partial<User> & { email: string }): User {
     const user: User = { id: this.newId(), name: "", aliases: [], timeZone: "Asia/Kolkata", briefTime: "18:00", createdAt: new Date().toISOString(), ...u };
@@ -86,8 +94,21 @@ export class MemoryStore implements Store {
       if (it && it.userId === userId && it.status === "open") Object.assign(it, { status: "done", closedByMeetingId: meetingId, closeQuote: c.quote, closedAt: at });
     }
     const m = this.meetings.get(meetingId);
-    if (m) m.processedAt = at;
+    if (m) Object.assign(m, { processedAt: at, failedAttempts: 0, lastFailedAt: null, lastFailure: null });
   }
+  async recordMeetingFailure(meetingId: string, failure: string, at: string) {
+    const m = this.meetings.get(meetingId);
+    if (m && !m.processedAt) Object.assign(m, { failedAttempts: (m.failedAttempts ?? 0) + 1, lastFailedAt: at, lastFailure: failure });
+  }
+  async resetMeetingFailures(userId: string) {
+    let n = 0;
+    for (const m of this.meetings.values()) {
+      if (m.userId === userId && !m.processedAt && m.failedAttempts) { Object.assign(m, { failedAttempts: 0, lastFailedAt: null, lastFailure: null }); n++; }
+    }
+    return n;
+  }
+  async getHealth(): Promise<Health> { return { ...this.health }; }
+  async setHealth(patch: Partial<Health>) { this.health = { ...this.health, ...patch }; }
   async listItems(userId: string, filter?: { status?: Item["status"] }) {
     return [...this.items.values()].filter((i) => i.userId === userId && (!filter?.status || i.status === filter.status));
   }

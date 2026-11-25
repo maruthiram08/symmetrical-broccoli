@@ -43,7 +43,7 @@ function section(out: string[], title: string, lines: BriefLine[]) {
 function line(l: BriefLine): string[] {
   const box = l.kind === "decision" ? "-" : "- [ ]";
   const when = l.lateLabel ? ` **(${l.lateLabel})**` : l.dueLabel ? ` (${l.dueLabel})` : "";
-  return [`${box} ${esc(l.text)}${when}`, `  "${esc(l.quote)}" · ${esc(l.meetingTitle)}, ${l.meetingTime}`];
+  return [`${box} ${esc(l.text)}${when}`, `  "${esc(l.quote)}" · ${esc(l.meetingTitle)}, ${l.meetingTime}${l.shared ? " · shared" : ""}`];
 }
 
 /** Keep transcript text from turning into Markdown structure. */
