@@ -1,4 +1,5 @@
 import { QUOTE_MAX, type ExtractionResult, type Item } from "@/lib/types";
+import { keepSharedItems, sharedMeetingConcernsUser } from "@/lib/extract/shared";
 import type { WisprClient } from "@/server/wispr/client";
 import { ReconnectRequiredError } from "@/server/wispr/oauth";
 import { logJobError, mapLimit, type Deps } from "./types";
@@ -54,9 +55,16 @@ async function processMeetingOnce(
   const user = await store.getUser(meeting.userId);
   if (!user) return { status: "skipped", reason: "no_user" };
 
-  const client = opts.client ?? deps.wispr(meeting.userId);
   let result: ExtractionResult;
-  let openIds: Set<string>;
+  let openIds: Set<string> = new Set();
+  const nothing = (): ExtractionResult => ({ newItems: [], closes: [], usage: { inputTokens: 0, outputTokens: 0 } });
+  if (meeting.shared && user.includeShared !== true) {
+    // Queued while "Include shared meetings" was on, then turned off: close it out without a read.
+    await store.commitExtraction({ meetingId: meeting.id, userId: meeting.userId, newItems: [], closes: [], at: deps.now().toISOString() });
+    return { status: "processed", newItems: 0, closes: 0 };
+  }
+
+  const client = opts.client ?? deps.wispr(meeting.userId);
   try {
     let transcript: string;
     try {
@@ -76,18 +84,25 @@ async function processMeetingOnce(
     }
     openIds = new Set(open.map((i) => i.id));
     if (!transcript.trim()) {
-      result = { newItems: [], closes: [], usage: { inputTokens: 0, outputTokens: 0 } };
+      result = nothing();
+    } else if (meeting.shared && !sharedMeetingConcernsUser(transcript, user)) {
+      // Someone else's meeting where you neither speak nor are named: nothing could reach your brief.
+      result = nothing();
     } else {
       try {
         result = await deps.extract({
           transcript,
           user: { name: user.name, aliases: user.aliases, timeZone: user.timeZone },
-          meeting: { title: meeting.title, startedAt: meeting.startedAt, participants: meeting.participants },
+          meeting: {
+            title: meeting.title, startedAt: meeting.startedAt, participants: meeting.participants,
+            ...(meeting.shared ? { shared: true, ownerName: meeting.ownerName ?? null } : {}),
+          },
           openItems: open.map((i) => ({ id: i.id, kind: i.kind, text: i.text, person: i.person })),
         });
       } catch (e) {
         throw new ProcessError("extract", e instanceof Error ? e.name : "Error");
       }
+      if (meeting.shared) result = { ...result, newItems: keepSharedItems(result.newItems, transcript, user) };
     }
   } finally {
     if (!opts.client) await client.close?.();
@@ -117,7 +132,7 @@ async function processMeetingOnce(
   await store.logEvent({
     userId: meeting.userId,
     type: "extract_run",
-    payload: { meetingId: meeting.id, model: deps.model, newItems: newItems.length, closes: closes.length, emptyTranscript: usage.inputTokens === 0 },
+    payload: { meetingId: meeting.id, model: deps.model, newItems: newItems.length, closes: closes.length, emptyTranscript: usage.inputTokens === 0, ...(meeting.shared ? { shared: true } : {}) },
     tokensIn: usage.inputTokens,
     tokensOut: usage.outputTokens,
     costInr: usage.inputTokens || usage.outputTokens ? deps.costInr(deps.model, usage) : 0,

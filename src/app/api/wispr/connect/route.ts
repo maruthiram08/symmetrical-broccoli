@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 // Starts Wispr Flow OAuth: discovery + dynamic client registration + PKCE.
 export async function GET() {
   const user = await me();
-  if (!user) return NextResponse.redirect(new URL("/setup", appUrl()));
+  if (!user) return NextResponse.redirect(new URL("/welcome", appUrl()));
   try {
     const { authorizationUrl, pending } = await startWisprAuth(wisprAuthContext(user.id));
     const res = NextResponse.redirect(authorizationUrl);

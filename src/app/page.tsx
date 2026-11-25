@@ -13,6 +13,8 @@ import { PrepCard } from "@/components/PrepCard";
 import { formatTime, localDayBounds } from "@/lib/brief/time";
 import { buildRibbon } from "@/lib/wow/ribbon";
 import { prepCard } from "@/server/local/prep";
+import { onboardingStep } from "@/server/local/onboarding";
+import { pullState } from "@/server/local/scheduler";
 
 const countOf = (l: unknown[]) => (l.length ? String(l.length) : undefined);
 /** "in 22 min", "in 1 h 5 min" */
@@ -25,10 +27,11 @@ export const dynamic = "force-dynamic";
 
 export default async function Today({ searchParams }: { searchParams: Promise<{ undo?: string; was?: string; meeting?: string }> }) {
   const user = await me();
-  if (!user) redirect("/setup");
+  if (!user) redirect("/welcome");
   const store = getStore();
   const conn = await store.getConnection(user.id);
-  if (!conn) redirect("/setup");
+  if (onboardingStep(user, conn, pullState()?.running ?? false) !== "done") redirect("/welcome");
+  if (!conn) redirect("/welcome");
 
   const now = new Date();
   const b = await buildBrief(store, user, now);

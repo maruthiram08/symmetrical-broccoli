@@ -13,6 +13,8 @@ export interface User {
   timeZone: string;
   /** Local brief time "HH:MM", 15-minute steps. Default "18:00". */
   briefTime: string;
+  /** Settings: also read meetings others shared with you (Wispr Flow shared=true). Missing = off. */
+  includeShared?: boolean;
   createdAt: string;
 }
 
@@ -37,6 +39,10 @@ export interface Meeting {
   processedAt: string | null;
   /** The meeting's notes page in Wispr Flow (search_meetings share_link). Missing on older meetings. */
   link?: string | null;
+  /** Someone else's meeting shared with the user. Missing on the user's own meetings. */
+  shared?: boolean;
+  /** Who recorded a shared meeting (Wispr Flow owner.name), when known. */
+  ownerName?: string | null;
 }
 
 /** A calendar event coming up soon, from Wispr Flow's list_upcoming_meetings. Cached by the poll. */
@@ -88,7 +94,7 @@ export interface ExtractionResult {
 export interface ExtractionInput {
   transcript: string;
   user: Pick<User, "name" | "aliases" | "timeZone">;
-  meeting: Pick<Meeting, "title" | "startedAt" | "participants">;
+  meeting: Pick<Meeting, "title" | "startedAt" | "participants"> & Partial<Pick<Meeting, "shared" | "ownerName">>;
   openItems: Array<Pick<Item, "id" | "kind" | "text" | "person">>;
 }
 
@@ -124,6 +130,8 @@ export interface BriefLine {
   meetingId?: string;
   /** For the quote peek. Optional: lines built before it simply show less. */
   peek?: QuotePeekInfo;
+  /** The item came from a meeting someone else recorded and shared with the user. */
+  shared?: boolean;
 }
 
 export interface QuotePeekInfo {

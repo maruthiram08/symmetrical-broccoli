@@ -44,6 +44,7 @@ export function BriefItem({ line, back }: { line: BriefLine; back?: string }) {
         />
         {personLink ? <span className="db-item__src">· {personLink}</span> : null}
         <span className="db-item__src">· {line.meetingTitle}{line.meetingTime ? `, ${line.meetingTime}` : ""}</span>
+        {line.shared ? <span className="db-item__src db-item__shared" title="From a meeting someone else recorded and shared with you">shared</span> : null}
       </span>
       <span className="db-item__acts">
         {line.kind !== "decision" ? <StartThisButton itemId={line.itemId} /> : null}

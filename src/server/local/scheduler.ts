@@ -60,7 +60,7 @@ export function startScheduler(): void {
         if ((await deps.store.listUsers()).length === 0) return;
         if (Date.now() - st.lastPoll >= POLL_EVERY_MS) {
           st.lastPoll = Date.now();
-          await pollAll(deps);
+          await pollAll(deps, { waitForFirstRead: true });
           await processAllPending(deps, { deadline: Date.now() + 10 * 60_000 });
         }
         await deliverDue(deps);
@@ -78,7 +78,7 @@ export function startScheduler(): void {
 export async function checkNow(): Promise<void> {
   await runExclusive(async () => {
     const deps = buildDeps();
-    await pollAll(deps);
+    await pollAll(deps, { waitForFirstRead: true });
     await processAllPending(deps, { deadline: Date.now() + 10 * 60_000 });
     if (g.__dbScheduler) g.__dbScheduler.lastPoll = Date.now();
   });

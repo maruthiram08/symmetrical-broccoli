@@ -10,7 +10,9 @@ cp .env.example .env.local   # add your ANTHROPIC_API_KEY
 npm run app                  # builds, then serves http://localhost:4242
 ```
 
-Open http://localhost:4242, fill in your name and brief time, and connect Wispr Flow. The app reads your last 7 days straight away.
+Open http://localhost:4242. The first run is three short steps on one page: your name and brief time, connecting Wispr Flow, and how far back to read (7 days by default). It counts those meetings and shows the rough cost (about ₹3.50 a meeting) before reading anything.
+
+Meetings others shared with you in Wispr Flow are left out unless you turn on **Include meetings others shared with me** in Settings. From a shared meeting, something counts as yours to do only when you speak in it; otherwise you see only what others promised you and decisions that name you, marked *shared*.
 
 While the app is running it:
 - checks Wispr Flow for new meetings every 30 minutes (or press **Check meetings now**),

@@ -33,9 +33,10 @@ export async function pollUser(
     const now = deps.now();
     const since = opts.since ?? conn.lastSeenAt ?? backfillStart(now);
     const client = opts.client ?? deps.wispr(userId);
+    const includeShared = (await store.getUser(userId))?.includeShared === true;
     let meetings;
     try {
-      meetings = await client.listMeetingsSince(since);
+      meetings = await client.listMeetingsSince(since, { includeShared });
       await cacheUpcoming(store, userId, client, now);
     } finally {
       if (!opts.client) await client.close?.();
@@ -58,6 +59,7 @@ export async function pollUser(
         startedAt: m.startedAt,
         participants: m.participants,
         ...(m.link ? { link: m.link } : {}),
+        ...(m.shared ? { shared: true, ...(m.ownerName ? { ownerName: m.ownerName } : {}) } : {}),
       });
       if (r.created) created++;
       if (!newestQueued || m.startedAt > newestQueued) newestQueued = m.startedAt;
@@ -104,7 +106,20 @@ export async function cacheUpcoming(store: Store, userId: string, client: WisprC
   }
 }
 
-export async function pollAll(deps: Pick<Deps, "store" | "wispr" | "now">, opts: { concurrency?: number } = {}): Promise<PollResult[]> {
-  const users = await deps.store.listUsers();
+/**
+ * Poll every user. With `waitForFirstRead`, a user who connected but hasn't started their first
+ * read (lastSeenAt still null) is left alone: the local app's /welcome asks how far back to read
+ * and shows the cost first, so the background poll must not start a 7-day read behind their back.
+ */
+export async function pollAll(
+  deps: Pick<Deps, "store" | "wispr" | "now">,
+  opts: { concurrency?: number; waitForFirstRead?: boolean } = {},
+): Promise<PollResult[]> {
+  let users = await deps.store.listUsers();
+  if (opts.waitForFirstRead) {
+    const ready: typeof users = [];
+    for (const u of users) if ((await deps.store.getConnection(u.id))?.lastSeenAt != null) ready.push(u);
+    users = ready;
+  }
   return mapLimit(users, opts.concurrency ?? 4, (u) => pollUser(deps, u.id));
 }
