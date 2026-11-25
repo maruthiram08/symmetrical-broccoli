@@ -3,6 +3,7 @@
 // arrive and finalMessage() gives the usage for the cost line.
 import type Anthropic from "@anthropic-ai/sdk";
 import { approxTokens, safeCostInr, usageOf, type Usage } from "../ai/common";
+import { classifyAnthropicError, type AnthropicFailure } from "../extract/errors";
 import { ASK_SYSTEM_PROMPT, NO_ANSWER, buildAskMessage } from "./prompt";
 import type { Source } from "./retrieve";
 
@@ -23,7 +24,7 @@ export interface StreamingClient {
 export type AskEvent =
   | { type: "text"; text: string }
   | { type: "done"; usage: Usage | null; costInr: number | null; noAnswer: boolean }
-  | { type: "error"; error: string };
+  | { type: "error"; error: string; failure?: AnthropicFailure };
 
 export interface AskInput {
   question: string;
@@ -81,13 +82,14 @@ export async function* streamAnswer(input: AskInput, deps: { client: StreamingCl
     yield { type: "done", usage, costInr: safeCostInr(deps.model, usage), noAnswer: !text.trim() || isNoAnswer(text) };
   } catch (e) {
     if (deps.signal?.aborted) return;
-    const name = e instanceof Error ? e.name : "Error";
-    const status = (e as { status?: number })?.status;
-    yield {
-      type: "error",
-      error: status === 401 ? "Your Anthropic API key was rejected. Check it in Settings."
-        : status === 429 ? "Claude is busy right now. Try again in a minute."
-        : `Couldn't reach Claude (${name}). Try again.`,
-    };
+    // No retries here: someone is waiting. Key and credit problems say what to fix.
+    const failure = classifyAnthropicError(e);
+    const error =
+      failure === "auth" ? "Your Anthropic API key was rejected. Check it in Settings."
+      : failure === "credit" ? "Your Anthropic account is out of credit. Add credit, then ask again."
+      : failure === "offline" ? "Couldn't reach Claude. Check your connection and try again."
+      : failure === "transient" ? "Claude is busy right now. Try again in a minute."
+      : "Claude couldn't answer that. Try again.";
+    yield { type: "error", error, failure };
   }
 }

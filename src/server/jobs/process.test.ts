@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { MemoryStore } from "@/server/store";
 import { connect, FakeWispr, fakeDeps } from "@/server/testing";
-import { processMeeting, processPending } from "./process";
+import { AnthropicCallError } from "@/lib/extract/errors";
+import { MAX_MEETING_ATTEMPTS } from "@/lib/types";
+import { processMeeting, processPending, retryAfterMs } from "./process";
 
 const NOW = new Date("2026-11-25T12:00:00.000Z");
 const TRANSCRIPT = "Maruthi: I'll send Nitin the final banner text by Friday. SECRET-TRANSCRIPT-MARKER";
@@ -88,5 +90,83 @@ describe("which open items a meeting may close", () => {
     ] });
     await processMeeting(deps, meeting.id);
     expect(extractCalls[0].openItems.map((i) => i.text)).toEqual(["From earlier"]);
+  });
+});
+
+describe("when reading fails", () => {
+  async function three() {
+    const s = await setup();
+    for (const [p, t] of [["p2", "10:00"], ["p3", "11:00"]]) {
+      await s.store.upsertMeeting({ userId: s.user.id, providerMeetingId: p, title: p, startedAt: `2026-11-25T${t}:00.000Z`, participants: [] });
+      s.wispr.transcripts.set(p, "Maruthi: I'll do it.");
+    }
+    return s;
+  }
+
+  it("a bad key or an empty account stops reading, shows the problem, and counts no attempt", async () => {
+    for (const kind of ["auth", "credit"] as const) {
+      const { deps, store, user } = await three();
+      let calls = 0;
+      deps.extract = async () => { calls++; throw new AnthropicCallError(kind, kind === "auth" ? 401 : 400); };
+      const r = await processPending(deps, user.id);
+      expect(r).toMatchObject({ processed: 0, failed: 1, stoppedBy: kind });
+      expect(calls).toBe(1); // didn't hammer the other two
+      expect((await store.getHealth()).anthropicProblem).toEqual({ kind, at: NOW.toISOString() });
+      for (const m of store.meetings.values()) {
+        expect(m.processedAt).toBeNull();
+        expect(m.failedAttempts ?? 0).toBe(0);
+      }
+    }
+  });
+
+  it("the next good read clears the key/credit banner", async () => {
+    const { deps, store, user } = await setup();
+    await store.setHealth({ anthropicProblem: { kind: "credit", at: NOW.toISOString() } });
+    await processPending(deps, user.id);
+    expect((await store.getHealth()).anthropicProblem).toBeNull();
+    expect((await store.getHealth()).lastExtractOkAt).toBe(NOW.toISOString());
+  });
+
+  it("overload after retries counts one attempt and waits for the next run", async () => {
+    const { deps, store, user, meeting } = await three();
+    let calls = 0;
+    deps.extract = async () => { calls++; throw new AnthropicCallError("transient", 529); };
+    expect(await processPending(deps, user.id)).toMatchObject({ failed: 1, stoppedBy: "transient" });
+    expect(calls).toBe(1);
+    expect(store.meetings.get(meeting.id)).toMatchObject({ processedAt: null, failedAttempts: 1, lastFailure: "transient" });
+  });
+
+  it("offline (transcript fetch can't connect) counts nothing", async () => {
+    const { deps, store, user, meeting } = await three();
+    deps.wispr = (uid) => ({ ...new FakeWispr().client(uid), getTranscript: async () => { throw new TypeError("fetch failed"); } });
+    expect(await processPending(deps, user.id)).toMatchObject({ failed: 1, stoppedBy: "offline" });
+    expect(store.meetings.get(meeting.id)?.failedAttempts ?? 0).toBe(0);
+  });
+
+  it("a meeting that keeps failing is retried with backoff, then set aside until Retry", async () => {
+    const { deps, store, user, meeting, setNow } = await setup();
+    let calls = 0;
+    deps.extract = async () => { calls++; throw new Error("ExtractionError-like"); };
+    let t = NOW.getTime();
+    for (let i = 0; i < MAX_MEETING_ATTEMPTS; i++) {
+      setNow(new Date(t));
+      await processPending(deps, user.id);
+      // Right away again: still backing off, no new call.
+      await processPending(deps, user.id);
+      t += retryAfterMs(i + 1) + 1000;
+    }
+    expect(calls).toBe(MAX_MEETING_ATTEMPTS);
+    const m = store.meetings.get(meeting.id)!;
+    expect(m).toMatchObject({ processedAt: null, failedAttempts: MAX_MEETING_ATTEMPTS });
+    setNow(new Date(t + 24 * 60 * 60_000));
+    const r = await processPending(deps, user.id);
+    expect(r).toMatchObject({ processed: 0, failed: 0, setAside: 1 });
+    expect(calls).toBe(MAX_MEETING_ATTEMPTS); // given up: never tried again by itself
+
+    expect(await store.resetMeetingFailures(user.id)).toBe(1);
+    deps.extract = async () => ({ newItems: [], closes: [], usage: { inputTokens: 1, outputTokens: 1 } });
+    expect(await processPending(deps, user.id)).toMatchObject({ processed: 1, setAside: 0 });
+    expect(store.meetings.get(meeting.id)).toMatchObject({ failedAttempts: 0 });
+    expect(store.meetings.get(meeting.id)?.processedAt).not.toBeNull();
   });
 });

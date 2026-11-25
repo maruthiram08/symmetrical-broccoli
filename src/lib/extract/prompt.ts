@@ -84,7 +84,11 @@ User's time zone: ${user.timeZone}
 
 Meeting: ${meeting.title}
 Meeting start: ${formatLocal(meeting.startedAt, user.timeZone)} = ${new Date(meeting.startedAt).toISOString()} UTC
-Participants: ${meeting.participants.length ? meeting.participants.join(", ") : "(unknown)"}
+Participants: ${meeting.participants.length ? meeting.participants.join(", ") : "(unknown)"}${
+    meeting.shared
+      ? `\nRecorded by: ${meeting.ownerName ? `${meeting.ownerName}, ` : "someone else, "}not the user. The user may not have been in this meeting: record an owe item only for a line the user clearly said, and a waiting item or decision only when it names the user.`
+      : ""
+  }
 
 User's open items from earlier meetings:
 ${open}

@@ -39,12 +39,20 @@ describe("draftNudge", () => {
     expect(client.calls[0].tool_choice).toEqual({ type: "auto", disable_parallel_tool_use: true });
     expect(client.calls[0].messages[0].content).toContain("Quote is Hinglish: no");
   });
+  it("does not retry a rejected key", async () => {
+    const client = fakeCreate(Object.assign(new Error("unauthorized"), { status: 401 }));
+    const r = await draftNudge(ctx(), { client, model: "m", retry: { sleep: async () => { throw new Error("should not sleep"); } } });
+    expect(r.failure).toBe("auth");
+    expect(client.calls).toHaveLength(1);
+  });
   it("tells the model when the quote is Hinglish", () => {
     expect(buildNudgeMessage(ctx("haan main kal bhej dunga calendar"))).toContain("Quote is Hinglish: yes");
   });
   it("falls back to the template on errors, missing tool calls and failed checks", async () => {
-    const t = (await draftNudge(ctx(), { client: fakeCreate(new Error("down")), model: "m" }));
-    expect(t).toMatchObject({ source: "template", fallback: "api error: Error" });
+    const down = fakeCreate(Object.assign(new Error("overloaded"), { status: 529 }), Object.assign(new Error("overloaded"), { status: 529 }));
+    const t = await draftNudge(ctx(), { client: down, model: "m", retry: { retries: 1, sleep: async () => {} } });
+    expect(t).toMatchObject({ source: "template", fallback: "api error: transient", failure: "transient" });
+    expect(down.calls).toHaveLength(2); // retried once
     expect(t.text).toContain("Hi Nitin");
     expect((await draftNudge(ctx(), { client: fakeCreate(message([])), model: "m" })).fallback).toBe("no tool call");
     const shouty = await draftNudge(ctx(), { client: fakeCreate(toolCall("write_nudge", { message: "Hey Nitin! Where is it?" })), model: "m" });

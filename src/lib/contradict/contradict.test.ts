@@ -39,7 +39,7 @@ describe("judge", () => {
   it("ignores no-change, out-of-range answers and API errors; no call without candidates", async () => {
     expect((await judge(fresh, [old1], meetings, "UTC", { client: fakeCreate(toolCall("record_verdict", { changes: false, earlier: null, note: "" })), model: "m" })).oldId).toBeNull();
     expect((await judge(fresh, [old1], meetings, "UTC", { client: fakeCreate(toolCall("record_verdict", { changes: true, earlier: 4, note: "x" })), model: "m" })).oldId).toBeNull();
-    expect((await judge(fresh, [old1], meetings, "UTC", { client: fakeCreate(new Error("x")), model: "m" })).error).toMatch(/api error/);
+    expect((await judge(fresh, [old1], meetings, "UTC", { client: fakeCreate(Object.assign(new Error("x"), { status: 400, error: { message: "Your credit balance is too low" } })), model: "m" })).failure).toBe("credit");
     const none = fakeCreate();
     expect((await judge(fresh, [], meetings, "UTC", { client: none, model: "m" })).oldId).toBeNull();
     expect(none.calls).toHaveLength(0);

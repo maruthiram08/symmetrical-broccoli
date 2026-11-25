@@ -4,12 +4,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
-const sdk = vi.hoisted(() => ({ streams: [] as unknown[], chunks: [] as string[] }));
+const sdk = vi.hoisted(() => ({ streams: [] as unknown[], chunks: [] as string[], fail: undefined as Error | undefined }));
 vi.mock("@anthropic-ai/sdk", async () => {
   const { fakeStream } = await import("@/lib/ai/fakes.test-helpers");
   class Anthropic {
     messages = {
-      stream: (body: unknown) => { sdk.streams.push(body); return fakeStream(sdk.chunks).messages.stream(body as never); },
+      stream: (body: unknown) => { sdk.streams.push(body); return fakeStream(sdk.chunks, {}, sdk.fail).messages.stream(body as never); },
       create: () => { throw new Error("no network in tests"); },
     };
   }
@@ -72,6 +72,19 @@ describe("POST /api/ask", () => {
     const est = await (await ask({ q: "banner", estimateOnly: true })).json();
     expect(est.estimate.costInr).toBeGreaterThan(0);
     expect((await ask({ q: "" })).status).toBe(400);
+  });
+});
+
+describe("Ask and account problems", () => {
+  it("a rejected key shows the Settings banner; a good answer clears it", async () => {
+    sdk.fail = Object.assign(new Error("nope"), { status: 401 });
+    const out = await lines(await ask({ q: "banner" }));
+    expect(out.at(-1)).toMatchObject({ type: "error", failure: "auth" });
+    expect((await getStore().getHealth()).anthropicProblem).toMatchObject({ kind: "auth" });
+    sdk.fail = undefined;
+    sdk.chunks = ["Monday [1]."];
+    await lines(await ask({ q: "banner" }));
+    expect((await getStore().getHealth()).anthropicProblem).toBeNull();
   });
 });
 

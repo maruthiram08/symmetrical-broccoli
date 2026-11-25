@@ -84,7 +84,7 @@ describe("streamAnswer", () => {
     expect(no.at(-1)).toMatchObject({ type: "done", noAnswer: true });
     const err = Object.assign(new Error("rate"), { status: 429 });
     const bad = await collect(streamAnswer(input("banner"), { client: fakeStream([], {}, err), model: "claude-sonnet-5-5" }));
-    expect(bad).toEqual([{ type: "error", error: "Claude is busy right now. Try again in a minute." }]);
+    expect(bad).toEqual([{ type: "error", error: "Claude is busy right now. Try again in a minute.", failure: "transient" }]);
     const refused = await collect(streamAnswer(input("banner"), { client: fakeStream(["x"], { stop_reason: "refusal" }), model: "claude-sonnet-5-5" }));
     expect(refused.at(-1)).toMatchObject({ type: "error" });
   });

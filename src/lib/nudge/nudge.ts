@@ -4,6 +4,7 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import type { AnthropicLike } from "../extract/extract";
 import { usageOf, toolInput, type Usage } from "../ai/common";
+import { classifyAnthropicError, withAnthropicRetry, type AnthropicFailure, type RetryOpts } from "../extract/errors";
 import { meetingLabel } from "../handoff/format";
 import { isHinglish } from "../handoff/lang";
 import { textProblems } from "../handoff/draft";
@@ -69,6 +70,8 @@ export interface NudgeDraft {
   usage: Usage | null;
   /** Why the template was used, for logs (never message text). */
   fallback: string | null;
+  /** Set when the API call itself failed: auth and credit mean the key or account needs fixing. */
+  failure?: AnthropicFailure;
 }
 
 export function templateNudge(ctx: HandoffContext): string {
@@ -76,20 +79,22 @@ export function templateNudge(ctx: HandoffContext): string {
 }
 
 /** One model call; falls back to the "Start this" template on any failure or a draft that fails the checks. */
-export async function draftNudge(ctx: HandoffContext, deps: { client: AnthropicLike; model: string }): Promise<NudgeDraft> {
+/** Transient failures (429, 5xx, timeouts) are retried with backoff; key and credit errors are not. */
+export async function draftNudge(ctx: HandoffContext, deps: { client: AnthropicLike; model: string; retry?: RetryOpts }): Promise<NudgeDraft> {
   const fallback = (why: string, usage: Usage | null = null): NudgeDraft => ({ text: templateNudge(ctx), source: "template", usage, fallback: why });
   let r: Anthropic.Message;
   try {
-    r = await deps.client.messages.create({
+    r = await withAnthropicRetry(() => deps.client.messages.create({
       model: deps.model,
       max_tokens: NUDGE_MAX_TOKENS,
       system: NUDGE_SYSTEM_PROMPT,
       tools: [TOOL],
       tool_choice: { type: "auto", disable_parallel_tool_use: true },
       messages: [{ role: "user", content: buildNudgeMessage(ctx) }],
-    });
+    }), deps.retry);
   } catch (e) {
-    return fallback(`api error: ${e instanceof Error ? e.name : "unknown"}`);
+    const failure = classifyAnthropicError(e);
+    return { ...fallback(`api error: ${failure}`), failure };
   }
   const usage = usageOf(r);
   const stop = r.stop_reason as string | null;

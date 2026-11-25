@@ -50,7 +50,12 @@ export async function POST(req: Request) {
       }
       for await (const ev of streamAnswer(p.input, { client: client!, model: p.model, signal: ctl.signal })) {
         c.enqueue(line(ev));
+        if (ev.type === "error" && (ev.failure === "auth" || ev.failure === "credit")) {
+          // Same banner as when extraction hits it.
+          await getStore().setHealth({ anthropicProblem: { kind: ev.failure, at: new Date().toISOString() } });
+        }
         if (ev.type === "done" && ev.usage) {
+          if ((await getStore().getHealth()).anthropicProblem) await getStore().setHealth({ anthropicProblem: null });
           await getStore().logEvent({
             userId: user.id, type: "ask",
             payload: { model: p.model, sources: p.sources.length, noAnswer: ev.noAnswer },

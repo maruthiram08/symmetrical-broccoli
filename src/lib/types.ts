@@ -13,6 +13,8 @@ export interface User {
   timeZone: string;
   /** Local brief time "HH:MM", 15-minute steps. Default "18:00". */
   briefTime: string;
+  /** Settings: also read meetings others shared with you (Wispr Flow shared=true). Missing = off. */
+  includeShared?: boolean;
   createdAt: string;
 }
 
@@ -25,6 +27,8 @@ export interface Connection {
   /** Start time (ISO) of the newest meeting already queued. */
   lastSeenAt: string | null;
   status: "active" | "needs_reconnect";
+  /** Refreshes in a row that Wispr Flow answered with an error (network failures don't count). */
+  refreshFailures?: number;
 }
 
 export interface Meeting {
@@ -37,6 +41,31 @@ export interface Meeting {
   processedAt: string | null;
   /** The meeting's notes page in Wispr Flow (search_meetings share_link). Missing on older meetings. */
   link?: string | null;
+  /** Someone else's meeting shared with the user. Missing on the user's own meetings. */
+  shared?: boolean;
+  /** Who recorded a shared meeting (Wispr Flow owner.name), when known. */
+  ownerName?: string | null;
+  /** Failed reads so far (offline and account problems don't count). At MAX_MEETING_ATTEMPTS it is set aside. */
+  failedAttempts?: number;
+  lastFailedAt?: string | null;
+  /** What the last failed read ran into ("extract", "transcript", "transient", ...). */
+  lastFailure?: string | null;
+}
+
+/** A meeting that failed this many reads is set aside until the user presses Retry. */
+export const MAX_MEETING_ATTEMPTS = 4;
+
+/** Anthropic account problems that only the user can fix. */
+export type AccountProblem = "auth" | "credit";
+
+/** What the app last managed to do, for the Health section and the banners. */
+export interface Health {
+  lastPollOkAt?: string | null;
+  lastPollErrorAt?: string | null;
+  lastExtractOkAt?: string | null;
+  lastBriefAt?: string | null;
+  /** Set when Anthropic rejects the key or the account is out of credit; cleared by a good read. */
+  anthropicProblem?: { kind: AccountProblem; at: string } | null;
 }
 
 /** A calendar event coming up soon, from Wispr Flow's list_upcoming_meetings. Cached by the poll. */
@@ -88,7 +117,7 @@ export interface ExtractionResult {
 export interface ExtractionInput {
   transcript: string;
   user: Pick<User, "name" | "aliases" | "timeZone">;
-  meeting: Pick<Meeting, "title" | "startedAt" | "participants">;
+  meeting: Pick<Meeting, "title" | "startedAt" | "participants"> & Partial<Pick<Meeting, "shared" | "ownerName">>;
   openItems: Array<Pick<Item, "id" | "kind" | "text" | "person">>;
 }
 
@@ -124,6 +153,8 @@ export interface BriefLine {
   meetingId?: string;
   /** For the quote peek. Optional: lines built before it simply show less. */
   peek?: QuotePeekInfo;
+  /** The item came from a meeting someone else recorded and shared with the user. */
+  shared?: boolean;
 }
 
 export interface QuotePeekInfo {

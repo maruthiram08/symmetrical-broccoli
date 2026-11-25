@@ -4,6 +4,7 @@
 import { randomUUID } from "node:crypto";
 import { safeCostInr } from "@/lib/ai/common";
 import { CHECKS_PER_RUN, findCandidates, judge } from "@/lib/contradict/contradict";
+import type { AnthropicFailure, RetryOpts } from "@/lib/extract/errors";
 import type { AnthropicLike } from "@/lib/extract/extract";
 import { buildContext } from "@/lib/handoff/context";
 import { NUDGE_DAILY_MAX, draftNudge, overdueWaiting, templateNudge } from "@/lib/nudge/nudge";
@@ -20,6 +21,24 @@ export interface AiDeps {
   client: AnthropicLike | null;
   model: string;
   now: () => Date;
+  /** Backoff for transient API errors (tests pass a no-op sleep). */
+  retry?: RetryOpts;
+}
+
+/** The key or account needs fixing: the same banner as extraction (store health), no more calls. */
+class AccountProblem extends Error {
+  constructor(readonly kind: "auth" | "credit") { super(`anthropic ${kind}`); this.name = "AccountProblem"; }
+}
+
+async function checkFailure(deps: AiDeps, failure: AnthropicFailure | undefined): Promise<void> {
+  if (failure !== "auth" && failure !== "credit") return;
+  await deps.store.setHealth?.({ anthropicProblem: { kind: failure, at: deps.now().toISOString() } });
+  throw new AccountProblem(failure);
+}
+
+/** True while the banner says the key or credit is the problem: skip model calls until it's fixed. */
+async function blocked(deps: AiDeps): Promise<boolean> {
+  return !!(await deps.store.getHealth?.())?.anthropicProblem;
 }
 
 async function meetingsById(store: Store, userId: string): Promise<Map<string, Meeting>> {
@@ -37,6 +56,7 @@ export async function runNudges(deps: AiDeps, user: User): Promise<number> {
   if (deps.ai.nudgeDay() === date) return 0;
   if (!(await deps.store.getBrief(user.id, date))?.sentAt) return 0;
 
+  if (deps.client && (await blocked(deps))) return 0; // drafted once the key or credit is fixed
   const items = await deps.store.listItems(user.id);
   const due = overdueWaiting(items, now);
   deps.ai.pruneNudges(new Set(due.map((i) => i.id)));
@@ -47,7 +67,8 @@ export async function runNudges(deps: AiDeps, user: User): Promise<number> {
     if (deps.ai.nudge(item.id)) continue;
     const ctx = buildContext({ item, user, meetings, allItems: items, now });
     if (!ctx) continue;
-    const r = deps.client ? await draftNudge(ctx, { client: deps.client, model: deps.model }) : { text: templateNudge(ctx), source: "template" as const, usage: null, fallback: "no api key" };
+    const r = deps.client ? await draftNudge(ctx, { client: deps.client, model: deps.model, retry: deps.retry }) : { text: templateNudge(ctx), source: "template" as const, usage: null, fallback: "no api key", failure: undefined };
+    await checkFailure(deps, r.failure); // key/credit: stop, keep no template, try again tomorrow's run
     deps.ai.saveNudge({ itemId: item.id, text: r.text, source: r.source, createdAt: now.toISOString() });
     made++;
     await deps.store.logEvent({
@@ -71,7 +92,7 @@ export async function runContradictions(deps: AiDeps, user: User): Promise<numbe
     deps.ai.markChecked(decisions.map((d) => d.id), true);
     return 0;
   }
-  if (!deps.client) return 0;
+  if (!deps.client || (await blocked(deps))) return 0;
   const checked = deps.ai.checkedSet();
   const fresh = decisions.filter((d) => !checked.has(d.id));
   if (!fresh.length) return 0;
@@ -86,7 +107,8 @@ export async function runContradictions(deps: AiDeps, user: User): Promise<numbe
     if (!candidates.length) { deps.ai.markChecked([d.id]); continue; }
     if (calls >= CHECKS_PER_RUN) break; // the rest wait for the next run
     calls++;
-    const v = await judge(d, candidates, meetings, user.timeZone, { client: deps.client, model: deps.model });
+    const v = await judge(d, candidates, meetings, user.timeZone, { client: deps.client, model: deps.model, retry: deps.retry });
+    await checkFailure(deps, v.failure); // left unchecked, so it is compared once the key works
     deps.ai.markChecked([d.id]);
     await deps.store.logEvent({
       userId: user.id, type: "contradiction_check", payload: { itemId: d.id, model: deps.model, candidates: candidates.length, flagged: !!v.oldId, error: v.error },

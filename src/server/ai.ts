@@ -1,6 +1,7 @@
 // Server glue for Ask, nudges and the contradiction catch on the local app.
 import Anthropic from "@anthropic-ai/sdk";
 import { env } from "@/lib/env";
+import { REQUEST_TIMEOUT_MS } from "@/lib/extract/extract";
 import { estimateCost, type AskInput } from "@/lib/ask/ask";
 import { fitSources } from "@/lib/ask/prompt";
 import { MAX_QUESTION_CHARS, retrieve, type Source } from "@/lib/ask/retrieve";
@@ -14,7 +15,8 @@ const g = globalThis as unknown as { __dbAiClient?: Anthropic };
 /** The Anthropic client, or null when no key is set (never throws). */
 export function aiClient(): Anthropic | null {
   if (!process.env.ANTHROPIC_API_KEY) return null;
-  return (g.__dbAiClient ??= new Anthropic({ apiKey: env.anthropicKey }));
+  // Retries are ours (withAnthropicRetry in the background jobs; none for Ask, someone is waiting).
+  return (g.__dbAiClient ??= new Anthropic({ apiKey: env.anthropicKey, maxRetries: 0, timeout: REQUEST_TIMEOUT_MS }));
 }
 
 export function aiDeps(): AiDeps {

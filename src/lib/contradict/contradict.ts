@@ -3,6 +3,7 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import type { AnthropicLike } from "../extract/extract";
 import { toolInput, usageOf, type Usage } from "../ai/common";
+import { classifyAnthropicError, withAnthropicRetry, type AnthropicFailure, type RetryOpts } from "../extract/errors";
 import type { Item, Meeting } from "../types";
 
 export const MAX_CANDIDATES = 3;
@@ -103,6 +104,8 @@ export interface Verdict {
   note: string;
   usage: Usage | null;
   error: string | null;
+  /** Set when the API call itself failed: auth and credit mean the key or account needs fixing. */
+  failure?: AnthropicFailure;
 }
 
 export async function judge(
@@ -110,21 +113,22 @@ export async function judge(
   candidates: Item[],
   meetings: Map<string, Pick<Meeting, "title" | "startedAt">>,
   tz: string,
-  deps: { client: AnthropicLike; model: string },
+  deps: { client: AnthropicLike; model: string; retry?: RetryOpts },
 ): Promise<Verdict> {
   if (!candidates.length) return { oldId: null, note: "", usage: null, error: null };
   let r: Anthropic.Message;
   try {
-    r = await deps.client.messages.create({
+    r = await withAnthropicRetry(() => deps.client.messages.create({
       model: deps.model,
       max_tokens: JUDGE_MAX_TOKENS,
       system: JUDGE_SYSTEM_PROMPT,
       tools: [TOOL],
       tool_choice: { type: "auto", disable_parallel_tool_use: true },
       messages: [{ role: "user", content: buildJudgeMessage(decision, candidates, meetings, tz) }],
-    });
+    }), deps.retry);
   } catch (e) {
-    return { oldId: null, note: "", usage: null, error: `api error: ${e instanceof Error ? e.name : "unknown"}` };
+    const failure = classifyAnthropicError(e);
+    return { oldId: null, note: "", usage: null, error: `api error: ${failure}`, failure };
   }
   const usage = usageOf(r);
   const v = toolInput(r, TOOL_NAME) as { changes?: unknown; earlier?: unknown; note?: unknown } | null;

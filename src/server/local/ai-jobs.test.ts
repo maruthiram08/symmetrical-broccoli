@@ -28,7 +28,7 @@ beforeEach(async () => {
   for (const i of await store.listItems(user.id)) ids[i.text.split(" ")[0] + i.kind] = i.id;
 });
 
-const deps = (client: AiDeps["client"]): AiDeps => ({ store, ai, client, model: "claude-sonnet-5-5", now: () => NOW });
+const deps = (client: AiDeps["client"]): AiDeps => ({ store, ai, client, model: "claude-sonnet-5-5", now: () => NOW, retry: { sleep: async () => {} } });
 
 async function addLaterDecision(text: string, quote: string) {
   const m = (await store.upsertMeeting({ userId: user.id, providerMeetingId: "2", title: "Standup", startedAt: "2026-11-25T04:00:00Z", participants: [] })).meeting;
@@ -88,5 +88,32 @@ describe("runContradictions", () => {
     await runAiJobs(deps(client), { nudges: false });
     expect(client.calls).toHaveLength(0);
     expect(ai.contradictions()).toEqual([]);
+  });
+});
+
+describe("key and credit problems", () => {
+  it("set the same banner as extraction, stop calling, and resume once it is cleared", async () => {
+    await runContradictions(deps(fakeCreate()), user); // prime
+    const fresh = await addLaterDecision("Ship the dividend banner on Monday instead", "let's push the banner to Monday");
+    await store.saveBrief(user.id, "2026-11-25", "# brief", NOW.toISOString(), "x");
+    const credit = fakeCreate(Object.assign(new Error("bad"), { status: 400, error: { error: { message: "Your credit balance is too low to access the Anthropic API." } } }));
+    await runAiJobs(deps(credit));
+    expect(credit.calls).toHaveLength(1); // no retry, no nudge call after it
+    expect((await store.getHealth()).anthropicProblem).toMatchObject({ kind: "credit" });
+    expect(ai.checkedSet().has(fresh.id)).toBe(false);
+    expect(ai.nudge(ids["Nitinwaiting"])).toBeNull();
+
+    const quiet = fakeCreate();
+    await runAiJobs(deps(quiet));
+    expect(quiet.calls).toHaveLength(0); // blocked while the banner is up
+
+    await store.setHealth({ anthropicProblem: null }); // e.g. a later extraction worked
+    const ok = fakeCreate(
+      toolCall("record_verdict", { changes: false, earlier: null, note: "" }),
+      toolCall("write_nudge", { message: "Hey Nitin, any update on the payout calendar?" }),
+    );
+    await runAiJobs(deps(ok));
+    expect(ok.calls).toHaveLength(2);
+    expect(ai.nudge(ids["Nitinwaiting"])?.source).toBe("ai");
   });
 });
