@@ -13,6 +13,7 @@ import { PrepCard } from "@/components/PrepCard";
 import { formatTime, localDayBounds } from "@/lib/brief/time";
 import { buildRibbon } from "@/lib/wow/ribbon";
 import { prepCard } from "@/server/local/prep";
+import { TodayNotes } from "@/components/TodayNotes";
 
 const countOf = (l: unknown[]) => (l.length ? String(l.length) : undefined);
 /** "in 22 min", "in 1 h 5 min" */
@@ -61,6 +62,7 @@ export default async function Today({ searchParams }: { searchParams: Promise<{ 
         <span className="db-mono">{formatBriefTime(user.briefTime)}</span>
       </p>
       <SummaryLinks />
+      {only ? null : <TodayNotes user={user} now={now} />}
 
       {conn.status === "needs_reconnect" ? (
         <p className="db-banner" role="status">

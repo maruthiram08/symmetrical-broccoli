@@ -4,6 +4,7 @@ import { processAllPending, processPending } from "@/server/jobs/process";
 import { logJobError } from "@/server/jobs/types";
 import { buildDeps, getStore } from "./app";
 import { notifyPrep } from "./prep";
+import { notifyFreshMeetings } from "./fresh";
 
 const TICK_MS = 5 * 60_000;
 const POLL_EVERY_MS = 30 * 60_000;
@@ -62,6 +63,7 @@ export function startScheduler(): void {
           st.lastPoll = Date.now();
           await pollAll(deps);
           await processAllPending(deps, { deadline: Date.now() + 10 * 60_000 });
+          await notifyFreshMeetings(getStore(), deps.now());
         }
         await deliverDue(deps);
         await notifyPrep(getStore(), deps.now());
@@ -80,6 +82,7 @@ export async function checkNow(): Promise<void> {
     const deps = buildDeps();
     await pollAll(deps);
     await processAllPending(deps, { deadline: Date.now() + 10 * 60_000 });
+    await notifyFreshMeetings(getStore(), deps.now());
     if (g.__dbScheduler) g.__dbScheduler.lastPoll = Date.now();
   });
 }
