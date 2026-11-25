@@ -16,7 +16,9 @@
     "uninstall-login": "zsh scripts/uninstall-login.sh",
     "keychain:import": "tsx scripts/keychain-import.ts",
     "mac:build": "zsh scripts/mac-build.sh",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "mcp": "tsx src/mcp/server.ts",
+    "mcp:install": "zsh scripts/install-mcp.sh"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.71.0",

@@ -8,10 +8,22 @@ import { takeCloseMoment } from "@/server/local/closewrap";
 import { checkMeetingsNow, setStatus } from "./actions";
 import { formatBriefTime } from "./_lib/time";
 import { pastDays } from "./_lib/days";
+import { DayRibbon, MeetingChip } from "@/components/DayRibbon";
+import { PrepCard } from "@/components/PrepCard";
+import { formatTime, localDayBounds } from "@/lib/brief/time";
+import { buildRibbon } from "@/lib/wow/ribbon";
+import { prepCard } from "@/server/local/prep";
+
+const countOf = (l: unknown[]) => (l.length ? String(l.length) : undefined);
+/** "in 22 min", "in 1 h 5 min" */
+function minutesUntil(iso: string, now: Date): string {
+  const m = Math.max(1, Math.round((Date.parse(iso) - now.getTime()) / 60000));
+  return m < 60 ? `in ${m} min` : `in ${Math.floor(m / 60)} h${m % 60 ? ` ${m % 60} min` : ""}`;
+}
 
 export const dynamic = "force-dynamic";
 
-export default async function Today({ searchParams }: { searchParams: Promise<{ undo?: string; was?: string }> }) {
+export default async function Today({ searchParams }: { searchParams: Promise<{ undo?: string; was?: string; meeting?: string }> }) {
   const user = await me();
   if (!user) redirect("/setup");
   const store = getStore();
@@ -21,7 +33,13 @@ export default async function Today({ searchParams }: { searchParams: Promise<{ 
   const now = new Date();
   const b = await buildBrief(store, user, now);
   const closedSinceLook = await takeCloseMoment(store, user, now);
-  const { undo, was } = await searchParams;
+  const { undo, was, meeting } = await searchParams;
+  const { startIso, endIso } = localDayBounds(b.date, user.timeZone);
+  const todays = await store.listMeetingsBetween(user.id, startIso, endIso);
+  const ribbon = buildRibbon({ date: b.date, timeZone: user.timeZone, meetings: todays, items: await store.listItems(user.id), now });
+  const only = meeting ? todays.find((m) => m.id === meeting) ?? null : null;
+  const keep = <T extends { meetingId?: string }>(lines: T[]) => (only ? lines.filter((l) => l.meetingId === only.id) : lines);
+  const prep = await prepCard(store, user, now);
   const n = (k: number, one: string, many = one + "s") => `${k} ${k === 1 ? one : many}`;
   const openCount = (await store.listItems(user.id, { status: "open" })).filter((i) => i.kind !== "decision").length;
   const owedCount = b.youOwe.length ? `${b.youOwe.length}${b.wrap.late ? ` · ${b.wrap.late} late` : ""}` : undefined;
@@ -58,22 +76,26 @@ export default async function Today({ searchParams }: { searchParams: Promise<{ 
         </form>
       ) : null}
 
-      <CloseMoment lines={closedSinceLook} />
-      <Section title="You owe" count={owedCount} empty={b.meetingCount ? "Nothing owed. Go home." : "Nothing owed today."}>
-        {b.youOwe.map((l) => <BriefItem key={l.itemId} line={l} />)}
+      <DayRibbon ribbon={ribbon} selected={only?.id} />
+      {prep ? <PrepCard prep={prep} time={formatTime(prep.meeting.startsAt, user.timeZone)} inLabel={minutesUntil(prep.meeting.startsAt, now)} nowMs={now.getTime()} /> : null}
+      {only ? <MeetingChip title={only.title} time={formatTime(only.startedAt, user.timeZone)} /> : null}
+
+      {only ? null : <CloseMoment lines={closedSinceLook} />}
+      <Section title="You owe" count={only ? countOf(keep(b.youOwe)) : owedCount} empty={only ? "Nothing you owe from this meeting." : b.meetingCount ? "Nothing owed. Go home." : "Nothing owed today."}>
+        {keep(b.youOwe).map((l) => <BriefItem key={l.itemId} line={l} />)}
       </Section>
-      <Section title="Waiting on" count={b.waitingOn.length ? String(b.waitingOn.length) : undefined} empty="Nobody owes you anything today.">
-        {b.waitingOn.map((l) => <BriefItem key={l.itemId} line={l} />)}
+      <Section title="Waiting on" count={countOf(keep(b.waitingOn))} empty={only ? "Nobody owes you anything from this meeting." : "Nobody owes you anything today."}>
+        {keep(b.waitingOn).map((l) => <BriefItem key={l.itemId} line={l} />)}
       </Section>
-      <Section title="Decisions" count={b.decisions.length ? String(b.decisions.length) : undefined} empty="No decisions today.">
-        {b.decisions.map((l) => <BriefItem key={l.itemId} line={l} />)}
+      <Section title="Decisions" count={countOf(keep(b.decisions))} empty={only ? "No decisions in this meeting." : "No decisions today."}>
+        {keep(b.decisions).map((l) => <BriefItem key={l.itemId} line={l} />)}
       </Section>
-      {b.closedToday.length ? (
+      {only ? null : b.closedToday.length ? (
         <Section title="Closed today" count={String(b.closedToday.length)}>
           {b.closedToday.map((l) => <ClosedItem key={l.itemId} line={l} />)}
         </Section>
       ) : null}
-      {b.stillOpenCount ? (
+      {!only && b.stillOpenCount ? (
         <Section title="Still open" count={String(b.stillOpenCount)}>
           {b.stillOpen.map((l) => <BriefItem key={l.itemId} line={l} />)}
           {b.stillOpenCount > b.stillOpen.length ? (

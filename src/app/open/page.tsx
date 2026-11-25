@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { BriefItem, Section } from "@/components/BriefList";
 import { Shell } from "@/components/Shell";
+import { peekInfo } from "@/lib/brief/build";
 import { formatTime, dueLabel, lateLabel } from "@/lib/brief/time";
 import type { BriefLine, Item } from "@/lib/types";
 import { getStore, me } from "@/server/local/app";
@@ -16,7 +17,7 @@ export default async function AllOpen() {
   const now = new Date();
   const open = (await store.listItems(user.id, { status: "open" })).filter((i) => i.kind !== "decision");
 
-  const meetings = new Map<string, { title: string; startedAt: string } | null>();
+  const meetings = new Map<string, { title: string; startedAt: string; link?: string | null } | null>();
   for (const i of open) if (!meetings.has(i.meetingId)) meetings.set(i.meetingId, await store.getMeeting(i.meetingId));
   const started = (i: Item) => meetings.get(i.meetingId)?.startedAt ?? i.createdAt;
 
@@ -30,6 +31,7 @@ export default async function AllOpen() {
       meetingTime: m ? formatTime(m.startedAt, user.timeZone) : "",
       dueLabel: i.dueAt && late === null ? dueLabel(i.dueAt, now, user.timeZone) : null,
       lateMinutes: late, lateLabel: late !== null ? lateLabel(late) : null,
+      meetingId: i.meetingId, peek: peekInfo(i, m ?? null, user.timeZone),
     };
   };
 

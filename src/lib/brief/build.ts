@@ -1,4 +1,4 @@
-import type { BriefLine, BriefModel, ClosedLine, Item, Meeting, User } from "@/lib/types";
+import type { BriefLine, BriefModel, ClosedLine, Item, Meeting, QuotePeekInfo, User } from "@/lib/types";
 import type { Store } from "@/server/store";
 import { dateLabel, dueLabel, formatTime, lateLabel, localDate, localDayBounds } from "./time";
 
@@ -36,6 +36,8 @@ export async function buildBrief(store: Store, user: User, now: Date): Promise<B
       dueLabel: i.dueAt && lateMinutes === null ? dueLabel(i.dueAt, now, tz) : null,
       lateMinutes,
       lateLabel: lateMinutes !== null ? lateLabel(lateMinutes) : null,
+      meetingId: i.meetingId,
+      peek: peekInfo(i, m, tz),
     };
   };
 
@@ -89,6 +91,16 @@ export async function buildBrief(store: Store, user: User, now: Date): Promise<B
     wrap, openPromises, youOwe: owe, waitingOn: waiting, decisions, closedToday,
     stillOpenCount: rest.length, stillOpen, empty,
     subject: subjectFor({ owe: owe.length, late, waiting: waiting.length, decisions: decisions.length, meetings: todaysMeetings.length, stillOpen: rest.length + owe.length + waiting.length }),
+  };
+}
+
+/** Quote peek details: who said it (as best we know), when, and the Wispr Flow link if stored. */
+export function peekInfo(i: Pick<Item, "kind" | "person">, m: Pick<Meeting, "startedAt" | "link"> | null, timeZone: string): QuotePeekInfo {
+  const day = m ? new Intl.DateTimeFormat("en-GB", { timeZone, weekday: "short", day: "numeric", month: "short" }).format(new Date(m.startedAt)) : "";
+  return {
+    speaker: i.kind === "owe" ? "You" : i.kind === "waiting" ? i.person : null,
+    when: m ? `${day}, ${formatTime(m.startedAt, timeZone)}` : "",
+    link: m?.link && m.link.startsWith("https://") ? m.link : null,
   };
 }
 

@@ -3,6 +3,7 @@ import { pollAll, pollUser } from "@/server/jobs/poll";
 import { processAllPending, processPending } from "@/server/jobs/process";
 import { logJobError } from "@/server/jobs/types";
 import { buildDeps, getStore } from "./app";
+import { notifyPrep } from "./prep";
 
 const TICK_MS = 5 * 60_000;
 const POLL_EVERY_MS = 30 * 60_000;
@@ -63,6 +64,7 @@ export function startScheduler(): void {
           await processAllPending(deps, { deadline: Date.now() + 10 * 60_000 });
         }
         await deliverDue(deps);
+        await notifyPrep(getStore(), deps.now());
       });
     } catch (e) {
       console.error("[scheduler]", e instanceof Error ? `${e.name}: ${e.message}` : e);

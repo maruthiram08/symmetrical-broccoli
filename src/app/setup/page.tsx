@@ -90,7 +90,7 @@ export default async function Setup({ searchParams }: { searchParams: Promise<{ 
           <h2 className="db-section__title">Re-read all meetings in order</h2>
           <p className="db-note" style={{ marginTop: 0 }}>
             Reads every meeting again, oldest first, so later meetings can close earlier promises. Use it after pulling in older
-            meetings. Items you marked Done or Wrong are read again too. About ₹1 to ₹2 per meeting.
+            meetings or when reading improves. Items you marked Done or Wrong stay marked. About ₹3.50 per meeting.
           </p>
           <div className="db-row">
             <Button type="submit" variant="secondary" disabled={pulling}>
