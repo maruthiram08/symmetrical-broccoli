@@ -1,0 +1,21 @@
+{
+  "meeting": {
+    "title": "SYNTHETIC: Rocket snack planning",
+    "startedAt": "2030-01-01T04:30:00.000Z",
+    "participants": ["Test User", "Zed Example", "Bo Placeholder"]
+  },
+  "user": { "name": "Test User", "aliases": ["Testy", "TU"], "timeZone": "Asia/Kolkata" },
+  "transcript": "Zed Example: Testy, can you bring the moon cookies for the launch?\nTest User: Haan, main kal subah tak moon cookies le aaunga.\nBo Placeholder: I'll email you the snack budget in an hour.\nTest User: Great. Also, the comet juice I ordered last week arrived, so that's done.\nZed Example: Okay, decided then: we use paper plates, not metal ones.\nBo Placeholder: Maybe I can look at napkins later.",
+  "openItems": [
+    { "id": "synthetic-1", "kind": "owe", "text": "Order comet juice", "person": "Zed Example" },
+    { "id": "synthetic-2", "kind": "waiting", "text": "Send the launch checklist", "person": "Bo Placeholder" }
+  ],
+  "expected": {
+    "newItems": [
+      { "kind": "owe", "text": "Bring moon cookies for the launch", "person": "Zed" },
+      { "kind": "waiting", "text": "Email the snack budget", "person": "Bo" },
+      { "kind": "decision", "text": "Use paper plates, not metal ones", "person": null }
+    ],
+    "closes": ["synthetic-1"]
+  }
+}
