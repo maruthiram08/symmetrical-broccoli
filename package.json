@@ -11,7 +11,12 @@
     "typecheck": "tsc --noEmit",
     "eval": "tsx eval/run.ts",
     "app": "next build && next start -H 127.0.0.1 -p 4242",
-    "install-login": "zsh scripts/install-login.sh"
+    "install-login": "zsh scripts/install-login.sh",
+    "build:standalone": "NEXT_OUTPUT_STANDALONE=1 next build",
+    "uninstall-login": "zsh scripts/uninstall-login.sh",
+    "keychain:import": "tsx scripts/keychain-import.ts",
+    "mac:build": "zsh scripts/mac-build.sh",
+    "tauri": "tauri"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.71.0",
@@ -23,6 +28,7 @@
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
+    "@tauri-apps/cli": "^2.12.4",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",

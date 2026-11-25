@@ -27,20 +27,29 @@ While the app is running it:
 
 To start over, quit the app and delete `.daily-brief/`.
 
-## Keep it running at login (optional)
+## The Mac app
 
-Save as `~/Library/LaunchAgents/app.dailybrief.plist`, fix the path, then `launchctl load ~/Library/LaunchAgents/app.dailybrief.plist`:
+`Daily Brief.app` is a small Tauri window and menu bar item around the same server. It starts the server with your Node.js (Homebrew's is fine, 18.18 or later), or reuses one already running on port 4242, and stops the one it started when you quit. Closing the window keeps it in the menu bar, where you also find **Check meetings now**, **Open in browser** and **Launch at login**.
 
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0"><dict>
-  <key>Label</key><string>app.dailybrief</string>
-  <key>WorkingDirectory</key><string>/Users/YOU/code/daily-brief</string>
-  <key>ProgramArguments</key><array><string>/bin/zsh</string><string>-lc</string><string>npm start</string></array>
-  <key>RunAtLoad</key><true/><key>KeepAlive</key><true/>
-</dict></plist>
+Build it (Apple Silicon; needs Xcode Command Line Tools and Rust):
+
+```bash
+xcode-select --install                     # if you don't have them yet
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && source "$HOME/.cargo/env"
+npm install
+npm run mac:build                          # prints the .app and .dmg paths
+npm run keychain:import                    # moves ANTHROPIC_API_KEY from .env.local into the Keychain
+npm run uninstall-login                    # if you used npm run install-login before
+cp -R "src-tauri/target/aarch64-apple-darwin/release/bundle/macos/Daily Brief.app" /Applications/
 ```
+
+The app keeps its secrets in the macOS Keychain (service `app.dailybrief`), not in files: the Anthropic API key, and the Wispr Flow token key, which moves there from `.daily-brief/key` on first start. `EXTRACTION_MODEL` and `WISPR_MCP_URL` go in `.daily-brief/settings.env` (`keychain:import` copies them). `npm start` still reads `.env.local` and falls back to the Keychain. The app always uses `~/Daily Brief`. The log is `~/Library/Logs/daily-brief.log`.
+
+**First launch.** The app isn't signed with an Apple Developer ID. A copy you built yourself opens normally. If macOS says it can't be opened (say, you copied it from another Mac): right-click (or Control-click) the app in Finder, choose **Open**, then **Open** again. Or allow it under System Settings › Privacy & Security › **Open Anyway**, or run `xattr -dr com.apple.quarantine "/Applications/Daily Brief.app"`.
+
+## Keep it running at login without the app
+
+`npm run install-login` sets up a launchd agent (`app.dailybrief`) that runs `npm start` at login. The Mac app replaces it: turn on **Launch at login** in the menu bar, and remove the agent with `npm run uninstall-login`. While the agent runs, the app reuses its server.
 
 ## Develop
 

@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Daily brief</title>
+  <style>
+    :root { --bg: #ffffff; --ink: #0a0a0a; --muted: #525252; --border: #ececec; --highlight: #d6ff3d; }
+    @media (prefers-color-scheme: dark) { :root { --bg: #0b0b0c; --ink: #f4f4f5; --muted: #a1a1aa; --border: #1f1f23; } }
+    html, body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 -apple-system, system-ui, sans-serif; }
+    main { max-width: 520px; margin: 18vh auto 0; padding: 0 24px; }
+    h1 { font-size: 22px; margin: 0 0 12px; letter-spacing: -0.01em; }
+    h1::before { content: ""; display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--highlight); margin-right: 10px; vertical-align: 2px; }
+    p { color: var(--muted); margin: 0 0 16px; }
+    code { font: 13px ui-monospace, "SF Mono", Menlo, monospace; background: var(--border); padding: 1px 5px; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1 id="title">Starting Daily brief</h1>
+    <p id="detail">One moment.</p>
+    <p>Quit from the menu bar icon, fix this, then open the app again. The log is in <code>~/Library/Logs/daily-brief.log</code>.</p>
+  </main>
+  <script src="error.js"></script>
+</body>
+</html>
