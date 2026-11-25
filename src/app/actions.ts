@@ -1,9 +1,11 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
-import { getStore, me, saveMe } from "@/server/local/app";
+import { getStore, me, saveMe, wisprAuthContext } from "@/server/local/app";
+import { PENDING_COOKIE, sealPending, startWisprAuth } from "@/server/wispr/oauth";
 import { checkNow } from "@/server/local/scheduler";
 import { BRIEF_TIMES, isValidTimeZone } from "./_lib/time";
 
@@ -26,7 +28,26 @@ export async function saveSetup(formData: FormData): Promise<void> {
   await saveMe({ ...rest, aliases: aliases.split(",").map((a) => a.trim()).filter(Boolean) });
   const user = await me();
   const conn = user ? await getStore().getConnection(user.id) : null;
-  redirect(conn?.status === "active" && formData.get("reconnect") !== "1" ? "/" : "/api/wispr/connect");
+  if (conn?.status === "active" && formData.get("reconnect") !== "1") redirect("/");
+  await connectWispr(user!.id);
+}
+
+/**
+ * Start Wispr Flow sign-in straight from the action. Redirecting a server action to our own
+ * /api/wispr/connect makes the client router fetch it, and that fetch can't follow the redirect
+ * to Wispr Flow's site; an external URL here makes the browser navigate for real.
+ */
+async function connectWispr(userId: string): Promise<never> {
+  let url: string;
+  try {
+    const { authorizationUrl, pending } = await startWisprAuth(wisprAuthContext(userId));
+    (await cookies()).set(PENDING_COOKIE, sealPending(pending), { httpOnly: true, sameSite: "lax", path: "/api/wispr", maxAge: 600 });
+    url = authorizationUrl.toString();
+  } catch (e) {
+    console.error("[wispr/connect]", e instanceof Error ? e.message : e);
+    redirect("/setup?error=wispr");
+  }
+  redirect(url);
 }
 
 const statusSchema = z.object({ id: z.string().min(1), status: z.enum(["open", "done", "wrong"]) });
