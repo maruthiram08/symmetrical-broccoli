@@ -25,10 +25,27 @@ const clip = (s: string) => (s.length > QUOTE_MAX ? s.slice(0, QUOTE_MAX - 1) + 
  * meeting is skipped. The transcript lives only in this function's scope: it is never stored,
  * logged or attached to an error.
  */
+/** Meetings being processed right now in this process, so overlapping runs never read one twice. */
+const inFlight: Set<string> = ((globalThis as unknown as { __dbInFlight?: Set<string> }).__dbInFlight ??= new Set<string>());
+
 export async function processMeeting(
   deps: Pick<Deps, "store" | "wispr" | "extract" | "costInr" | "model" | "now">,
   meetingId: string,
   opts: { client?: WisprClient } = {},
+): Promise<ProcessResult> {
+  if (inFlight.has(meetingId)) return { status: "skipped", reason: "already_processed" };
+  inFlight.add(meetingId);
+  try {
+    return await processMeetingOnce(deps, meetingId, opts);
+  } finally {
+    inFlight.delete(meetingId);
+  }
+}
+
+async function processMeetingOnce(
+  deps: Pick<Deps, "store" | "wispr" | "extract" | "costInr" | "model" | "now">,
+  meetingId: string,
+  opts: { client?: WisprClient },
 ): Promise<ProcessResult> {
   const { store } = deps;
   const meeting = await store.getMeeting(meetingId);

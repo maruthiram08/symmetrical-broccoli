@@ -65,3 +65,28 @@ describe("publishLocal", () => {
     expect(notificationBody(model({ empty: "no_meetings", youOwe: [] }))).toBe("No meetings today.");
   });
 });
+
+describe("FileStore across copies", () => {
+  it("a second copy sees the first copy's commit, so a meeting is never committed twice", async () => {
+    const path = join(tmp(), "state.json");
+    const a = new FileStore(path);
+    const u = a.addUser({ email: "x" });
+    const { meeting } = await a.upsertMeeting({ userId: u.id, providerMeetingId: "p", title: "T", startedAt: "2026-11-25T05:00:00Z", participants: [] });
+    const b = new FileStore(path);
+    const item = { kind: "owe" as const, text: "Do it", person: null, quote: "q", meetingId: meeting.id, dueAt: null };
+    await a.commitExtraction({ meetingId: meeting.id, userId: u.id, at: "2026-11-25T06:00:00.000Z", closes: [], newItems: [item] });
+    await new Promise((r) => setTimeout(r, 5));
+    await b.commitExtraction({ meetingId: meeting.id, userId: u.id, at: "2026-11-25T06:00:01.000Z", closes: [], newItems: [item] });
+    expect(await new FileStore(path).listItems(u.id)).toHaveLength(1);
+  });
+
+  it("removes a second batch from a meeting read twice, on load", async () => {
+    const path = join(tmp(), "state.json");
+    const a = new FileStore(path);
+    const u = a.addUser({ email: "x" });
+    const mk = (id: string, at: string) => ({ id, userId: u.id, kind: "owe" as const, text: id, person: null, quote: "q", meetingId: "m1", dueAt: null, status: "open" as const, closedByMeetingId: null, closeQuote: null, createdAt: at, closedAt: null });
+    for (const i of [mk("a1", "2026-11-25T06:00:00Z"), mk("a2", "2026-11-25T06:00:00Z"), mk("b1", "2026-11-25T06:00:01Z")]) a.items.set(i.id, i);
+    a.flush();
+    expect((await new FileStore(path).listItems(u.id)).map((i) => i.id).sort()).toEqual(["a1", "a2"]);
+  });
+});
