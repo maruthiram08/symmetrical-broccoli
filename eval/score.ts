@@ -4,12 +4,17 @@ import type { ExtractionResult, ItemKind } from "../src/lib/types";
 export interface ExpectedItem {
   kind: ItemKind;
   text: string;
-  person: string | null;
+  /** The other person. A list means any of these is fine (null in the list allows no person). */
+  person: string | null | Array<string | null>;
 }
 
 export interface Expected {
   newItems: ExpectedItem[];
   closes: string[];
+  /** Items a careful human might or might not list: matching one is neither a hit nor wrong. */
+  optionalItems?: ExpectedItem[];
+  /** Open item ids that may or may not be closed: closing one is neither a hit nor wrong. */
+  optionalCloses?: string[];
 }
 
 export interface ItemMatch {
@@ -21,7 +26,11 @@ export interface MeetingScore {
   correct: ItemMatch[];
   missed: ExpectedItem[];
   wrong: ExtractionResult["newItems"];
+  /** Actual items that matched an optional expected item (not counted). */
+  optional: ItemMatch[];
   correctCloses: string[];
+  /** Closes of optional ids (not counted). */
+  optionalCloses: string[];
   wrongCloses: string[];
   missedCloses: string[];
 }
@@ -38,6 +47,9 @@ const GENERIC_VERBS = new Set(
 );
 
 function stem(t: string): string {
+  if (t.length > 7 && t.endsWith("ation")) return t.slice(0, -5); // "confirmation" ~ "confirm"
+  if (t.length > 5 && t.endsWith("ing")) return t.slice(0, -3);
+  if (t.length > 4 && t.endsWith("ed") && !t.endsWith("eed")) return t.slice(0, -2);
   if (t.length > 4 && t.endsWith("ies")) return t.slice(0, -3) + "y";
   if (t.length > 3 && t.endsWith("s") && !t.endsWith("ss")) return t.slice(0, -1);
   return t;
@@ -47,6 +59,7 @@ export function tokens(s: string): string[] {
   return s
     .toLowerCase()
     .replace(/[‘’]/g, "'")
+    .replace(/([a-z0-9])-(?=[a-z0-9])/g, "$1") // "front-end" ~ "frontend"
     .split(/[^a-z0-9']+/)
     .map((t) => t.replace(/'s$/, "").replace(/'/g, ""))
     .filter((t) => t && !STOPWORDS.has(t))
@@ -67,8 +80,8 @@ export function tokenOverlap(a: string, b: string): number {
  * The "key noun" of an item text: the longest content token that isn't a generic verb or a
  * person's name. "Send Nitin the final banner text" with person Nitin -> "banner".
  */
-export function keyNoun(text: string, person: string | null): string | null {
-  const names = new Set(person ? tokens(person) : []);
+export function keyNoun(text: string, person: ExpectedItem["person"]): string | null {
+  const names = new Set(personList(person).flatMap((p) => (p ? tokens(p) : [])));
   const candidates = tokens(text).filter((t) => !GENERIC_VERBS.has(t) && !names.has(t) && t.length >= 3);
   if (candidates.length === 0) return null;
   return candidates.reduce((best, t) => (t.length > best.length ? t : best));
@@ -103,46 +116,72 @@ function editDistance(a: string, b: string): number {
   return dp[a.length][b.length];
 }
 
+function personList(p: ExpectedItem["person"]): Array<string | null> {
+  return Array.isArray(p) ? p : [p];
+}
+
 /** Decisions carry no person, so person is not compared for them. */
 export function itemMatches(expected: ExpectedItem, actual: ExtractionResult["newItems"][number]): boolean {
   if (expected.kind !== actual.kind) return false;
-  if (expected.kind !== "decision" && !personMatches(expected.person, actual.person)) return false;
+  if (expected.kind !== "decision" && !personList(expected.person).some((p) => personMatches(p, actual.person)))
+    return false;
   return textMatches(expected, actual.text);
 }
 
-/** One-to-one matching: each expected item takes the unused actual item with the best text overlap. */
+/**
+ * One-to-one matching, best pairs first: every (expected, actual) pair that matches is ranked by text
+ * overlap and taken greedily, so a loose key-noun match can't take an actual item that another
+ * expected item matches better.
+ */
+function matchAll(
+  expected: ExpectedItem[],
+  actual: ExtractionResult["newItems"],
+  used: Set<number>,
+): { matched: ItemMatch[]; unmatched: ExpectedItem[] } {
+  const pairs: Array<{ e: number; a: number; s: number }> = [];
+  expected.forEach((e, ei) =>
+    actual.forEach((a, ai) => {
+      if (!used.has(ai) && itemMatches(e, a)) pairs.push({ e: ei, a: ai, s: tokenOverlap(e.text, a.text) });
+    }),
+  );
+  pairs.sort((x, y) => y.s - x.s || x.e - y.e || x.a - y.a);
+  const takenE = new Map<number, number>();
+  for (const p of pairs) {
+    if (takenE.has(p.e) || used.has(p.a)) continue;
+    takenE.set(p.e, p.a);
+    used.add(p.a);
+  }
+  const matched: ItemMatch[] = [];
+  const unmatched: ExpectedItem[] = [];
+  expected.forEach((e, ei) => {
+    const ai = takenE.get(ei);
+    if (ai === undefined) unmatched.push(e);
+    else matched.push({ expected: e, actual: actual[ai] });
+  });
+  return { matched, unmatched };
+}
+
 export function scoreMeeting(expected: Expected, actual: Pick<ExtractionResult, "newItems" | "closes">): MeetingScore {
   const used = new Set<number>();
-  const correct: ItemMatch[] = [];
-  const missed: ExpectedItem[] = [];
-
-  for (const e of expected.newItems) {
-    let best = -1;
-    let bestScore = -1;
-    actual.newItems.forEach((a, i) => {
-      if (used.has(i) || !itemMatches(e, a)) return;
-      const s = tokenOverlap(e.text, a.text);
-      if (s > bestScore) {
-        best = i;
-        bestScore = s;
-      }
-    });
-    if (best === -1) missed.push(e);
-    else {
-      used.add(best);
-      correct.push({ expected: e, actual: actual.newItems[best] });
-    }
-  }
+  // Required and optional items compete in one ranking, so an actual item goes to the expected item it fits best.
+  const required = new Set(expected.newItems);
+  const all = matchAll([...expected.newItems, ...(expected.optionalItems ?? [])], actual.newItems, used);
+  const correct = all.matched.filter((m) => required.has(m.expected));
+  const optional = all.matched.filter((m) => !required.has(m.expected));
+  const missed = all.unmatched.filter((e) => required.has(e));
   const wrong = actual.newItems.filter((_, i) => !used.has(i));
 
   const expectedCloses = new Set(expected.closes);
+  const optionalIds = new Set((expected.optionalCloses ?? []).filter((id) => !expectedCloses.has(id)));
   const actualCloses = new Set(actual.closes.map((c) => c.itemId));
   return {
     correct,
     missed,
     wrong,
+    optional,
     correctCloses: [...actualCloses].filter((id) => expectedCloses.has(id)),
-    wrongCloses: [...actualCloses].filter((id) => !expectedCloses.has(id)),
+    optionalCloses: [...actualCloses].filter((id) => optionalIds.has(id)),
+    wrongCloses: [...actualCloses].filter((id) => !expectedCloses.has(id) && !optionalIds.has(id)),
     missedCloses: [...expectedCloses].filter((id) => !actualCloses.has(id)),
   };
 }
@@ -158,7 +197,15 @@ export interface Totals {
   precision: number;
   /** Over items and closes together. 1 when nothing was expected. */
   recall: number;
+  /** Items only. */
+  itemPrecision: number;
+  itemRecall: number;
+  /** Closes only. */
+  closePrecision: number;
+  closeRecall: number;
 }
+
+const ratio = (hits: number, total: number) => (total === 0 ? 1 : hits / total);
 
 export function totals(scores: MeetingScore[]): Totals {
   const sum = (f: (s: MeetingScore) => number) => scores.reduce((n, s) => n + f(s), 0);
@@ -171,12 +218,14 @@ export function totals(scores: MeetingScore[]): Totals {
     missedCloses: sum((s) => s.missedCloses.length),
   };
   const hits = t.correct + t.correctCloses;
-  const predicted = hits + t.wrong + t.wrongCloses;
-  const expected = hits + t.missed + t.missedCloses;
   return {
     ...t,
-    precision: predicted === 0 ? 1 : hits / predicted,
-    recall: expected === 0 ? 1 : hits / expected,
+    precision: ratio(hits, hits + t.wrong + t.wrongCloses),
+    recall: ratio(hits, hits + t.missed + t.missedCloses),
+    itemPrecision: ratio(t.correct, t.correct + t.wrong),
+    itemRecall: ratio(t.correct, t.correct + t.missed),
+    closePrecision: ratio(t.correctCloses, t.correctCloses + t.wrongCloses),
+    closeRecall: ratio(t.correctCloses, t.correctCloses + t.missedCloses),
   };
 }
 
