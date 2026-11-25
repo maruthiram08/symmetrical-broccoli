@@ -41,6 +41,8 @@ struct Server {
     want_show: AtomicBool,
     /// What the window shows now (None before it exists).
     page: Mutex<Option<Page>>,
+    /// Quick add was pressed before the app page loaded: open it with the capture input.
+    want_capture: AtomicBool,
 }
 
 // ---------- a tiny HTTP client for 127.0.0.1 (no extra crates) ----------
@@ -309,6 +311,9 @@ fn set_page(app: &AppHandle, page: &Page) -> bool {
     }
     let url = match page {
         Page::Starting => local_page(""),
+        Page::App if state.want_capture.swap(false, Ordering::SeqCst) => {
+            format!("{APP_URL}/?capture=1").parse().expect("valid url")
+        }
         Page::App => APP_URL.parse().expect("valid url"),
         Page::Error(title, detail) => local_page(&format!(
             "?title={}&detail={}",
@@ -474,6 +479,24 @@ fn check_meetings_now() {
     );
 }
 
+/// Quick add: bring the window forward on the one-line capture input (src/components/QuickCapture.tsx).
+fn quick_add(app: &AppHandle) {
+    show_window(app);
+    let on_app = *app.state::<Server>().page.lock().unwrap() == Some(Page::App);
+    match app.get_webview_window(WINDOW) {
+        Some(w) if on_app => {
+            if let Err(e) = w.eval("window.dispatchEvent(new CustomEvent('db:capture'))") {
+                eprintln!("[daily-brief] quick add: {e}");
+            }
+        }
+        // Still starting: the app page opens with the input once the server answers.
+        _ => app
+            .state::<Server>()
+            .want_capture
+            .store(true, Ordering::SeqCst),
+    }
+}
+
 fn quit(app: &AppHandle) {
     app.state::<Server>().quitting.store(true, Ordering::SeqCst);
     stop_server(app);
@@ -483,6 +506,7 @@ fn quit(app: &AppHandle) {
 fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
     let at_login = app.autolaunch().is_enabled().unwrap_or(false);
     let open = MenuItem::with_id(app, "open", "Open Daily brief", true, None::<&str>)?;
+    let quick = MenuItem::with_id(app, "quick", "Quick add…", true, None::<&str>)?;
     let browser = MenuItem::with_id(app, "browser", "Open in browser", true, None::<&str>)?;
     let check = MenuItem::with_id(app, "check", "Check meetings now", true, None::<&str>)?;
     let login = CheckMenuItem::with_id(
@@ -498,7 +522,9 @@ fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
     let sep2 = PredefinedMenuItem::separator(app)?;
     let menu = Menu::with_items(
         app,
-        &[&open, &browser, &check, &sep1, &login, &sep2, &quit_item],
+        &[
+            &open, &quick, &browser, &check, &sep1, &login, &sep2, &quit_item,
+        ],
     )?;
 
     let login_item = login.clone();
@@ -510,6 +536,7 @@ fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
         .show_menu_on_left_click(true)
         .on_menu_event(move |app, event| match event.id.as_ref() {
             "open" => show_window(app),
+            "quick" => quick_add(app),
             "browser" => open_in_browser(APP_URL),
             "check" => check_meetings_now(),
             "login" => {

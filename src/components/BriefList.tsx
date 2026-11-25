@@ -6,6 +6,7 @@ import { Mark } from "./Mark";
 import { QuotePeek } from "./QuotePeek";
 import { HandoffSlot } from "./HandoffSlot";
 import { StartThisButton } from "./StartThis";
+import { EditButton, SnoozeMenu, StarToggle } from "./ItemTools";
 
 function Act({ id, status, label, back }: { id: string; status: "done" | "wrong" | "open"; label: string; back?: string }) {
   return (
@@ -13,7 +14,7 @@ function Act({ id, status, label, back }: { id: string; status: "done" | "wrong"
       <input type="hidden" name="id" value={id} />
       <input type="hidden" name="status" value={status} />
       {back ? <input type="hidden" name="back" value={back} /> : null}
-      <button className="db-act" type="submit">{label}</button>
+      <button className="db-act" type="submit" data-key-act={status}>{label}</button>
     </form>
   );
 }
@@ -26,14 +27,26 @@ export function BriefItem({ line, back }: { line: BriefLine; back?: string }) {
     ? withPerson(line.text, at, line.person.length, line.kind === "owe")
     : line.text;
   const personLink = line.person && at < 0 ? <PersonLink name={line.person} /> : null;
+  const actionable = line.kind !== "decision";
   return (
-    <div className={`db-item db-item--${line.kind}`}>
+    <div
+      className={`db-item db-item--${line.kind}${line.starred ? " db-item--starred" : ""}${line.manual ? " db-item--manual" : ""}`}
+      data-item-id={line.itemId}
+    >
       <span className="db-item__icon"><Mark kind={mark} /></span>
       <span className="db-item__text">{text}</span>
       <span className="db-item__side">
+        {actionable && line.starred ? <StarToggle itemId={line.itemId} starred /> : null}
         {late ? <span className="db-item__late">{line.lateLabel}</span> : line.dueLabel ? <span className="db-item__time">{line.dueLabel}</span> : null}
       </span>
       <span className="db-item__meta">
+        {line.manual ? (
+          <>
+            <span className="db-mine">added by you</span>
+            {line.note ? <span className="db-item__note">· {line.note}</span> : null}
+            {personLink ? <span className="db-item__src">· {personLink}</span> : null}
+          </>
+        ) : <>
         <QuotePeek
           quote={line.quote}
           kind={line.kind}
@@ -44,11 +57,17 @@ export function BriefItem({ line, back }: { line: BriefLine; back?: string }) {
         />
         {personLink ? <span className="db-item__src">· {personLink}</span> : null}
         <span className="db-item__src">· {line.meetingTitle}{line.meetingTime ? `, ${line.meetingTime}` : ""}</span>
+        </>}
       </span>
       <span className="db-item__acts">
-        {line.kind !== "decision" ? <StartThisButton itemId={line.itemId} /> : null}
-        {line.kind !== "decision" ? <Act id={line.itemId} status="done" label="Done" back={back} /> : null}
-        <Act id={line.itemId} status="wrong" label="Wrong" back={back} />
+        {actionable && !line.starred ? <StarToggle itemId={line.itemId} starred={false} /> : null}
+        {actionable ? <SnoozeMenu itemId={line.itemId} snoozedUntil={line.snoozedUntil} /> : null}
+        {line.manual && line.kind !== "decision" ? (
+          <EditButton edit={{ id: line.itemId, kind: line.kind, text: line.text, person: line.person, dueAt: line.dueAt ?? null, note: line.note ?? null }} />
+        ) : null}
+        {actionable ? <StartThisButton itemId={line.itemId} /> : null}
+        {actionable ? <Act id={line.itemId} status="done" label="Done" back={back} /> : null}
+        {line.manual ? null : <Act id={line.itemId} status="wrong" label="Wrong" back={back} />}
       </span>
       {line.kind !== "decision" ? <HandoffSlot line={line} /> : null}
     </div>

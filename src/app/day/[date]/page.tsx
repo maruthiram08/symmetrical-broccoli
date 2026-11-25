@@ -1,7 +1,9 @@
 import { notFound, redirect } from "next/navigation";
 import { Shell } from "@/components/Shell";
 import { dateLabel } from "@/lib/brief/time";
-import { getStore, me } from "@/server/local/app";
+import { me } from "@/server/local/app";
+import { readDayNote } from "@/server/local/notes";
+import { DayNotes } from "@/components/DayNotes";
 import { notesDir } from "@/server/local/paths";
 import { pastDays } from "../../_lib/days";
 
@@ -13,9 +15,9 @@ export default async function Day({ params }: { params: Promise<{ date: string }
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) notFound();
   const user = await me();
   if (!user) redirect("/setup");
-  const brief = (await getStore().listBriefs(user.id)).find((b) => b.date === date);
-  if (!brief) notFound();
-  const body = brief.markdown.replace(/^---[\s\S]*?---\n+/, "").replace(/^# .*\n+/, "");
+  const note = await readDayNote(user.id, date);
+  if (!note) notFound();
+  const body = note.brief.replace(/^---[\s\S]*?---\n+/, "").replace(/^# .*\n+/, "");
   return (
     <Shell days={await pastDays(user.id, "")} current={date}>
       <h1 className="db-title">{dateLabel(date)}</h1>
@@ -23,6 +25,7 @@ export default async function Day({ params }: { params: Promise<{ date: string }
         <span className="db-mono">{`${notesDir().replace(/^\/Users\/[^/]+/, "~")}/${date}.md`}</span>
       </p>
       <pre className="db-md">{body}</pre>
+      <DayNotes key={date} date={date} initial={note.notes} />
     </Shell>
   );
 }

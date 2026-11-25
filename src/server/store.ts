@@ -1,4 +1,5 @@
 import type { Connection, Item, LastLook, Meeting, UpcomingCache, User } from "@/lib/types";
+import { manualItem, type ManualInput } from "@/lib/capture/items";
 
 /**
  * Data access used by the jobs. Two implementations:
@@ -78,7 +79,7 @@ export class MemoryStore implements Store {
   async getMeeting(id: string) { return this.meetings.get(id) ?? null; }
   async commitExtraction({ meetingId, userId, newItems, closes, at }: Parameters<Store["commitExtraction"]>[0]) {
     for (const n of newItems) {
-      const item: Item = { ...n, id: this.newId(), userId, status: "open", closedByMeetingId: null, closeQuote: null, createdAt: at, closedAt: null };
+      const item: Item = { ...n, source: "extracted", id: this.newId(), userId, status: "open", closedByMeetingId: null, closeQuote: null, createdAt: at, closedAt: null };
       this.items.set(item.id, item);
     }
     for (const c of closes) {
@@ -95,6 +96,21 @@ export class MemoryStore implements Store {
     const it = this.items.get(itemId);
     if (it) Object.assign(it, { status, closedAt: status === "open" ? null : at });
   }
+  /** Add an item by hand (source "manual"). Not part of Store: only the local app adds them. */
+  async addManualItem(userId: string, input: ManualInput, at: string): Promise<Item> {
+    const item = manualItem(this.newId(), userId, input, at);
+    this.items.set(item.id, item);
+    return item;
+  }
+  /** Change an item's own fields: text, person, due and note (manual items), star and snooze (any). */
+  async updateItem(itemId: string, patch: Partial<Pick<Item, "kind" | "text" | "person" | "dueAt" | "note" | "starred" | "snoozedUntil">>): Promise<Item | null> {
+    const it = this.items.get(itemId);
+    if (!it) return null;
+    Object.assign(it, patch);
+    return it;
+  }
+  /** Delete an item outright. The app only offers it for manual items; extracted ones are marked Wrong. */
+  async deleteItem(itemId: string): Promise<boolean> { return this.items.delete(itemId); }
   async getBrief(userId: string, date: string) { const b = this.briefs.get(`${userId}:${date}`); return b ? { sentAt: b.sentAt } : null; }
   async saveBrief(userId: string, date: string, markdown: string, sentAt: string | null, emailId: string | null) { this.briefs.set(`${userId}:${date}`, { date, markdown, sentAt, emailId }); }
   async listBriefs(userId: string) { return [...this.briefs.entries()].filter(([k]) => k.startsWith(userId + ":")).map(([, v]) => ({ date: v.date, markdown: v.markdown })); }

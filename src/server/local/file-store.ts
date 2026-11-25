@@ -4,6 +4,7 @@ import { dirname } from "node:path";
 import type { OAuthClientInformationMixed } from "@modelcontextprotocol/sdk/shared/auth.js";
 import type { Connection, Item, LastLook, Meeting, UpcomingCache, User } from "@/lib/types";
 import { MemoryStore } from "@/server/store";
+import { isManual, migrateItem, type ManualInput } from "@/lib/capture/items";
 import type { OAuthClientStore } from "@/server/wispr/oauth";
 
 interface State {
@@ -31,8 +32,11 @@ export interface Mark {
   kind: Item["kind"];
   text: string;
   quote: string;
-  status: Exclude<Item["status"], "open">;
+  /** "open" only when the mark keeps a star or snooze. */
+  status: Item["status"];
   closedAt: string | null;
+  starred?: boolean;
+  snoozedUntil?: string | null;
 }
 
 const words = (s: string) =>
@@ -65,6 +69,8 @@ export function applyMarks(items: Item[], marks: Mark[]): Mark[] {
     if (best && bestScore >= 0.4) {
       used.add(best.id);
       Object.assign(best, { status: m.status, closedAt: m.closedAt, closedByMeetingId: null, closeQuote: null });
+      if (m.starred) best.starred = true;
+      if (m.snoozedUntil) best.snoozedUntil = m.snoozedUntil;
     } else left.push(m);
   }
   return left;
@@ -100,7 +106,7 @@ export class FileStore extends MemoryStore implements OAuthClientStore {
     this.users = new Map(s.users.map((u) => [u.id, u]));
     this.connections = new Map(s.connections.map((c) => [c.userId, c]));
     this.meetings = new Map(s.meetings.map((m) => [m.id, m]));
-    this.items = new Map(s.items.map((i) => [i.id, i]));
+    this.items = new Map(s.items.map((i) => [i.id, migrateItem(i)]));
     this.briefs = new Map(s.briefs);
     this.oauthClients = new Map(s.oauthClients ?? []);
     this.events = s.events ?? [];
@@ -183,6 +189,9 @@ export class FileStore extends MemoryStore implements OAuthClientStore {
     this.flush();
   }
   async setItemStatus(itemId: string, status: Item["status"], at: string) { this.reload(); await super.setItemStatus(itemId, status, at); this.flush(); }
+  async addManualItem(userId: string, input: ManualInput, at: string) { this.reload(); const i = await super.addManualItem(userId, input, at); this.flush(); return i; }
+  async updateItem(...a: Parameters<MemoryStore["updateItem"]>) { this.reload(); const i = await super.updateItem(...a); if (i) this.flush(); return i; }
+  async deleteItem(itemId: string) { this.reload(); const ok = await super.deleteItem(itemId); if (ok) this.flush(); return ok; }
   async saveBrief(...a: Parameters<MemoryStore["saveBrief"]>) { this.reload(); await super.saveBrief(...a); this.flush(); }
   async logEvent(e: Parameters<MemoryStore["logEvent"]>[0]) { this.reload(); await super.logEvent({ ...e, at: new Date().toISOString() }); this.flush(); }
   async getLastLook(userId: string) { this.reload(); return super.getLastLook(userId); }
@@ -200,11 +209,14 @@ export class FileStore extends MemoryStore implements OAuthClientStore {
     this.reload();
     // Keep what the user marked by hand so the re-read doesn't undo it.
     for (const i of this.items.values()) {
-      if (i.userId === userId && i.status !== "open" && !i.closedByMeetingId) {
-        this.marks.push({ userId, meetingId: i.meetingId, kind: i.kind, text: i.text, quote: i.quote, status: i.status, closedAt: i.closedAt });
+      if (i.userId !== userId || isManual(i)) continue;
+      if ((i.status !== "open" && !i.closedByMeetingId) || i.starred || i.snoozedUntil) {
+        const status = i.closedByMeetingId ? "open" : i.status; // a close by a meeting comes back on the re-read
+        this.marks.push({ userId, meetingId: i.meetingId, kind: i.kind, text: i.text, quote: i.quote, status, closedAt: status === "open" ? null : i.closedAt, starred: i.starred || undefined, snoozedUntil: i.snoozedUntil || undefined });
       }
     }
-    for (const [id, i] of this.items) if (i.userId === userId) this.items.delete(id);
+    // Your own items aren't read from meetings: they stay.
+    for (const [id, i] of this.items) if (i.userId === userId && !isManual(i)) this.items.delete(id);
     let n = 0;
     for (const m of this.meetings.values()) if (m.userId === userId) { m.processedAt = null; n++; }
     this.flush();
@@ -222,6 +234,7 @@ export class FileStore extends MemoryStore implements OAuthClientStore {
 export function dedupeBatches(items: Map<string, Item>): boolean {
   const byMeeting = new Map<string, Map<string, Item[]>>();
   for (const i of items.values()) {
+    if (isManual(i)) continue; // your own items have no meeting batch
     const batches = byMeeting.get(i.meetingId) ?? new Map<string, Item[]>();
     batches.set(i.createdAt, [...(batches.get(i.createdAt) ?? []), i]);
     byMeeting.set(i.meetingId, batches);

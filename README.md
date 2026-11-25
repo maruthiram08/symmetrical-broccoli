@@ -17,6 +17,12 @@ While the app is running it:
 - extracts what you owe, what you're waiting on and decisions, and closes items when a later meeting shows they're done,
 - at your brief time, writes `~/Daily Brief/YYYY-MM-DD.md`, adds the day's decisions to `decisions.md`, and shows a Mac notification. If the Mac was asleep, it catches up within an hour of waking.
 
+## Add your own, star and snooze
+
+- Press **c** anywhere (or ⌘K › Add…, or **Quick add…** in the menu bar) and type one line: "send Nitin the deck by Fri", "Tarun owes me API spec tomorrow". It's read on your Mac, no AI: kind, person and due date (today, tomorrow, a weekday or a date), which you can change before saving. Items you add show "added by you" and can be edited or deleted.
+- On any list: **j**/**k** move, **s** star (pins it to the top), **z** snooze until a day, **d** done, **w** wrong, **e** edit your own, **F** follow up (Start this).
+- On an earlier day's page, **Your notes** saves into that day's `.md` between `<!-- daily-brief:your-notes -->` markers, and stays when the brief is written again.
+
 ## Your data
 
 `~/Daily Brief/` (change with `DAILY_BRIEF_DIR`):

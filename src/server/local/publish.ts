@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { renderDecisionsAppend } from "@/lib/brief/markdown";
+import { carryNotes } from "@/lib/capture/notes";
 import type { BriefModel, User } from "@/lib/types";
 
 /** The weekly recap handed over on Fridays: written as week-YYYY-Www.md. */
@@ -21,7 +22,8 @@ export async function publishLocal(
 ): Promise<{ id: string }> {
   mkdirSync(dir, { recursive: true });
   const notePath = join(dir, `${model.date}.md`);
-  writeFileSync(notePath, markdown);
+  // Your notes section (written from the day page) survives the brief being written again.
+  writeFileSync(notePath, carryNotes(markdown, existsSync(notePath) ? readFileSync(notePath, "utf8") : null));
 
   const decisions = renderDecisionsAppend(model);
   const decisionsPath = join(dir, "decisions.md");

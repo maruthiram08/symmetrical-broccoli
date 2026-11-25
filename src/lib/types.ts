@@ -70,7 +70,18 @@ export interface Item {
   closeQuote: string | null;
   createdAt: string;
   closedAt: string | null;
+  /** Where the item came from. Missing on items stored before manual items existed: those are "extracted". */
+  source?: ItemSource;
+  /** Your own note on the item (manual items). */
+  note?: string | null;
+  /** Pinned to the top of its list. */
+  starred?: boolean;
+  /** Local date "YYYY-MM-DD": hidden from lists until that day. */
+  snoozedUntil?: string | null;
 }
+
+/** "extracted" from a meeting, or "manual": added by you. */
+export type ItemSource = "extracted" | "manual";
 
 /** What one extraction run returns for one meeting. */
 export interface ExtractionResult {
@@ -124,6 +135,14 @@ export interface BriefLine {
   meetingId?: string;
   /** For the quote peek. Optional: lines built before it simply show less. */
   peek?: QuotePeekInfo;
+  /** Added by you rather than read from a meeting. */
+  manual?: boolean;
+  note?: string | null;
+  starred?: boolean;
+  /** For editing a manual item: the raw due date. */
+  dueAt?: string | null;
+  /** Set on lines shown in a Snoozed list: the local date it comes back. */
+  snoozedUntil?: string | null;
 }
 
 export interface QuotePeekInfo {

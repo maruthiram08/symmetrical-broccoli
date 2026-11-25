@@ -5,6 +5,8 @@ import { Mark } from "@/components/Mark";
 import { Shell } from "@/components/Shell";
 import { initials, normalizeName, personDetail } from "@/lib/people";
 import { me } from "@/server/local/app";
+import { localDate } from "@/lib/brief/time";
+import { isSnoozed, starredFirst } from "@/lib/capture/items";
 import { pastDays } from "../../_lib/days";
 import { loadAll, shortDate, toClosedLine, toLine } from "../../_lib/lines";
 
@@ -17,8 +19,12 @@ export default async function Person({ params }: { params: Promise<{ name: strin
   if (!user) redirect("/setup");
   const now = new Date();
   const { items, meetings } = await loadAll(user);
-  const d = personDetail(name, { items, meetings, now, self: [user.name, ...user.aliases] });
-  if (!d) notFound();
+  const found = personDetail(name, { items, meetings, now, self: [user.name, ...user.aliases] });
+  if (!found) notFound();
+  // Snoozed items wait for their day; starred ones go first.
+  const today = localDate(now, user.timeZone);
+  const awake = (xs: typeof found.youOwe) => starredFirst(xs.filter((i) => !isSnoozed(i, today)));
+  const d = { ...found, youOwe: awake(found.youOwe), waitingOn: awake(found.waitingOn) };
   if (decodeURIComponent(name) !== d.person.slug) redirect(`/people/${encodeURIComponent(d.person.slug)}`);
 
   // other spellings worth showing: not just a change of case
