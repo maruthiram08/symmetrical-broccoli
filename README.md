@@ -27,6 +27,24 @@ While the app is running it:
 
 To start over, quit the app and delete `.daily-brief/`.
 
+## Ask Claude about your brief
+
+A local MCP server lets Claude Desktop or Claude Code read your brief and close items: "what do I owe Tarun?", "what did we decide about the dividend banner?", "mark the venue booking done".
+
+```bash
+npm run mcp:install   # prints the config to copy; it changes nothing
+```
+
+It prints a `daily-brief` entry for Claude Desktop's `claude_desktop_config.json` (Claude > Settings > Developer > Edit Config) and the line for Claude Code:
+
+```bash
+claude mcp add daily-brief -- npm --prefix /path/to/daily-brief run -s mcp
+```
+
+Tools: `today` (the Today screen), `list_open` (by kind and person), `person` (everything with one person, fuzzy name), `search`, `decisions` (by topic and date), and `mark_item` (done / wrong / reopen, the same change as the buttons). Answers carry the item id, person, due date, meeting and the exact quote.
+
+It reads the same `state.json` as the app (`DAILY_BRIEF_DIR` works here too), re-reading it on every call, and the app picks up `mark_item` changes on its next read. It never calls the Anthropic API or Wispr Flow, and the app doesn't need to be running.
+
 ## Keep it running at login (optional)
 
 Save as `~/Library/LaunchAgents/app.dailybrief.plist`, fix the path, then `launchctl load ~/Library/LaunchAgents/app.dailybrief.plist`:
