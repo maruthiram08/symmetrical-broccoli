@@ -3,16 +3,21 @@ import { Field } from "@/components/Field";
 import { Page } from "@/components/Page";
 import { TimeZoneSelect } from "@/components/TimeZoneSelect";
 import { getStore, me } from "@/server/local/app";
-import { saveSetup } from "../actions";
-import { BRIEF_TIMES, formatBriefTime, timeZones } from "../_lib/time";
+import { pullMeetingsSince, saveSetup } from "../actions";
+import { pullState } from "@/server/local/scheduler";
+import { BRIEF_TIMES, formatBriefTime, timeZones, todayIn } from "../_lib/time";
 
 export const dynamic = "force-dynamic";
 
-export default async function Setup({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
+export default async function Setup({ searchParams }: { searchParams: Promise<{ error?: string; pull?: string }> }) {
   const user = await me();
   const conn = user ? await getStore().getConnection(user.id) : null;
   const connected = conn?.status === "active";
-  const { error } = await searchParams;
+  const { error, pull } = await searchParams;
+  const pulling = pullState()?.running ?? false;
+  const tz = user?.timeZone ?? "Asia/Kolkata";
+  const today = todayIn(tz);
+  const monthAgo = todayIn(tz, new Date(Date.now() - 30 * 24 * 60 * 60_000));
   // Guess from the browser only until the user has saved a name (i.e. first visit).
   const firstVisit = !user?.name;
   return (
@@ -55,6 +60,31 @@ export default async function Setup({ searchParams }: { searchParams: Promise<{ 
           </p>
         ) : null}
       </form>
+      {connected ? (
+        <form action={pullMeetingsSince} className="db-stack db-subsection">
+          <h2 className="db-section__title">Pull in older meetings</h2>
+          <Field
+            id="since"
+            name="since"
+            type="date"
+            label="All meetings since"
+            hint="Reads every Wispr Flow meeting from this date on. Meetings already here are skipped. Each new meeting is one AI read, so a long range takes a few minutes."
+            max={today}
+            defaultValue={monthAgo}
+            required
+          />
+          <div className="db-row">
+            <Button type="submit" disabled={pulling}>
+              {pulling ? "Pulling meetings…" : "Pull meetings"}
+            </Button>
+          </div>
+          {pull === "bad" ? (
+            <p className="db-note db-note--error" role="alert">
+              Pick a date that isn&apos;t in the future.
+            </p>
+          ) : null}
+        </form>
+      ) : null}
     </Page>
   );
 }

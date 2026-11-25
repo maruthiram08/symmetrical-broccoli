@@ -1,8 +1,10 @@
 import { redirect } from "next/navigation";
 import { BriefItem, ClosedItem, Section } from "@/components/BriefList";
+import { AutoRefresh } from "@/components/AutoRefresh";
 import { Shell } from "@/components/Shell";
 import { buildBrief } from "@/lib/brief/build";
 import { getStore, me } from "@/server/local/app";
+import { pullState } from "@/server/local/scheduler";
 import { checkMeetingsNow, setStatus } from "./actions";
 import { formatBriefTime } from "./_lib/time";
 import { pastDays } from "./_lib/days";
@@ -19,6 +21,10 @@ export default async function Today({ searchParams }: { searchParams: Promise<{ 
   const b = await buildBrief(store, user, new Date());
   const { undo, was } = await searchParams;
   const n = (k: number, one: string, many = one + "s") => `${k} ${k === 1 ? one : many}`;
+  const pull = pullState();
+  const unread = (await store.listUnprocessedMeetings(user.id)).length;
+  const pullRecent = pull && Date.now() - Date.parse(pull.startedAt) < 60 * 60_000;
+  const pullDate = pull ? new Date(`${pull.date}T00:00:00Z`).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }) : "";
   const owedCount = b.youOwe.length ? `${b.youOwe.length}${b.wrap.late ? ` · ${b.wrap.late} late` : ""}` : undefined;
 
   return (
@@ -40,6 +46,23 @@ export default async function Today({ searchParams }: { searchParams: Promise<{ 
       {conn.status === "needs_reconnect" ? (
         <p className="db-banner" role="status">
           Wispr Flow signed you out, so new meetings aren&apos;t coming in. <a href="/api/wispr/connect">Reconnect</a>
+        </p>
+      ) : null}
+      {pull?.running ? (
+        <p className="db-banner" role="status">
+          {unread
+            ? `Pulling in meetings since ${pullDate}: ${n(unread, "meeting")} left to read. New promises appear here as they're read.`
+            : `Finding your meetings since ${pullDate}…`}
+          <AutoRefresh seconds={8} />
+        </p>
+      ) : pullRecent && pull ? (
+        <p className="db-banner" role="status">
+          {pull.error ?? `Pulled in your meetings since ${pullDate}: ${n(pull.found ?? 0, "meeting")} found.`}
+        </p>
+      ) : unread ? (
+        <p className="db-banner" role="status">
+          {`Reading ${n(unread, "meeting")}. New promises appear here as they're read.`}
+          <AutoRefresh seconds={8} />
         </p>
       ) : null}
       {undo ? (

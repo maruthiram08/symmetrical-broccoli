@@ -6,8 +6,8 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { getStore, me, saveMe, wisprAuthContext } from "@/server/local/app";
 import { PENDING_COOKIE, sealPending, startWisprAuth } from "@/server/wispr/oauth";
-import { checkNow } from "@/server/local/scheduler";
-import { BRIEF_TIMES, isValidTimeZone } from "./_lib/time";
+import { checkNow, startPullSince } from "@/server/local/scheduler";
+import { BRIEF_TIMES, isValidTimeZone, startOfDayIso, todayIn } from "./_lib/time";
 
 const setupSchema = z.object({
   name: z.string().trim().min(1).max(80),
@@ -67,6 +67,18 @@ export async function setStatus(formData: FormData): Promise<void> {
 
 export async function checkMeetingsNow(): Promise<void> {
   await checkNow();
+  revalidatePath("/");
+  redirect("/");
+}
+
+/** Settings: pull in every meeting since a date. Runs in the background; Today shows progress. */
+export async function pullMeetingsSince(formData: FormData): Promise<void> {
+  const user = await me();
+  if (!user) redirect("/setup");
+  const date = String(formData.get("since") ?? "");
+  const since = startOfDayIso(date, user.timeZone);
+  if (!since || date > todayIn(user.timeZone)) redirect("/setup?pull=bad");
+  startPullSince(user.id, date, since);
   revalidatePath("/");
   redirect("/");
 }

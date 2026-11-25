@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { buildDeps, me, wisprAuthContext } from "@/server/local/app";
 import { appUrl } from "@/server/local/paths";
 import { backfillUser } from "@/server/jobs/backfill";
+import { runExclusive } from "@/server/local/scheduler";
 import { logJobError } from "@/server/jobs/types";
 import { finishWisprAuth, openPending, PENDING_COOKIE } from "@/server/wispr/oauth";
 
@@ -35,7 +36,7 @@ export async function GET(req: Request) {
 
   // The app keeps running, so a slow backfill just carries on after we redirect.
   const deps = buildDeps();
-  const backfill = backfillUser(deps, user.id).catch(async (e) => {
+  const backfill = runExclusive(() => backfillUser(deps, user.id)).catch(async (e) => {
     await logJobError(deps, user.id, "backfill", e);
     return null;
   });

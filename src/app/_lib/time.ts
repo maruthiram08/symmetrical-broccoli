@@ -28,3 +28,31 @@ export function nextBriefDay(briefTime: string, timeZone: string, now: Date = ne
   const parts = new Intl.DateTimeFormat("en-GB", { timeZone, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(now);
   return parts < briefTime ? "today" : "tomorrow";
 }
+
+/** Today's date as YYYY-MM-DD in `timeZone`. */
+export function todayIn(timeZone: string, now: Date = new Date()): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
+}
+
+/** The instant midnight starts on `date` (YYYY-MM-DD) in `timeZone`, as an ISO string. Null if the date is invalid. */
+export function startOfDayIso(date: string, timeZone: string): string | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+  if (!m) return null;
+  const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  const utc = Date.UTC(y, mo - 1, d);
+  const check = new Date(utc);
+  if (check.getUTCFullYear() !== y || check.getUTCMonth() !== mo - 1 || check.getUTCDate() !== d) return null;
+  // Offset of `timeZone` from UTC at a given instant, in ms.
+  const offset = (t: number) => {
+    const p = Object.fromEntries(
+      new Intl.DateTimeFormat("en-US", { timeZone, hourCycle: "h23", year: "numeric", month: "numeric", day: "numeric", hour: "numeric", minute: "numeric", second: "numeric" })
+        .formatToParts(new Date(t))
+        .map((x) => [x.type, x.value]),
+    );
+    return Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute, +p.second) - t;
+  };
+  // Two passes so a DST change near midnight lands on the right offset.
+  let t = utc - offset(utc);
+  t = utc - offset(t);
+  return new Date(t).toISOString();
+}
