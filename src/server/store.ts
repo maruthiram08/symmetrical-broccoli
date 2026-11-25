@@ -1,4 +1,4 @@
-import type { Connection, Item, LastLook, Meeting, User } from "@/lib/types";
+import type { Connection, Item, LastLook, Meeting, UpcomingCache, User } from "@/lib/types";
 
 /**
  * Data access used by the jobs. Two implementations:
@@ -30,6 +30,9 @@ export interface Store {
   listBriefs(userId: string): Promise<Array<{ date: string; markdown: string }>>;
   logEvent(e: { userId: string | null; type: string; payload?: unknown; tokensIn?: number; tokensOut?: number; costInr?: number }): Promise<void>;
   deleteUser(userId: string): Promise<void>;
+  /** Upcoming meetings cached by the poll (prep card). Optional: stores without it skip prep. */
+  saveUpcoming?(userId: string, cache: UpcomingCache): Promise<void>;
+  getUpcoming?(userId: string): Promise<UpcomingCache | null>;
 }
 
 let seq = 0;
@@ -45,6 +48,10 @@ export class MemoryStore implements Store {
   events: Array<Record<string, unknown>> = [];
   /** When each user last looked at Today. Not part of Store: only the local app reads it. */
   looks = new Map<string, LastLook>();
+  /** Upcoming meetings per user, from the last poll. */
+  upcoming = new Map<string, UpcomingCache>();
+  /** "userId:calendarId:startsAt" of meetings already announced with a prep notification. */
+  prepNotified = new Set<string>();
 
   addUser(u: Partial<User> & { email: string }): User {
     const user: User = { id: this.newId(), name: "", aliases: [], timeZone: "Asia/Kolkata", briefTime: "18:00", createdAt: new Date().toISOString(), ...u };
@@ -94,8 +101,17 @@ export class MemoryStore implements Store {
   async logEvent(e: Record<string, unknown>) { this.events.push(e); }
   async getLastLook(userId: string): Promise<LastLook | null> { return this.looks.get(userId) ?? null; }
   async saveLastLook(userId: string, look: LastLook): Promise<void> { this.looks.set(userId, look); }
+  async saveUpcoming(userId: string, cache: UpcomingCache) { this.upcoming.set(userId, cache); }
+  async getUpcoming(userId: string) { return this.upcoming.get(userId) ?? null; }
+  /** Record a prep notification. Returns false when this meeting was already announced. */
+  async markPrepNotified(key: string): Promise<boolean> {
+    if (this.prepNotified.has(key)) return false;
+    this.prepNotified.add(key);
+    return true;
+  }
   async deleteUser(userId: string) {
-    this.users.delete(userId); this.connections.delete(userId); this.looks.delete(userId);
+    this.users.delete(userId); this.connections.delete(userId); this.looks.delete(userId); this.upcoming.delete(userId);
+    for (const k of this.prepNotified) if (k.startsWith(userId + ":")) this.prepNotified.delete(k);
     for (const [k, m] of this.meetings) if (m.userId === userId) this.meetings.delete(k);
     for (const [k, i] of this.items) if (i.userId === userId) this.items.delete(k);
     for (const k of this.briefs.keys()) if (k.startsWith(userId + ":")) this.briefs.delete(k);

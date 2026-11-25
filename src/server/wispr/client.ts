@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import type { UpcomingMeeting } from "@/lib/types";
 import { ensureFreshAccessToken, WisprOAuthProvider, type RefreshFn, type WisprAuthContext } from "./oauth";
 
 export interface WisprMeeting {
@@ -11,6 +12,8 @@ export interface WisprMeeting {
   /** false while Wispr Flow is still recording/finalizing. Poll does not queue these yet. */
   finalized: boolean;
   hasTranscript: boolean;
+  /** The meeting's notes page (share_link), when Wispr Flow has one. */
+  link?: string | null;
 }
 
 export interface WisprClient {
@@ -18,6 +21,8 @@ export interface WisprClient {
   listMeetingsSince(sinceIso: string): Promise<WisprMeeting[]>;
   /** Full plaintext transcript ("" when there is none). Never store or log it. */
   getTranscript(providerMeetingId: string): Promise<string>;
+  /** Calendar events starting in the next `windowHours`, soonest first. Optional: older fakes lack it. */
+  listUpcoming?(windowHours: number): Promise<UpcomingMeeting[]>;
   close?(): Promise<void>;
 }
 
@@ -50,6 +55,15 @@ export const WISPR_TOOLS = {
       view_content: { char_limit: 1 }, // we never use the notes body
     }),
   },
+  /**
+   * list_upcoming_meetings: { window_hours (int, >= 1, max 168), limit (max 50), cursor }.
+   * Schema read from the Wispr Flow connector's tool list on 2026-11-25. Returns events soonest
+   * first with up to 5 structured attendees each; the exact field names are parsed defensively.
+   */
+  listUpcoming: {
+    name: "list_upcoming_meetings",
+    args: (windowHours: number) => ({ window_hours: Math.max(1, Math.min(168, Math.ceil(windowHours))), limit: 50 }),
+  },
   /** Results with shared=true are someone else's notes. OPEN QUESTION: include them? Off for sprint 1. */
   includeShared: false,
   /** A meeting still unfinalized after this long is queued anyway so it can't block lastSeenAt forever. */
@@ -76,6 +90,7 @@ const MeetingSchema = z
     finalized: z.boolean().nullish(),
     has_transcript: z.boolean().nullish(),
     shared: z.boolean().nullish(),
+    share_link: z.string().nullish(),
   })
   .passthrough();
 
@@ -84,6 +99,8 @@ const SearchResultSchema = z
     meetings: z.array(z.unknown()).optional(),
     results: z.array(z.unknown()).optional(),
     items: z.array(z.unknown()).optional(),
+    events: z.array(z.unknown()).optional(),
+    upcoming_meetings: z.array(z.unknown()).optional(),
   })
   .passthrough();
 
@@ -141,9 +158,54 @@ export function parseMeetings(payload: unknown): Array<WisprMeeting & { shared: 
       finalized: m.data.finalized !== false,
       hasTranscript: m.data.has_transcript !== false,
       shared: m.data.shared === true,
+      ...(httpsUrl(m.data.share_link) ? { link: httpsUrl(m.data.share_link) } : {}),
     });
   }
   return out;
+}
+
+/** Only a real https URL is kept; anything else is dropped rather than guessed. */
+function httpsUrl(s: string | null | undefined): string | null {
+  if (!s) return null;
+  try {
+    const u = new URL(s);
+    return u.protocol === "https:" ? u.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
+const UpcomingSchema = z
+  .object({
+    calendar_id: z.union([z.string(), z.number()]).nullish(),
+    id: z.union([z.string(), z.number()]).nullish(),
+    title: z.string().nullish(),
+    summary: z.string().nullish(),
+    start: z.union([z.string(), z.object({ dateTime: z.string().nullish(), date_time: z.string().nullish() }).passthrough()]).nullish(),
+    start_time: z.string().nullish(),
+    starts_at: z.string().nullish(),
+    attendees: z.array(z.unknown()).nullish(),
+    participants: z.array(z.unknown()).nullish(),
+  })
+  .passthrough();
+
+/** list_upcoming_meetings payload -> upcoming meetings, soonest first. Junk rows are skipped. */
+export function parseUpcoming(payload: unknown): UpcomingMeeting[] {
+  const r = SearchResultSchema.safeParse(payload);
+  if (!r.success) return [];
+  const list = r.data.meetings ?? r.data.events ?? r.data.upcoming_meetings ?? r.data.results ?? r.data.items ?? [];
+  const out: UpcomingMeeting[] = [];
+  for (const raw of list) {
+    const m = UpcomingSchema.safeParse(raw);
+    if (!m.success) continue;
+    const id = m.data.calendar_id ?? m.data.id;
+    const start = typeof m.data.start === "string" ? m.data.start : m.data.start?.dateTime ?? m.data.start?.date_time;
+    const startsAt = toIso(start ?? m.data.start_time ?? m.data.starts_at);
+    if (id === null || id === undefined || !startsAt) continue;
+    const people = (m.data.attendees ?? m.data.participants ?? []).map(participantName).filter((x): x is string => !!x);
+    out.push({ calendarId: String(id), title: (m.data.title ?? m.data.summary)?.trim() || "Untitled meeting", startsAt, attendees: [...new Set(people)] });
+  }
+  return out.sort((a, b) => a.startsAt.localeCompare(b.startsAt));
 }
 
 const TRUNCATION = /(?:\n\n)?\(\.\.\.truncated, \d+ chars remaining; continue with view_transcript\.start_char=(\d+)\.\.\.\)\s*$/;
@@ -220,6 +282,7 @@ export class McpWisprClient implements WisprClient {
         seen.set(m.providerMeetingId, {
           providerMeetingId: m.providerMeetingId, title: m.title, startedAt: m.startedAt,
           participants: m.participants, finalized: m.finalized, hasTranscript: m.hasTranscript,
+          ...(m.link ? { link: m.link } : {}),
         });
       }
       // sort:"start" has no cursor: a full page means there may be older ones; narrow `until`.
@@ -243,6 +306,12 @@ export class McpWisprClient implements WisprClient {
       start = next;
     }
     return parts.join("");
+  }
+
+  async listUpcoming(windowHours: number): Promise<UpcomingMeeting[]> {
+    const tools = await this.tools();
+    const t = WISPR_TOOLS.listUpcoming;
+    return parseUpcoming(toolPayload(await tools.callTool(t.name, t.args(windowHours)), t.name));
   }
 
   async close(): Promise<void> {

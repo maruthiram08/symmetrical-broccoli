@@ -39,6 +39,7 @@ describe("parsing", () => {
       {
         providerMeetingId: "de74e5dc-62c0-44fc-98ce-8fff0ca9903c", title: "Corporate Actions Configuration Plan",
         startedAt: "2026-11-25T12:40:36.985Z", participants: [], finalized: true, hasTranscript: true, shared: false,
+        link: "https://notes.example/x",
       },
     ]);
   });
