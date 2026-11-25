@@ -110,6 +110,8 @@ export interface ClosedLine {
   itemId: string;
   text: string;
   closeQuote: string;
+  /** Who said the closing words, when known (the owner of a waiting item). */
+  person: string | null;
   closedInMeeting: string;
   closedAtTime: string;
 }

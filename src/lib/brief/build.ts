@@ -66,7 +66,7 @@ export async function buildBrief(store: Store, user: User, now: Date): Promise<B
   for (const i of items.filter((x) => x.status === "done" && inToday(x.closedAt) && x.closeQuote)) {
     const m = await meetingOf(i.closedByMeetingId);
     closedToday.push({
-      itemId: i.id, text: i.text, closeQuote: i.closeQuote!,
+      itemId: i.id, text: i.text, closeQuote: i.closeQuote!, person: i.kind === "waiting" ? i.person : null,
       closedInMeeting: m?.title ?? "a meeting", closedAtTime: m ? formatTime(m.startedAt, tz) : "",
     });
   }

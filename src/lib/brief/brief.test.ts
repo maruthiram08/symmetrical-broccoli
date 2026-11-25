@@ -70,7 +70,7 @@ describe("buildBrief", () => {
     expect(b.youOwe[0].meetingTime).toBe("1:51 PM");
     expect(b.youOwe[1].dueLabel).toBe("Tomorrow");
     expect(b.decisions.map((l) => l.text)).toEqual(["Ship the banner on Friday"]);
-    expect(b.closedToday).toEqual([{ itemId: deck.id, text: "Share the deck with Tarun", closeQuote: "Got the deck, thanks", closedInMeeting: "Dividend banner", closedAtTime: "1:51 PM" }]);
+    expect(b.closedToday).toEqual([{ itemId: deck.id, text: "Share the deck with Tarun", closeQuote: "Got the deck, thanks", person: null, closedInMeeting: "Dividend banner", closedAtTime: "1:51 PM" }]);
     expect(b.stillOpen.map((l) => l.text).sort()).toEqual(["Old thing one", "Tarun confirms timeline"]);
     expect(b.stillOpenCount).toBe(2);
     expect(b.wrap).toEqual({ meetings: 1, made: 2, kept: 1, late: 1 });

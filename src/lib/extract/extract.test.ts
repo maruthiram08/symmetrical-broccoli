@@ -30,7 +30,7 @@ const input: ExtractionInput = {
 };
 
 function fakeClient(toolInput: unknown, overrides: Partial<Anthropic.Message> = {}) {
-  const create = vi.fn(async (_body: Anthropic.MessageCreateParamsNonStreaming) => {
+  const create = vi.fn(async (body: Anthropic.MessageCreateParamsNonStreaming) => {
     return {
       id: "msg_test",
       type: "message",
