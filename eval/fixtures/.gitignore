@@ -1,0 +1,2 @@
+# Real fixtures are private meeting transcripts. Never commit them.
+*.json
