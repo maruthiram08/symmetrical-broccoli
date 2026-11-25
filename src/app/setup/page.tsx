@@ -41,7 +41,9 @@ export default async function Setup({ searchParams }: { searchParams: Promise<{ 
         </div>
         {error ? (
           <p className="db-note db-note--error" role="alert">
-            Something in the form didn&apos;t look right. Check it and try again.
+            {error === "wispr"
+              ? "Couldn't connect Wispr Flow. Try again."
+              : "Something in the form didn't look right. Check it and try again."}
           </p>
         ) : null}
       </form>
