@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { ButtonLink } from "@/components/Button";
 import { Page } from "@/components/Page";
 import { me } from "@/server/local/app";
@@ -5,6 +6,7 @@ import { notesDir } from "@/server/local/paths";
 import { formatBriefTime, nextBriefDay } from "../_lib/time";
 
 export const dynamic = "force-dynamic";
+export const metadata: Metadata = { title: "You're set" };
 
 function count(v: string | undefined): number | null {
   if (v === undefined || !/^\d{1,6}$/.test(v)) return null;

@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { BriefItem, ClosedItem, Section } from "@/components/BriefList";
 import { CloseMoment, SummaryLinks } from "@/components/CloseWrap";
@@ -22,6 +23,7 @@ function minutesUntil(iso: string, now: Date): string {
 }
 
 export const dynamic = "force-dynamic";
+export const metadata: Metadata = { title: { absolute: "Today · Daily brief" } };
 
 export default async function Today({ searchParams }: { searchParams: Promise<{ undo?: string; was?: string; meeting?: string }> }) {
   const user = await me();

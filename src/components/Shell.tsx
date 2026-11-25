@@ -2,15 +2,13 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { SearchIcon } from "./SearchIcon";
 import { Progress } from "./Progress";
+import { SideNav } from "./SideNav";
 
 /** Sidebar and reading column. `days` are past daily notes, newest first. */
 export function Shell({ days, current, children, footer, openCount, query }: { days: Array<{ date: string; label: string }>; current: string; children: ReactNode; footer?: ReactNode; openCount?: number; query?: string }) {
   return (
     <div className="db-shell">
-      <nav className="db-side" aria-label="Days">
-        <div className="db-side__brand">
-          <span><i aria-hidden="true" />Daily brief</span>
-        </div>
+      <SideNav brand={<span><i aria-hidden="true" />Daily brief</span>}>
         <form className="db-search" action="/search" role="search">
           <SearchIcon />
           <input id="db-search" className="db-search__input" type="search" name="q" defaultValue={query} placeholder="Search" aria-label="Search everything" autoComplete="off" />
@@ -31,7 +29,7 @@ export function Shell({ days, current, children, footer, openCount, query }: { d
           <Link className="db-nav" href="/setup">Settings</Link>
           {footer}
         </div>
-      </nav>
+      </SideNav>
       <main className="db-main">
         <div className="db-main__col"><Progress />{children}</div>
       </main>

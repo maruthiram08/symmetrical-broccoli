@@ -12,7 +12,7 @@ const sans = Instrument_Sans({ subsets: ["latin"], weight: ["400", "500", "600"]
 const mono = Geist_Mono({ subsets: ["latin"], weight: ["400", "500"], variable: "--font-geist-mono", display: "swap" });
 
 export const metadata: Metadata = {
-  title: "Daily brief",
+  title: { default: "Daily brief", template: "%s · Daily brief" },
   description: "Your meetings, turned into your day: what you owe, what you're waiting on, and what was decided.",
 };
 

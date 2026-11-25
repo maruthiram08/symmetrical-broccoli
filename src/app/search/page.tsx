@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Highlight } from "@/components/Highlight";
@@ -11,6 +12,11 @@ import { loadAll, shortDate } from "../_lib/lines";
 import { personHref } from "../_lib/links";
 
 export const dynamic = "force-dynamic";
+
+export async function generateMetadata({ searchParams }: { searchParams: Promise<{ q?: string }> }): Promise<Metadata> {
+  const q = (await searchParams).q?.trim();
+  return { title: q ? `“${q}”` : "Search" };
+}
 
 const LIMIT = 50;
 

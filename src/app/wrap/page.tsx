@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { Section } from "@/components/BriefList";
 import { CloseRow, PromiseRow, Stats, SummaryLinks } from "@/components/CloseWrap";
@@ -7,9 +8,10 @@ import { formatTime } from "@/lib/brief/time";
 import { buildWrap } from "@/lib/brief/wrap";
 import { getStore, me } from "@/server/local/app";
 import { formatBriefTime, nextBriefDay } from "../_lib/time";
-import { pastDays } from "../_lib/days";
+import { openCountFor, pastDays } from "../_lib/days";
 
 export const dynamic = "force-dynamic";
+export const metadata: Metadata = { title: "Wrap" };
 
 // Evening wrap: how the day went. The same numbers go in the daily note's "## Wrap" section.
 export default async function Wrap() {
@@ -21,7 +23,7 @@ export default async function Wrap() {
   const beforeBrief = nextBriefDay(user.briefTime, user.timeZone, now) === "today";
 
   return (
-    <Shell days={await pastDays(user.id, w.date)} current="wrap">
+    <Shell days={await pastDays(user.id, w.date)} current="wrap" openCount={await openCountFor(user.id)}>
       <h1 className="db-title">Wrap</h1>
       <p className="db-subtitle">
         {w.dateLabel} · {beforeBrief ? "So far, as of " : "As of "}

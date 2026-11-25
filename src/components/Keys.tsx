@@ -12,7 +12,7 @@ function typing(t: EventTarget | null): boolean {
   return el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName);
 }
 
-/** "g t" Today, "g o" All open, "g p" People, "/" focuses search. Ignored while typing or in a dialog. */
+/** "g t" Today, "g o" All open, "g p" People, "/" focuses search (or opens the palette when the field is hidden). Ignored while typing or in a dialog. */
 export function Keys() {
   const router = useRouter();
   useEffect(() => {
@@ -33,7 +33,7 @@ export function Keys() {
       if (e.key === "/") {
         e.preventDefault();
         const field = document.getElementById("db-search") as HTMLInputElement | null;
-        if (field) { field.focus(); field.select(); }
+        if (field && field.offsetParent) { field.focus(); field.select(); }
         else window.dispatchEvent(new Event(OPEN_PALETTE));
       }
     };

@@ -27,7 +27,9 @@
 
 /* People list */
 .db-people { display: flex; flex-direction: column; }
-.db-people__row { display: grid; grid-template-columns: minmax(0, 1fr) 76px 76px 64px 72px; align-items: center; gap: var(--space-3); min-height: 48px; padding: 0 var(--space-4); border-bottom: 1px solid var(--border); border-radius: var(--radius-md); color: var(--ink); text-decoration: none; }
+.db-people__row { display: grid; grid-template-columns: minmax(0, 1fr) 76px 76px 64px 72px; align-items: center; gap: var(--space-3); min-height: 48px; padding: 0 var(--space-4); position: relative; border-radius: var(--radius-md); color: var(--ink); text-decoration: none; }
+.db-people__row::after { content: ""; position: absolute; left: var(--space-4); right: var(--space-4); bottom: 0; height: 1px; background: var(--border); pointer-events: none; }
+a.db-people__row:focus-visible { outline-offset: 0; }
 a.db-people__row:hover { background: var(--surface-100); }
 .db-people__row--head { min-height: 32px; white-space: nowrap; font: 500 12px/16px var(--font-sans); color: var(--ink-faint); border-radius: 0; }
 .db-people__name { display: flex; align-items: center; gap: var(--space-3); min-width: 0; font: 500 15px/22px var(--font-sans); letter-spacing: -.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -84,6 +86,12 @@ a.db-people__row:hover { background: var(--surface-100); }
 @media (max-width: 720px) {
   .db-search { width: 100%; }
   .db-people__row { grid-template-columns: minmax(0, 1fr) 52px 52px 44px; padding: 0 var(--space-2); }
+  .db-people__row::after { left: var(--space-2); right: var(--space-2); }
   .db-people__last { display: none; }
   .db-palette__foot-end { display: none; }
+}
+/* Touch: no keyboard hints. */
+@media (hover: none) {
+  .db-search > .db-kbd, .db-palette__foot, .db-palette__keys { display: none; }
+  .db-search__input { padding-right: var(--space-3); }
 }

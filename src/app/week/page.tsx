@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { Section } from "@/components/BriefList";
 import { DecisionRow, PersonRow, StaleRow, Stats, SummaryLinks } from "@/components/CloseWrap";
@@ -7,9 +8,10 @@ import { localDate } from "@/lib/brief/time";
 import { buildWeek, STALE_DAYS } from "@/lib/brief/week";
 import { getStore, me } from "@/server/local/app";
 import { formatBriefTime } from "../_lib/time";
-import { pastDays } from "../_lib/days";
+import { openCountFor, pastDays } from "../_lib/days";
 
 export const dynamic = "force-dynamic";
+export const metadata: Metadata = { title: "This week" };
 
 // This week so far. Friday's brief also saves it as week-YYYY-Www.md.
 export default async function Week() {
@@ -20,7 +22,7 @@ export default async function Week() {
   const w = buildWeek(await loadBriefData(store, user.id), now, user.timeZone);
 
   return (
-    <Shell days={await pastDays(user.id, localDate(now, user.timeZone))} current="week">
+    <Shell days={await pastDays(user.id, localDate(now, user.timeZone))} current="week" openCount={await openCountFor(user.id)}>
       <h1 className="db-title">This week</h1>
       <p className="db-subtitle">
         {w.label} · Saved as <span className="db-mono">week-{w.key}.md</span> with Friday&apos;s brief at{" "}

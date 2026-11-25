@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { BriefItem, ClosedItem, Section } from "@/components/BriefList";
@@ -9,6 +10,12 @@ import { pastDays } from "../../_lib/days";
 import { loadAll, shortDate, toClosedLine, toLine } from "../../_lib/lines";
 
 export const dynamic = "force-dynamic";
+
+/** The slug, written as a name ("nitin-kumar" → "Nitin Kumar"); the page itself shows the stored spelling. */
+export async function generateMetadata({ params }: { params: Promise<{ name: string }> }): Promise<Metadata> {
+  const slug = decodeURIComponent((await params).name);
+  return { title: slug.split("-").filter(Boolean).map((w) => w[0].toUpperCase() + w.slice(1)).join(" ") || "Person" };
+}
 
 // One person: what you owe them, what they owe you, what closed, what was decided with them, and when you met.
 export default async function Person({ params }: { params: Promise<{ name: string }> }) {

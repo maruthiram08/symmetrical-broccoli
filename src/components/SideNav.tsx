@@ -1,0 +1,34 @@
+"use client";
+
+import { useEffect, useState, type MouseEvent, type ReactNode } from "react";
+
+/**
+ * The sidebar. On wide screens it is always open; on narrow ones it is a top bar with a Menu
+ * button that opens the links below it. Following a link or searching closes it again.
+ */
+export function SideNav({ brand, children }: { brand: ReactNode; children: ReactNode }) {
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open]);
+
+  const onClick = (e: MouseEvent) => { if ((e.target as HTMLElement).closest("a")) setOpen(false); };
+
+  return (
+    <nav className="db-side" aria-label="Days" data-open={open ? "" : undefined}>
+      <div className="db-side__brand">
+        {brand}
+        <button className="db-side__menu" type="button" aria-expanded={open} aria-controls="db-side-body" onClick={() => setOpen((o) => !o)}>
+          {open ? "Close" : "Menu"}
+        </button>
+      </div>
+      <div className="db-side__body" id="db-side-body" onClick={onClick} onSubmit={() => setOpen(false)}>
+        {children}
+      </div>
+    </nav>
+  );
+}

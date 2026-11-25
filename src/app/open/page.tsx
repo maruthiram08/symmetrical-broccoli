@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { BriefItem, Section } from "@/components/BriefList";
 import { Shell } from "@/components/Shell";
@@ -8,6 +9,7 @@ import { getStore, me } from "@/server/local/app";
 import { pastDays } from "../_lib/days";
 
 export const dynamic = "force-dynamic";
+export const metadata: Metadata = { title: "All open" };
 
 // Everything still open, oldest promise first, grouped by person.
 export default async function AllOpen() {

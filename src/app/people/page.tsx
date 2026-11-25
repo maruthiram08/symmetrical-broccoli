@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Shell } from "@/components/Shell";
@@ -7,6 +8,7 @@ import { pastDays } from "../_lib/days";
 import { loadAll, shortDate } from "../_lib/lines";
 
 export const dynamic = "force-dynamic";
+export const metadata: Metadata = { title: "People" };
 
 // Everyone named on an item, busiest first.
 export default async function People() {

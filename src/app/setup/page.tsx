@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { Button } from "@/components/Button";
 import { Field } from "@/components/Field";
 import { Page } from "@/components/Page";
@@ -8,6 +9,7 @@ import { pullState } from "@/server/local/scheduler";
 import { BRIEF_TIMES, formatBriefTime, timeZones, todayIn } from "../_lib/time";
 
 export const dynamic = "force-dynamic";
+export const metadata: Metadata = { title: "Setup" };
 
 export default async function Setup({ searchParams }: { searchParams: Promise<{ error?: string; pull?: string }> }) {
   const user = await me();
