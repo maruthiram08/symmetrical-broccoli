@@ -1,6 +1,7 @@
 import { WISPR_TOOLS, type WisprClient } from "@/server/wispr/client";
 import { ReconnectRequiredError } from "@/server/wispr/oauth";
 import type { Store } from "@/server/store";
+import { cacheCalendar } from "./calendar";
 import { logJobError, mapLimit, type Deps } from "./types";
 
 export const BACKFILL_DAYS = 7;
@@ -37,6 +38,7 @@ export async function pollUser(
     try {
       meetings = await client.listMeetingsSince(since);
       await cacheUpcoming(store, userId, client, now);
+      await refreshCalendar(store, userId, client, now, meetings);
     } finally {
       if (!opts.client) await client.close?.();
     }
@@ -101,6 +103,20 @@ export async function cacheUpcoming(store: Store, userId: string, client: WisprC
     await store.saveUpcoming(userId, { fetchedAt: now.toISOString(), meetings: list });
   } catch (e) {
     console.error(`[upcoming] user=${userId} ${e instanceof Error ? `${e.name}: ${e.message.slice(0, 200)}` : "Error"}`);
+  }
+}
+
+/** Calendar events and meeting series (jobs/calendar.ts), every recorded meeting newest first. Never throws. */
+async function refreshCalendar(store: Store, userId: string, client: WisprClient, now: Date, fresh: Array<{ providerMeetingId: string; startedAt: string }>): Promise<void> {
+  if (!client.searchCalendar && !client.listSeries) return;
+  try {
+    const user = await store.getUser(userId);
+    if (!user) return;
+    const known = await store.listMeetingsBetween(userId, "0000", "9999");
+    const ids = [...fresh, ...known].sort((a, b) => b.startedAt.localeCompare(a.startedAt)).map((m) => m.providerMeetingId);
+    await cacheCalendar(store, user, client, now, ids);
+  } catch (e) {
+    console.error(`[calendar] user=${userId} ${e instanceof Error ? e.name : "Error"}`);
   }
 }
 

@@ -6,6 +6,7 @@ import { Mark } from "./Mark";
 import { QuotePeek } from "./QuotePeek";
 import { HandoffSlot } from "./HandoffSlot";
 import { StartThisButton } from "./StartThis";
+import { BlockLink, DueHintRow } from "./CalendarSlot";
 
 function Act({ id, status, label, back }: { id: string; status: "done" | "wrong" | "open"; label: string; back?: string }) {
   return (
@@ -45,7 +46,9 @@ export function BriefItem({ line, back }: { line: BriefLine; back?: string }) {
         {personLink ? <span className="db-item__src">· {personLink}</span> : null}
         <span className="db-item__src">· {line.meetingTitle}{line.meetingTime ? `, ${line.meetingTime}` : ""}</span>
       </span>
+      <DueHintRow line={line} back={back} />
       <span className="db-item__acts">
+        <BlockLink line={line} />
         {line.kind !== "decision" ? <StartThisButton itemId={line.itemId} /> : null}
         {line.kind !== "decision" ? <Act id={line.itemId} status="done" label="Done" back={back} /> : null}
         <Act id={line.itemId} status="wrong" label="Wrong" back={back} />

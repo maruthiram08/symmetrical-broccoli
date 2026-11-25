@@ -63,7 +63,7 @@ export async function setStatus(formData: FormData): Promise<void> {
   await store.setItemStatus(item.id, p.data.status, new Date().toISOString());
   revalidatePath("/");
   const back = String(formData.get("back") ?? "");
-  if (back === "/open" || /^\/people\/[^/?#]+$/.test(back)) redirect(back);
+  if (back === "/open" || /^\/(people|series)\/[^/?#]+$/.test(back)) redirect(back);
   redirect(p.data.status === "open" ? "/" : `/?undo=${encodeURIComponent(item.id)}&was=${p.data.status}`);
 }
 

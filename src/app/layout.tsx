@@ -7,6 +7,7 @@ import { CommandPalette } from "@/components/CommandPalette";
 import { Keys } from "@/components/Keys";
 import "./closewrap.css";
 import "./wow2.css";
+import "./calendar.css";
 
 const sans = Instrument_Sans({ subsets: ["latin"], weight: ["400", "500", "600"], variable: "--font-instrument-sans", display: "swap" });
 const mono = Geist_Mono({ subsets: ["latin"], weight: ["400", "500"], variable: "--font-geist-mono", display: "swap" });

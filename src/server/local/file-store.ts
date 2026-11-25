@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import type { OAuthClientInformationMixed } from "@modelcontextprotocol/sdk/shared/auth.js";
-import type { Connection, Item, LastLook, Meeting, UpcomingCache, User } from "@/lib/types";
+import type { CalendarCache, Connection, Item, LastLook, Meeting, UpcomingCache, User } from "@/lib/types";
 import { MemoryStore } from "@/server/store";
 import type { OAuthClientStore } from "@/server/wispr/oauth";
 
@@ -22,6 +22,8 @@ interface State {
   /** Added with the prep card: missing in older files. */
   upcoming?: Array<[string, UpcomingCache]>;
   prepNotified?: string[];
+  /** Added with calendar features: missing in older files. */
+  calendar?: Array<[string, CalendarCache]>;
 }
 
 /** A hand-made Done/Wrong that should survive the meeting being read again. */
@@ -108,6 +110,7 @@ export class FileStore extends MemoryStore implements OAuthClientStore {
     this.marks = s.marks ?? [];
     this.upcoming = new Map(s.upcoming ?? []);
     this.prepNotified = new Set(s.prepNotified ?? []);
+    this.calendar = new Map(s.calendar ?? []);
     this.loadedMtime = mtime;
   }
 
@@ -126,6 +129,7 @@ export class FileStore extends MemoryStore implements OAuthClientStore {
       marks: this.marks,
       upcoming: [...this.upcoming.entries()],
       prepNotified: [...this.prepNotified].slice(-MAX_PREP_NOTIFIED),
+      calendar: [...this.calendar.entries()],
     };
     mkdirSync(dirname(this.path), { recursive: true, mode: 0o700 });
     const tmp = `${this.path}.tmp`;
@@ -189,6 +193,9 @@ export class FileStore extends MemoryStore implements OAuthClientStore {
   async saveLastLook(userId: string, look: LastLook) { this.reload(); await super.saveLastLook(userId, look); this.flush(); }
   async saveUpcoming(userId: string, cache: UpcomingCache) { this.reload(); await super.saveUpcoming(userId, cache); this.flush(); }
   async getUpcoming(userId: string) { this.reload(); return super.getUpcoming(userId); }
+  async saveCalendar(userId: string, cache: CalendarCache) { this.reload(); await super.saveCalendar(userId, cache); this.flush(); }
+  async getCalendar(userId: string) { this.reload(); return super.getCalendar(userId); }
+  async setItemDue(userId: string, itemId: string, dueAt: string | null) { this.reload(); const ok = await super.setItemDue(userId, itemId, dueAt); if (ok) this.flush(); return ok; }
   async markPrepNotified(key: string) { this.reload(); const fresh = await super.markPrepNotified(key); if (fresh) this.flush(); return fresh; }
   async deleteUser(userId: string) { this.reload(); await super.deleteUser(userId); this.oauthClients.delete(userId); this.flush(); }
 

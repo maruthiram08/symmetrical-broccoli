@@ -153,6 +153,8 @@ export interface BriefModel {
   wrap: { meetings: number; made: number; kept: number; late: number };
   /** Every promise (owe item) still open, for the note's Wrap section. Optional: added after v1. */
   openPromises?: number;
+  /** Tomorrow's meetings from the calendar cache. Missing when the calendar was never read. */
+  tomorrow?: GlanceMeeting[];
   youOwe: BriefLine[];   // overdue first, then by due time
   waitingOn: BriefLine[];
   decisions: BriefLine[];
@@ -168,4 +170,69 @@ export interface LastLook {
   lastLookedAt: string;
   /** Closes after this instant belong to this look's "Closed since you last looked". Null on the very first look. */
   since: string | null;
+}
+
+// ---------- calendar (src/lib/calendar, src/server/jobs/calendar.ts) ----------
+
+/** A calendar event from Wispr Flow's search_calendar_events. Timed events only (all-day ones are dropped). */
+export interface CalendarEvent {
+  calendarId: string;
+  title: string;
+  startsAt: string; // ISO UTC
+  /** Null when the calendar gave no end; treated as 30 minutes long. */
+  endsAt: string | null;
+  /** Attendee names (or email addresses when no name is given). */
+  attendees: string[];
+  /** The calendar's recurring-series id, when the event says it has one. */
+  recurringId?: string | null;
+}
+
+/** Recorded meetings that belong to one recurring calendar series (list_meeting_series). */
+export interface MeetingSeries {
+  /** Short stable id used in /series/[id]. */
+  id: string;
+  title: string;
+  /** Wispr Flow meeting ids of every recorded occurrence we know of. */
+  providerMeetingIds: string[];
+  recurringId?: string | null;
+}
+
+/** Calendar data cached by the poll. Refetched once `nextFetchAt` passes (30 minutes), on success or failure. */
+export interface CalendarCache {
+  /** Last successful read of events; null when it never worked. */
+  fetchedAt: string | null;
+  nextFetchAt: string;
+  /** [fromIso, toIso) the events cover. */
+  fromIso: string;
+  toIso: string;
+  events: CalendarEvent[];
+  series: MeetingSeries[];
+  /** Wispr Flow meeting id -> series id, or null when it is not recurring. Checked once each. */
+  seriesChecked: Record<string, string | null>;
+}
+
+/** One of tomorrow's meetings with what's open with its people (Wrap and the daily note). */
+export interface GlanceMeeting {
+  calendarId: string;
+  title: string;
+  /** "10:30 AM" in the user's zone. */
+  time: string;
+  startsAt: string;
+  people: string[];
+  seriesId: string | null;
+  /** Listed under this meeting: open items with its people not listed under a smaller or earlier one. */
+  owe: GlanceItem[];
+  waiting: GlanceItem[];
+  /** Open items with its people that are listed under another of tomorrow's meetings, and where. */
+  alsoOpen: number;
+  alsoIn: string[];
+}
+
+export interface GlanceItem {
+  itemId: string;
+  text: string;
+  person: string | null;
+  /** "Today", "Fri", "2d late" or null. */
+  when: string | null;
+  late: boolean;
 }

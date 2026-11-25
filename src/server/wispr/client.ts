@@ -1,7 +1,8 @@
 import { z } from "zod";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import type { UpcomingMeeting } from "@/lib/types";
+import type { CalendarEvent, UpcomingMeeting } from "@/lib/types";
+import { listMeetingSeries, searchCalendarEvents, type SeriesOccurrence } from "./calendar";
 import { ensureFreshAccessToken, WisprOAuthProvider, type RefreshFn, type WisprAuthContext } from "./oauth";
 
 export interface WisprMeeting {
@@ -23,6 +24,10 @@ export interface WisprClient {
   getTranscript(providerMeetingId: string): Promise<string>;
   /** Calendar events starting in the next `windowHours`, soonest first. Optional: older fakes lack it. */
   listUpcoming?(windowHours: number): Promise<UpcomingMeeting[]>;
+  /** Timed calendar events starting in [sinceIso, untilIso), soonest first. Optional (calendar.ts). */
+  searchCalendar?(sinceIso: string, untilIso: string): Promise<CalendarEvent[]>;
+  /** Recorded occurrences of the recurring series a meeting belongs to; null when not recurring. */
+  listSeries?(providerMeetingId: string): Promise<{ occurrences: SeriesOccurrence[]; recurringId: string | null } | null>;
   close?(): Promise<void>;
 }
 
@@ -312,6 +317,16 @@ export class McpWisprClient implements WisprClient {
     const tools = await this.tools();
     const t = WISPR_TOOLS.listUpcoming;
     return parseUpcoming(toolPayload(await tools.callTool(t.name, t.args(windowHours)), t.name));
+  }
+
+  async searchCalendar(sinceIso: string, untilIso: string): Promise<CalendarEvent[]> {
+    const tools = await this.tools();
+    return searchCalendarEvents(async (name, args) => toolPayload(await tools.callTool(name, args), name), sinceIso, untilIso);
+  }
+
+  async listSeries(providerMeetingId: string) {
+    const tools = await this.tools();
+    return listMeetingSeries(async (name, args) => toolPayload(await tools.callTool(name, args), name), providerMeetingId);
   }
 
   async close(): Promise<void> {
