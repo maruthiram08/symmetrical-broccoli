@@ -1,6 +1,7 @@
 import type { BriefModel, ExtractionInput, ExtractionResult, User } from "@/lib/types";
 import type { Store } from "@/server/store";
 import type { WisprClient } from "@/server/wispr/client";
+import { errLine, redact } from "@/server/local/log";
 
 /** Everything a job touches. Built for production in src/server/deps.ts; tests pass fakes. */
 export interface Deps {
@@ -33,13 +34,13 @@ export async function logJobError(
 ): Promise<void> {
   const e = err instanceof Error ? err : new Error(String(err));
   const payload: Record<string, unknown> = { job, error: e.name, ...extra };
-  if (opts.includeMessage !== false) payload.message = e.message.slice(0, 200);
+  if (opts.includeMessage !== false) payload.message = redact(e.message).slice(0, 200);
   try {
     await deps.store.logEvent({ userId, type: "job_error", payload });
   } catch (logErr) {
-    console.error(`[${job}] could not log error`, logErr);
+    console.error(`[${job}] could not log error: ${errLine(logErr)}`);
   }
-  console.error(`[${job}] user=${userId ?? "-"} ${e.name}${opts.includeMessage === false ? "" : `: ${e.message.slice(0, 200)}`}`);
+  console.error(`[${job}] user=${userId ?? "-"} ${errLine(e, { message: opts.includeMessage !== false })}`);
 }
 
 /** Run fn over items with at most `limit` in flight. */

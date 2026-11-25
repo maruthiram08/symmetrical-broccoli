@@ -62,11 +62,6 @@ export default async function Today({ searchParams }: { searchParams: Promise<{ 
       </p>
       <SummaryLinks />
 
-      {conn.status === "needs_reconnect" ? (
-        <p className="db-banner" role="status">
-          Wispr Flow signed you out, so new meetings aren&apos;t coming in. <a href="/api/wispr/connect">Reconnect</a>
-        </p>
-      ) : null}
       {undo ? (
         <form action={setStatus} className="db-banner" role="status">
           {was === "wrong" ? "Removed." : "Marked done."}

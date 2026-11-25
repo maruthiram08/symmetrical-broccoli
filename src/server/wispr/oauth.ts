@@ -24,6 +24,7 @@ import type { FetchLike } from "@modelcontextprotocol/sdk/shared/transport.js";
 import type { Connection } from "@/lib/types";
 import type { Store } from "@/server/store";
 import { decrypt, encrypt } from "@/server/crypto";
+import { isNetworkError } from "@/lib/extract/errors";
 
 /**
  * Where the dynamic-client-registration result lives. The Store interface has no slot for it
@@ -52,6 +53,8 @@ export class ReconnectRequiredError extends Error {
 export const PENDING_COOKIE = "db_wispr_oauth";
 const PENDING_TTL_MS = 10 * 60 * 1000;
 const DEFAULT_TOKEN_TTL_SEC = 3600;
+/** Refreshes in a row that Wispr Flow rejects with an unrecognised error before we ask to reconnect. */
+export const MAX_REFRESH_FAILURES = 4;
 
 /** Short-lived state between /connect and /callback. Sealed with AES-GCM into an httpOnly cookie. */
 export interface PendingAuth {
@@ -85,8 +88,10 @@ export function expiresAtFrom(t: Pick<OAuthTokens, "expires_in">, now: Date): st
 
 export async function markNeedsReconnect(store: Store, userId: string, reason: string): Promise<void> {
   const conn = await store.getConnection(userId);
-  if (conn && conn.status !== "needs_reconnect") await store.saveConnection({ ...conn, status: "needs_reconnect" });
+  if (conn?.status === "needs_reconnect") return; // already asked; don't log it again on every try
+  if (conn) await store.saveConnection({ ...conn, status: "needs_reconnect" });
   await store.logEvent({ userId, type: "job_error", payload: { job: "wispr_auth", reason: reason.slice(0, 200) } });
+  console.error(`[wispr] user=${userId} needs to reconnect Wispr Flow (${reason.slice(0, 120)})`);
 }
 
 export interface WisprAuthContext {
@@ -294,6 +299,17 @@ export async function ensureFreshAccessToken(
       await markNeedsReconnect(ctx.store, ctx.userId, `refresh failed: ${(e as Error).name}`);
       throw new ReconnectRequiredError();
     }
+    // Offline: try again next time, nothing is wrong with the grant.
+    if (isNetworkError(e)) throw e;
+    // Wispr Flow answered, but with an error we can't place (5xx, odd OAuth error). A few in a row
+    // and the sign-in is treated as gone, so the app asks to reconnect instead of retrying forever.
+    const failures = (conn.refreshFailures ?? 0) + 1;
+    const latest = (await ctx.store.getConnection(ctx.userId)) ?? conn;
+    await ctx.store.saveConnection({ ...latest, refreshFailures: failures });
+    if (failures >= MAX_REFRESH_FAILURES) {
+      await markNeedsReconnect(ctx.store, ctx.userId, `refresh failed ${failures} times: ${(e as Error)?.name ?? "Error"}`);
+      throw new ReconnectRequiredError();
+    }
     throw e;
   }
   const latest = (await ctx.store.getConnection(ctx.userId)) ?? conn;
@@ -303,6 +319,7 @@ export async function ensureFreshAccessToken(
     refreshToken: tokens.refresh_token ?? conn.refreshToken,
     expiresAt: expiresAtFrom(tokens, ctx.now()),
     status: "active",
+    refreshFailures: 0,
   });
   return tokens.access_token;
 }
