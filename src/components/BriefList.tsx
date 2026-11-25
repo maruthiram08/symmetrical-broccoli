@@ -1,6 +1,8 @@
 import type { BriefLine, ClosedLine } from "@/lib/types";
 import { setStatus } from "@/app/actions";
 import { Mark } from "./Mark";
+import { HandoffSlot } from "./HandoffSlot";
+import { StartThisButton } from "./StartThis";
 
 function Act({ id, status, label, back }: { id: string; status: "done" | "wrong" | "open"; label: string; back?: string }) {
   return (
@@ -31,9 +33,11 @@ export function BriefItem({ line, back }: { line: BriefLine; back?: string }) {
         <span className="db-item__src">· {line.meetingTitle}{line.meetingTime ? `, ${line.meetingTime}` : ""}</span>
       </span>
       <span className="db-item__acts">
+        {line.kind !== "decision" ? <StartThisButton itemId={line.itemId} /> : null}
         {line.kind !== "decision" ? <Act id={line.itemId} status="done" label="Done" back={back} /> : null}
         <Act id={line.itemId} status="wrong" label="Wrong" back={back} />
       </span>
+      {line.kind !== "decision" ? <HandoffSlot line={line} /> : null}
     </div>
   );
 }

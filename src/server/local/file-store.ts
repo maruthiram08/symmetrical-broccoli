@@ -81,6 +81,8 @@ export class FileStore extends MemoryStore implements OAuthClientStore {
   async getMeeting(id: string) { this.reload(); return super.getMeeting(id); }
   async listItems(userId: string, filter?: { status?: Item["status"] }) { this.reload(); return super.listItems(userId, filter); }
   async getBrief(userId: string, date: string) { this.reload(); return super.getBrief(userId, date); }
+  /** Logged events, oldest first, optionally of one type (e.g. "handoff"). */
+  async listEvents(type?: string) { this.reload(); return type ? this.events.filter((e) => e.type === type) : [...this.events]; }
   async listBriefs(userId: string) { this.reload(); return super.listBriefs(userId); }
 
   addUser(u: Partial<User> & { email: string }): User {
