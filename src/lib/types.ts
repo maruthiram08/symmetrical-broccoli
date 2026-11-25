@@ -35,6 +35,22 @@ export interface Meeting {
   startedAt: string; // ISO UTC
   participants: string[];
   processedAt: string | null;
+  /** The meeting's notes page in Wispr Flow (search_meetings share_link). Missing on older meetings. */
+  link?: string | null;
+}
+
+/** A calendar event coming up soon, from Wispr Flow's list_upcoming_meetings. Cached by the poll. */
+export interface UpcomingMeeting {
+  calendarId: string;
+  title: string;
+  startsAt: string; // ISO UTC
+  /** Attendee names (or email addresses when no name is given). */
+  attendees: string[];
+}
+
+export interface UpcomingCache {
+  fetchedAt: string;
+  meetings: UpcomingMeeting[];
 }
 
 export interface Item {
@@ -104,6 +120,19 @@ export interface BriefLine {
   lateMinutes: number | null;
   /** Short lateness label: "4h late", "2d late". */
   lateLabel: string | null;
+  /** The meeting the item came from. Optional: added for the day ribbon filter. */
+  meetingId?: string;
+  /** For the quote peek. Optional: lines built before it simply show less. */
+  peek?: QuotePeekInfo;
+}
+
+export interface QuotePeekInfo {
+  /** Who said the quote, as best we know: "You" on things you owe, the person on things you wait on. */
+  speaker: string | null;
+  /** "Tue 24 Nov, 5:00 PM" in the user's zone. */
+  when: string;
+  /** Wispr Flow notes page, only when the stored meeting has one. */
+  link: string | null;
 }
 
 export interface ClosedLine {

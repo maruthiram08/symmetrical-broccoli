@@ -1,5 +1,6 @@
 import { WISPR_TOOLS, type WisprClient } from "@/server/wispr/client";
 import { ReconnectRequiredError } from "@/server/wispr/oauth";
+import type { Store } from "@/server/store";
 import { logJobError, mapLimit, type Deps } from "./types";
 
 export const BACKFILL_DAYS = 7;
@@ -35,6 +36,7 @@ export async function pollUser(
     let meetings;
     try {
       meetings = await client.listMeetingsSince(since);
+      await cacheUpcoming(store, userId, client, now);
     } finally {
       if (!opts.client) await client.close?.();
     }
@@ -55,6 +57,7 @@ export async function pollUser(
         title: m.title,
         startedAt: m.startedAt,
         participants: m.participants,
+        ...(m.link ? { link: m.link } : {}),
       });
       if (r.created) created++;
       if (!newestQueued || m.startedAt > newestQueued) newestQueued = m.startedAt;
@@ -76,6 +79,28 @@ export async function pollUser(
     // ReconnectRequiredError is already logged by markNeedsReconnect.
     if (!(e instanceof ReconnectRequiredError)) await logJobError(deps, userId, "poll", e);
     return { userId, ok: false, error: e instanceof Error ? e.name : "Error" };
+  }
+}
+
+/** How far ahead the prep card looks. */
+export const UPCOMING_WINDOW_MIN = 60;
+
+/**
+ * Cache the meetings starting in the next hour, for the prep card and its notification.
+ * Never throws: a failure (or a client without the tool) is logged to stderr and the old cache
+ * is kept, so the rest of the poll goes on. Stale entries drop out by start time on their own.
+ */
+export async function cacheUpcoming(store: Store, userId: string, client: WisprClient, now: Date): Promise<void> {
+  if (!client.listUpcoming || !store.saveUpcoming) return;
+  try {
+    const until = now.getTime() + UPCOMING_WINDOW_MIN * 60_000;
+    const list = (await client.listUpcoming(UPCOMING_WINDOW_MIN / 60)).filter((m) => {
+      const t = Date.parse(m.startsAt);
+      return t > now.getTime() && t <= until;
+    });
+    await store.saveUpcoming(userId, { fetchedAt: now.toISOString(), meetings: list });
+  } catch (e) {
+    console.error(`[upcoming] user=${userId} ${e instanceof Error ? `${e.name}: ${e.message.slice(0, 200)}` : "Error"}`);
   }
 }
 

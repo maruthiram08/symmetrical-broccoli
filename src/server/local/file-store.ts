@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import type { OAuthClientInformationMixed } from "@modelcontextprotocol/sdk/shared/auth.js";
-import type { Connection, Item, LastLook, Meeting, User } from "@/lib/types";
+import type { Connection, Item, LastLook, Meeting, UpcomingCache, User } from "@/lib/types";
 import { MemoryStore } from "@/server/store";
 import type { OAuthClientStore } from "@/server/wispr/oauth";
 
@@ -17,9 +17,13 @@ interface State {
   events: Array<Record<string, unknown>>;
   /** Added after v1 shipped: missing in older files, which still load. */
   looks?: Array<[string, LastLook]>;
+  /** Added with the prep card: missing in older files. */
+  upcoming?: Array<[string, UpcomingCache]>;
+  prepNotified?: string[];
 }
 
 const MAX_EVENTS = 2000;
+const MAX_PREP_NOTIFIED = 500;
 
 /**
  * The local app's store: everything in one JSON file, written atomically after every change.
@@ -52,6 +56,8 @@ export class FileStore extends MemoryStore implements OAuthClientStore {
     this.oauthClients = new Map(s.oauthClients ?? []);
     this.events = s.events ?? [];
     this.looks = new Map(s.looks ?? []);
+    this.upcoming = new Map(s.upcoming ?? []);
+    this.prepNotified = new Set(s.prepNotified ?? []);
     this.loadedMtime = mtime;
   }
 
@@ -67,6 +73,8 @@ export class FileStore extends MemoryStore implements OAuthClientStore {
       oauthClients: [...this.oauthClients.entries()],
       events: this.events.slice(-MAX_EVENTS),
       looks: [...this.looks.entries()],
+      upcoming: [...this.upcoming.entries()],
+      prepNotified: [...this.prepNotified].slice(-MAX_PREP_NOTIFIED),
     };
     mkdirSync(dirname(this.path), { recursive: true, mode: 0o700 });
     const tmp = `${this.path}.tmp`;
@@ -122,6 +130,9 @@ export class FileStore extends MemoryStore implements OAuthClientStore {
   async logEvent(e: Parameters<MemoryStore["logEvent"]>[0]) { this.reload(); await super.logEvent({ ...e, at: new Date().toISOString() }); this.flush(); }
   async getLastLook(userId: string) { this.reload(); return super.getLastLook(userId); }
   async saveLastLook(userId: string, look: LastLook) { this.reload(); await super.saveLastLook(userId, look); this.flush(); }
+  async saveUpcoming(userId: string, cache: UpcomingCache) { this.reload(); await super.saveUpcoming(userId, cache); this.flush(); }
+  async getUpcoming(userId: string) { this.reload(); return super.getUpcoming(userId); }
+  async markPrepNotified(key: string) { this.reload(); const fresh = await super.markPrepNotified(key); if (fresh) this.flush(); return fresh; }
   async deleteUser(userId: string) { this.reload(); await super.deleteUser(userId); this.oauthClients.delete(userId); this.flush(); }
 
   /**
