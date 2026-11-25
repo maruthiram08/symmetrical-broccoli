@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { Progress } from "./Progress";
 
 /** Sidebar and reading column. `days` are past daily notes, newest first. */
 export function Shell({ days, current, children, footer, openCount }: { days: Array<{ date: string; label: string }>; current: string; children: ReactNode; footer?: ReactNode; openCount?: number }) {
@@ -25,7 +26,7 @@ export function Shell({ days, current, children, footer, openCount }: { days: Ar
         </div>
       </nav>
       <main className="db-main">
-        <div className="db-main__col">{children}</div>
+        <div className="db-main__col"><Progress />{children}</div>
       </main>
     </div>
   );
