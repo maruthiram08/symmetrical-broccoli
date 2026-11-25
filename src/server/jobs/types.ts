@@ -2,19 +2,6 @@ import type { BriefModel, ExtractionInput, ExtractionResult, User } from "@/lib/
 import type { Store } from "@/server/store";
 import type { WisprClient } from "@/server/wispr/client";
 
-export interface EmailLinks {
-  base: string;
-  actionUrl(itemId: string, action: "done" | "wrong"): string;
-  downloadUrl: string;
-  deleteUrl: string;
-}
-
-export interface EmailMessage {
-  subject: string;
-  html: string;
-  text: string;
-}
-
 /** Everything a job touches. Built for production in src/server/deps.ts; tests pass fakes. */
 export interface Deps {
   store: Store;
@@ -25,13 +12,8 @@ export interface Deps {
   model: string;
   buildBrief: (store: Store, user: User, now: Date) => Promise<BriefModel>;
   renderMarkdown: (model: BriefModel) => string;
-  renderEmail: (model: BriefModel, links: EmailLinks) => EmailMessage;
-  sendEmail: (to: string, msg: EmailMessage) => Promise<{ id: string }>;
-  links: {
-    base: string;
-    actionUrl(userId: string, itemId: string, action: "done" | "wrong"): string;
-    accountUrl(userId: string, action: "download" | "delete"): string;
-  };
+  /** Hand the finished brief to the user: on the local app, write the note and show a notification. */
+  publish: (user: User, model: BriefModel, markdown: string) => Promise<{ id: string }>;
   now: () => Date;
 }
 

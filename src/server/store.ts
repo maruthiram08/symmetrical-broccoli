@@ -36,6 +36,7 @@ let seq = 0;
 const uid = () => `00000000-0000-4000-8000-${String(++seq).padStart(12, "0")}`;
 
 export class MemoryStore implements Store {
+  protected newId: () => string = uid;
   users = new Map<string, User>();
   connections = new Map<string, Connection>();
   meetings = new Map<string, Meeting>();
@@ -44,7 +45,7 @@ export class MemoryStore implements Store {
   events: Array<Record<string, unknown>> = [];
 
   addUser(u: Partial<User> & { email: string }): User {
-    const user: User = { id: uid(), name: "", aliases: [], timeZone: "Asia/Kolkata", briefTime: "18:00", createdAt: new Date().toISOString(), ...u };
+    const user: User = { id: this.newId(), name: "", aliases: [], timeZone: "Asia/Kolkata", briefTime: "18:00", createdAt: new Date().toISOString(), ...u };
     this.users.set(user.id, user);
     return user;
   }
@@ -55,7 +56,7 @@ export class MemoryStore implements Store {
   async upsertMeeting(m: Omit<Meeting, "id" | "processedAt">) {
     const existing = [...this.meetings.values()].find((x) => x.userId === m.userId && x.providerMeetingId === m.providerMeetingId);
     if (existing) return { meeting: existing, created: false };
-    const meeting: Meeting = { ...m, id: uid(), processedAt: null };
+    const meeting: Meeting = { ...m, id: this.newId(), processedAt: null };
     this.meetings.set(meeting.id, meeting);
     return { meeting, created: true };
   }
@@ -68,7 +69,7 @@ export class MemoryStore implements Store {
   async getMeeting(id: string) { return this.meetings.get(id) ?? null; }
   async commitExtraction({ meetingId, userId, newItems, closes, at }: Parameters<Store["commitExtraction"]>[0]) {
     for (const n of newItems) {
-      const item: Item = { ...n, id: uid(), userId, status: "open", closedByMeetingId: null, closeQuote: null, createdAt: at, closedAt: null };
+      const item: Item = { ...n, id: this.newId(), userId, status: "open", closedByMeetingId: null, closeQuote: null, createdAt: at, closedAt: null };
       this.items.set(item.id, item);
     }
     for (const c of closes) {

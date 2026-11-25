@@ -3,22 +3,21 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev -p 4242",
     "build": "next build",
-    "start": "next start",
+    "start": "next start -p 4242",
     "lint": "next lint",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "eval": "tsx eval/run.ts"
+    "eval": "tsx eval/run.ts",
+    "app": "next build && next start -p 4242"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.71.0",
     "@modelcontextprotocol/sdk": "^1.24.0",
-    "@supabase/supabase-js": "^2.86.0",
     "next": "^15.1.9",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "resend": "^6.5.2",
     "zod": "^3.25.76"
   },
   "devDependencies": {

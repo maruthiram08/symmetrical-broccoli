@@ -1,36 +1,49 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Daily brief (local)
 
-## Getting Started
+Your meetings, turned into your day: what you owe, what you're waiting on, and what was decided. Everything runs on your Mac. Nothing is hosted, and your data stays in one folder.
 
-First, run the development server:
+## Run it
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+cp .env.example .env.local   # add your ANTHROPIC_API_KEY
+npm run app                  # builds, then serves http://localhost:4242
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open http://localhost:4242, fill in your name and brief time, and connect Wispr Flow. The app reads your last 7 days straight away.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+While the app is running it:
+- checks Wispr Flow for new meetings every 30 minutes (or press **Check meetings now**),
+- extracts what you owe, what you're waiting on and decisions, and closes items when a later meeting shows they're done,
+- at your brief time, writes `~/Daily Brief/YYYY-MM-DD.md`, adds the day's decisions to `decisions.md`, and shows a Mac notification. If the Mac was asleep, it catches up within an hour of waking.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Your data
 
-## Learn More
+`~/Daily Brief/` (change with `DAILY_BRIEF_DIR`):
+- `2026-11-25.md`, one plain Markdown note per day. Open it in any editor.
+- `decisions.md`, every decision with its quote.
+- `.daily-brief/state.json`, items and meetings (no transcripts, ever). Readable only by you.
+- `.daily-brief/key`, a local key for the Wispr Flow sign-in step.
 
-To learn more about Next.js, take a look at the following resources:
+To start over, quit the app and delete `.daily-brief/`.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Keep it running at login (optional)
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Save as `~/Library/LaunchAgents/app.dailybrief.plist`, fix the path, then `launchctl load ~/Library/LaunchAgents/app.dailybrief.plist`:
 
-## Deploy on Vercel
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>app.dailybrief</string>
+  <key>WorkingDirectory</key><string>/Users/YOU/code/daily-brief</string>
+  <key>ProgramArguments</key><array><string>/bin/zsh</string><string>-lc</string><string>npm start</string></array>
+  <key>RunAtLoad</key><true/><key>KeepAlive</key><true/>
+</dict></plist>
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Develop
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+`npm test`, `npm run typecheck`, `npm run lint`, `npm run eval` (extraction accuracy on real meetings; see `eval/README.md`).
+
+The hosted version (Supabase, email, Vercel cron) lives on the `sprint-1` branch.

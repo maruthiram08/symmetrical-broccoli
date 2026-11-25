@@ -1,7 +1,7 @@
 // Test doubles for the jobs. Not imported by production code.
 import type { BriefModel, Connection, ExtractionInput, ExtractionResult, User } from "@/lib/types";
 import { MemoryStore } from "@/server/store";
-import type { Deps, EmailLinks, EmailMessage } from "@/server/jobs/types";
+import type { Deps } from "@/server/jobs/types";
 import type { WisprClient, WisprMeeting } from "@/server/wispr/client";
 
 export class FakeWispr {
@@ -48,9 +48,8 @@ export function emptyBrief(user: User, date: string): BriefModel {
 }
 
 export function fakeDeps(over: Partial<Omit<Deps, "wispr" | "now">> & { store: MemoryStore; wispr: FakeWispr; now: Date }) {
-  const sent: Array<{ to: string; msg: EmailMessage }> = [];
+  const sent: Array<{ to: string; model: BriefModel; markdown: string }> = [];
   const extractCalls: ExtractionInput[] = [];
-  const linksSeen: EmailLinks[] = [];
   let clock = over.now;
   const rest: Partial<Record<keyof Deps, unknown>> = { ...over };
   delete rest.wispr;
@@ -68,18 +67,9 @@ export function fakeDeps(over: Partial<Omit<Deps, "wispr" | "now">> & { store: M
     costInr: (_m, u) => (u.inputTokens + u.outputTokens) / 1000,
     buildBrief: async (_s, user, now) => emptyBrief(user, now.toISOString().slice(0, 10)),
     renderMarkdown: (m) => `# Brief ${m.date}`,
-    renderEmail: (m, links) => {
-      linksSeen.push(links);
-      return { subject: m.subject, html: "<p>hi</p>", text: "hi" };
-    },
-    sendEmail: async (to, msg) => {
-      sent.push({ to, msg });
-      return { id: `email-${sent.length}` };
-    },
-    links: {
-      base: "https://app.test",
-      actionUrl: (u, i, a) => `https://app.test/a/${u}/${i}/${a}`,
-      accountUrl: (u, a) => `https://app.test/a/${u}/${a}`,
+    publish: async (user, model, markdown) => {
+      sent.push({ to: user.email, model, markdown });
+      return { id: `brief-${sent.length}` };
     },
     ...(rest as Partial<Deps>),
     store: over.store,
@@ -90,7 +80,6 @@ export function fakeDeps(over: Partial<Omit<Deps, "wispr" | "now">> & { store: M
     deps,
     sent,
     extractCalls,
-    linksSeen,
     setNow: (d: Date) => { clock = d; },
   };
 }

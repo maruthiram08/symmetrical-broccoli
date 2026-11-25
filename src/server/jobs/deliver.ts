@@ -34,7 +34,7 @@ export function isBriefDue(user: Pick<User, "timeZone" | "briefTime">, now: Date
 }
 
 export type DeliverResult =
-  | { userId: string; status: "sent"; date: string; emailId: string }
+  | { userId: string; status: "sent"; date: string; publishedId: string }
   | { userId: string; status: "not_due" | "already_sent" }
   | { userId: string; status: "failed"; error: string };
 
@@ -49,17 +49,11 @@ export async function deliverUser(deps: Deps, user: User, now: Date): Promise<De
 
     const model = await deps.buildBrief(deps.store, user, now);
     const markdown = deps.renderMarkdown(model);
-    const msg = deps.renderEmail(model, {
-      base: deps.links.base,
-      actionUrl: (itemId, action) => deps.links.actionUrl(user.id, itemId, action),
-      downloadUrl: deps.links.accountUrl(user.id, "download"),
-      deleteUrl: deps.links.accountUrl(user.id, "delete"),
-    });
-    const { id } = await deps.sendEmail(user.email, msg);
+    const { id } = await deps.publish(user, model, markdown);
     const sentAt = deps.now().toISOString();
     await deps.store.saveBrief(user.id, date, markdown, sentAt, id);
-    await deps.store.logEvent({ userId: user.id, type: "brief_sent", payload: { date, emailId: id, meetings: model.meetingCount } });
-    return { userId: user.id, status: "sent", date, emailId: id };
+    await deps.store.logEvent({ userId: user.id, type: "brief_sent", payload: { date, publishedId: id, meetings: model.meetingCount } });
+    return { userId: user.id, status: "sent", date, publishedId: id };
   } catch (e) {
     await logJobError(deps, user.id, "deliver", e, { date });
     return { userId: user.id, status: "failed", error: e instanceof Error ? e.name : "Error" };

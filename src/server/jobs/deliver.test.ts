@@ -57,8 +57,8 @@ describe("deliverDue", () => {
     expect(await store.getBrief(us.id, "2026-11-25")).not.toBeNull();
   });
 
-  it("processes unprocessed meetings before building the brief and passes per-user links", async () => {
-    const { deps, store, wispr, india, linksSeen } = setup(at("2026-11-25T12:31:00Z"));
+  it("processes unprocessed meetings before building the brief", async () => {
+    const { deps, store, wispr, india } = setup(at("2026-11-25T12:31:00Z"));
     const { meeting } = await store.upsertMeeting({ userId: india.id, providerMeetingId: "p1", title: "Sync", startedAt: "2026-11-25T09:00:00.000Z", participants: [] });
     wispr.transcripts.set("p1", "Maruthi: I'll do it.");
     let processedWhenBuilt: string | null = null;
@@ -68,15 +68,13 @@ describe("deliverDue", () => {
     };
     await deliverDue(deps, at("2026-11-25T12:31:00Z"));
     expect(processedWhenBuilt).not.toBeNull();
-    expect(linksSeen[0].actionUrl("item1", "done")).toBe(`https://app.test/a/${india.id}/item1/done`);
-    expect(linksSeen[0].deleteUrl).toBe(`https://app.test/a/${india.id}/delete`);
   });
 
   it("one user's failure doesn't stop the others", async () => {
     const { deps, store, sent } = setup(at("2026-11-25T12:30:00Z"));
     const other = store.addUser({ email: "in2@x.com", timeZone: "Asia/Kolkata", briefTime: "18:00" });
-    const send = deps.sendEmail;
-    deps.sendEmail = async (to, msg) => { if (to === "in@x.com") throw new Error("resend 500"); return send(to, msg); };
+    const publish = deps.publish;
+    deps.publish = async (u, m, md) => { if (u.email === "in@x.com") throw new Error("disk full"); return publish(u, m, md); };
     const results = await deliverDue(deps, at("2026-11-25T12:30:00Z"));
     expect(results.find((r) => r.status === "failed")).toBeDefined();
     expect(sent.map((s) => s.to)).toEqual(["in2@x.com"]);
