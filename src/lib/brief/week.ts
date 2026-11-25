@@ -100,7 +100,7 @@ export function buildWeek(data: BriefData, now: Date, timeZone: string): WeekMod
       const m = meeting(i.meetingId);
       return {
         itemId: i.id, kind: i.kind, text: i.text, person: i.person, quote: i.quote,
-        meetingTitle: m?.title ?? "a meeting", day: shortDay(startOf(i), timeZone),
+        meetingTitle: m?.title ?? (i.source === "manual" ? "added by you" : "a meeting"), day: shortDay(startOf(i), timeZone),
         ageDays: Math.floor((now.getTime() - Date.parse(startOf(i))) / DAY),
       };
     });
@@ -151,7 +151,7 @@ export function renderWeekMarkdown(w: WeekModel): string {
   }
   if (w.stale.length) {
     out.push(`## Open more than ${STALE_DAYS} days (${w.stale.length})`, "");
-    for (const s of w.stale) out.push(`- [ ] ${esc(s.text)} (${s.ageDays}d)${s.kind === "waiting" ? " · waiting" : ""}`, `  "${esc(s.quote)}" · ${esc(s.meetingTitle)}, ${s.day}`);
+    for (const s of w.stale) out.push(`- [ ] ${esc(s.text)} (${s.ageDays}d)${s.kind === "waiting" ? " · waiting" : ""}`, `  ${s.quote ? `"${esc(s.quote)}" · ` : ""}${esc(s.meetingTitle)}, ${s.day}`);
     out.push("");
   }
   return out.join("\n").replace(/\n{3,}/g, "\n\n").trimEnd() + "\n";

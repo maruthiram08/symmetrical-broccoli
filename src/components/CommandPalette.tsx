@@ -6,6 +6,7 @@ import { checkMeetingsNow } from "@/app/actions";
 import { fold, terms } from "@/lib/search";
 import { Highlight } from "./Highlight";
 import { SearchIcon } from "./SearchIcon";
+import { OPEN_CAPTURE, type CaptureDetail } from "./QuickCapture";
 
 interface Nav {
   people: Array<{ name: string; slug: string; youOwe: number; theyOwe: number }>;
@@ -117,8 +118,21 @@ export function CommandPalette() {
       .filter((d) => !ws.length || matches(`${d.label} ${d.date}`, ws))
       .slice(0, ws.length ? 3 : 4)
       .map<Row>((d) => ({ id: `d-${d.date}`, group: "Earlier days", label: d.label, href: `/day/${d.date}`, hl: true }));
+    // Add…: opens quick capture, with what you typed ("add send Nitin the deck" puts it first).
+    const typed = q.trim().replace(/^add\b\s*/i, "");
+    const addFirst = /^add\b/i.test(q.trim());
+    const add: Row = {
+      id: "act-add", group: "Actions", label: typed && ws.length ? `Add “${typed}”` : "Add…", keys: ["C"],
+      run: () => window.dispatchEvent(new CustomEvent<CaptureDetail>(OPEN_CAPTURE, { detail: { text: typed && ws.length ? typed : "" } })),
+    };
+    const asking: Row = q.trim()
+      ? { id: "act-ask", group: "Actions", label: `Ask “${q.trim().slice(0, 120)}”`, sub: "Claude answers from your items", href: `/ask?q=${encodeURIComponent(q.trim().slice(0, 500))}` }
+      : { id: "act-ask", group: "Actions", label: "Ask…", sub: "a question about your meetings", href: "/ask" };
+    if (addFirst) out.push(add);
     out.push(...goRows);
     if (!ws.length || matches(check.label, ws)) out.push(check);
+    if (!ws.length) out.push(add);
+    if (!addFirst) out.push(asking);
     out.push(...people, ...days);
     if (ws.length) {
       for (const r of results.rows) {
@@ -128,6 +142,7 @@ export function CommandPalette() {
         });
       }
       out.push({ id: "search-all", group: "Results", label: `Search everything for “${q.trim()}”`, href: `/search?q=${encodeURIComponent(q.trim())}` });
+      if (!addFirst) out.push({ ...add, group: "Add" });
     }
     return out;
   }, [q, nav, results]);

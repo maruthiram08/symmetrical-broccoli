@@ -1,0 +1,63 @@
+/* Ask, nudges and the contradiction catch. Uses the tokens in globals.css. */
+
+.db-ask { padding: 0 var(--space-4); display: flex; flex-direction: column; gap: var(--space-6); }
+.db-ask__sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.db-ask__form { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3); border: 1px solid var(--border-strong); border-radius: var(--radius-lg); background: var(--bg); }
+.db-ask__form:focus-within { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.db-ask__input { width: 100%; resize: none; border: 0; outline: 0; background: transparent; color: var(--ink); font: 400 16px/24px var(--font-sans); }
+.db-ask__input::placeholder { color: var(--ink-faint); }
+.db-ask__bar { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; }
+.db-ask__hint { font: 400 12px/16px var(--font-sans); color: var(--ink-faint); }
+.db-ask__btn { height: 32px; padding: 0 16px; border-radius: var(--radius-full); border: 1px solid var(--ink); background: var(--ink); color: var(--on-ink); font: 500 13px/16px var(--font-sans); cursor: pointer; }
+.db-ask__btn:disabled { opacity: 0.4; cursor: default; }
+.db-ask__examples { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+
+.db-ask__result { display: flex; flex-direction: column; gap: var(--space-3); }
+.db-ask__q { margin: 0; font: 600 15px/22px var(--font-sans); color: var(--ink); }
+.db-ask__answer { font: 400 15px/24px var(--font-sans); color: var(--ink); overflow-wrap: anywhere; }
+.db-ask__answer p { margin: 0 0 var(--space-2); }
+.db-ask__answer ul { margin: 0 0 var(--space-2); padding-left: 20px; }
+.db-ask__answer li { margin: 2px 0; }
+.db-ask__cite {
+  display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 4px; margin: 0 1px;
+  border-radius: var(--radius-sm); background: var(--highlight-soft); color: var(--ink); font: 500 11px/1 var(--font-mono);
+  text-decoration: none; vertical-align: 2px;
+}
+.db-ask__cite:hover, .db-ask__cite:focus-visible { background: var(--highlight); color: var(--on-highlight); }
+.db-ask__meta { margin: 0; font: 400 12px/16px var(--font-mono); color: var(--ink-faint); }
+.db-ask__error { margin: 0; font: 400 13px/18px var(--font-sans); color: var(--overdue); }
+.db-ask__loading { display: flex; flex-direction: column; gap: var(--space-2); }
+.db-ask__loading > span:not(.db-ask__sr) { display: block; height: 12px; border-radius: var(--radius-full); background: var(--surface-300); animation: db-ask-pulse 1.2s ease-in-out infinite; }
+.db-ask__loading > span:nth-child(2) { width: 60%; }
+@keyframes db-ask-pulse { 50% { opacity: 0.45; } }
+@media (prefers-reduced-motion: reduce) { .db-ask__loading > span { animation: none; } }
+
+.db-ask__sources { list-style: none; margin: var(--space-2) 0 0; padding: var(--space-3) 0 0; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: var(--space-3); }
+.db-ask__src { display: grid; grid-template-columns: 24px 1fr; gap: var(--space-2); }
+.db-ask__n { font: 500 12px/20px var(--font-mono); color: var(--ink-faint); }
+.db-ask__src-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.db-ask__src-head { display: flex; align-items: center; gap: var(--space-2); }
+.db-ask__src-text { color: var(--ink); font: 500 14px/20px var(--font-sans); text-decoration: none; }
+.db-ask__src-text:hover { text-decoration: underline; }
+.db-ask__quote { font: 400 13px/18px var(--font-sans); color: var(--ink-muted); font-style: italic; overflow-wrap: anywhere; }
+.db-ask__src-meta { font: 400 12px/16px var(--font-sans); color: var(--ink-faint); }
+
+/* Nudge on an overdue "Waiting on" item. */
+.db-nudge { grid-column: 2 / 4; display: flex; flex-direction: column; gap: var(--space-2); margin-top: var(--space-2); padding: var(--space-3); border: 1px dashed var(--border-strong); border-radius: var(--radius-md); background: var(--surface-100); min-width: 0; }
+.db-nudge__label { margin: 0; font: 500 12px/16px var(--font-sans); color: var(--ink-faint); }
+.db-nudge__text { margin: 0; font: 400 14px/20px var(--font-sans); color: var(--ink); white-space: pre-wrap; overflow-wrap: anywhere; }
+.db-nudge__acts { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.db-act--nudge { border-color: var(--ink); color: var(--ink); }
+.db-nudge__flash { font: 400 12px/16px var(--font-sans); color: var(--ink-muted); }
+
+/* Contradiction catch on Today. */
+.db-contra { display: flex; flex-direction: column; gap: var(--space-3); margin: 0 var(--space-4) var(--space-6); }
+.db-contra__card { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3) var(--space-4); border: 1px solid var(--border-strong); border-left: 3px solid var(--overdue); border-radius: var(--radius-md); background: var(--bg); }
+.db-contra__head { display: flex; align-items: baseline; gap: var(--space-2); margin: 0; font: 400 14px/20px var(--font-sans); color: var(--ink); }
+.db-contra__src { color: var(--ink-faint); font-size: 12px; }
+.db-contra__body { margin: 0; font: 400 13px/18px var(--font-sans); color: var(--ink-muted); }
+.db-contra__note { color: var(--ink-faint); }
+.db-contra__quotes { display: flex; flex-direction: column; gap: 2px; margin: 0; font: italic 400 12px/16px var(--font-sans); color: var(--ink-faint); overflow-wrap: anywhere; }
+.db-contra__acts { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+.db-act--strong { border-color: var(--ink); background: var(--ink); color: var(--on-ink); }
+.db-act--strong:hover { background: var(--ink); color: var(--on-ink); opacity: 0.88; }

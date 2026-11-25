@@ -4,7 +4,7 @@ import { InvalidGrantError } from "@modelcontextprotocol/sdk/server/auth/errors.
 import { MemoryStore } from "@/server/store";
 import { connect } from "@/server/testing";
 import {
-  ensureFreshAccessToken, finishWisprAuth, MemoryOAuthClientStore, openPending, ReconnectRequiredError, sealPending,
+  ensureFreshAccessToken, finishWisprAuth, MAX_REFRESH_FAILURES, MemoryOAuthClientStore, openPending, ReconnectRequiredError, sealPending,
   WisprOAuthProvider, type WisprAuthContext,
 } from "./oauth";
 
@@ -51,6 +51,36 @@ describe("ensureFreshAccessToken", () => {
     connect(c.store, c.userId, { expiresAt: "2026-11-25T11:00:00.000Z" });
     await expect(ensureFreshAccessToken(c, { refresh: async () => { throw new TypeError("fetch failed"); } })).rejects.toThrow("fetch failed");
     expect(c.store.connections.get(c.userId)?.status).toBe("active");
+  });
+});
+
+describe("refresh that keeps failing", () => {
+  it("asks to reconnect after a few refreshes Wispr Flow rejects, and then stops trying", async () => {
+    const c = ctx();
+    connect(c.store, c.userId, { expiresAt: "2026-11-25T11:00:00.000Z" });
+    let calls = 0;
+    const refresh = async () => { calls++; throw Object.assign(new Error("HTTP 500"), { name: "ServerError" }); };
+    for (let i = 1; i < MAX_REFRESH_FAILURES; i++) {
+      await expect(ensureFreshAccessToken(c, { refresh })).rejects.toThrow("HTTP 500");
+      expect(c.store.connections.get(c.userId)).toMatchObject({ status: "active", refreshFailures: i });
+    }
+    await expect(ensureFreshAccessToken(c, { refresh })).rejects.toBeInstanceOf(ReconnectRequiredError);
+    expect(c.store.connections.get(c.userId)?.status).toBe("needs_reconnect");
+    // No more refresh attempts once reconnect is needed.
+    await expect(ensureFreshAccessToken(c, { refresh })).rejects.toBeInstanceOf(ReconnectRequiredError);
+    expect(calls).toBe(MAX_REFRESH_FAILURES);
+    expect(c.store.events.filter((e) => e.type === "job_error")).toHaveLength(1);
+  });
+
+  it("being offline never counts against the sign-in, and a good refresh resets the count", async () => {
+    const c = ctx();
+    connect(c.store, c.userId, { expiresAt: "2026-11-25T11:00:00.000Z", refreshFailures: 2 });
+    for (let i = 0; i < 10; i++) {
+      await expect(ensureFreshAccessToken(c, { refresh: async () => { throw new TypeError("fetch failed"); } })).rejects.toThrow("fetch failed");
+    }
+    expect(c.store.connections.get(c.userId)).toMatchObject({ status: "active", refreshFailures: 2 });
+    await ensureFreshAccessToken(c, { refresh: async () => ({ access_token: "A2", token_type: "Bearer", expires_in: 3600 }) });
+    expect(c.store.connections.get(c.userId)).toMatchObject({ status: "active", refreshFailures: 0, accessToken: "A2" });
   });
 });
 

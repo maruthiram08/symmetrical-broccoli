@@ -11,9 +11,13 @@ import { formatBriefTime } from "./_lib/time";
 import { pastDays } from "./_lib/days";
 import { DayRibbon, MeetingChip } from "@/components/DayRibbon";
 import { PrepCard } from "@/components/PrepCard";
+import { ContradictionCards } from "@/components/ContradictionCards";
 import { formatTime, localDayBounds } from "@/lib/brief/time";
 import { buildRibbon } from "@/lib/wow/ribbon";
 import { prepCard } from "@/server/local/prep";
+import { TodayNotes } from "@/components/TodayNotes";
+import { onboardingStep } from "@/server/local/onboarding";
+import { pullState } from "@/server/local/scheduler";
 
 const countOf = (l: unknown[]) => (l.length ? String(l.length) : undefined);
 /** "in 22 min", "in 1 h 5 min" */
@@ -27,10 +31,11 @@ export const metadata: Metadata = { title: { absolute: "Today · Daily brief" } 
 
 export default async function Today({ searchParams }: { searchParams: Promise<{ undo?: string; was?: string; meeting?: string }> }) {
   const user = await me();
-  if (!user) redirect("/setup");
+  if (!user) redirect("/welcome");
   const store = getStore();
   const conn = await store.getConnection(user.id);
-  if (!conn) redirect("/setup");
+  if (onboardingStep(user, conn, pullState()?.running ?? false) !== "done") redirect("/welcome");
+  if (!conn) redirect("/welcome");
 
   const now = new Date();
   const b = await buildBrief(store, user, now);
@@ -63,12 +68,8 @@ export default async function Today({ searchParams }: { searchParams: Promise<{ 
         <span className="db-mono">{formatBriefTime(user.briefTime)}</span>
       </p>
       <SummaryLinks />
+      {only ? null : <TodayNotes user={user} now={now} />}
 
-      {conn.status === "needs_reconnect" ? (
-        <p className="db-banner" role="status">
-          Wispr Flow signed you out, so new meetings aren&apos;t coming in. <a href="/api/wispr/connect">Reconnect</a>
-        </p>
-      ) : null}
       {undo ? (
         <form action={setStatus} className="db-banner" role="status">
           {was === "wrong" ? "Removed." : "Marked done."}
@@ -83,6 +84,7 @@ export default async function Today({ searchParams }: { searchParams: Promise<{ 
       {only ? <MeetingChip title={only.title} time={formatTime(only.startedAt, user.timeZone)} /> : null}
 
       {only ? null : <CloseMoment lines={closedSinceLook} />}
+      {only ? null : <ContradictionCards user={user} />}
       <Section title="You owe" count={only ? countOf(keep(b.youOwe)) : owedCount} empty={only ? "Nothing you owe from this meeting." : b.meetingCount ? "Nothing owed. Go home." : "Nothing owed today."}>
         {keep(b.youOwe).map((l) => <BriefItem key={l.itemId} line={l} />)}
       </Section>

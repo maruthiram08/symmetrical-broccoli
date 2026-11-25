@@ -3,6 +3,8 @@ import { redirect } from "next/navigation";
 import { Section } from "@/components/BriefList";
 import { CloseRow, PromiseRow, Stats, SummaryLinks } from "@/components/CloseWrap";
 import { Shell } from "@/components/Shell";
+import { TomorrowGlance } from "@/components/TomorrowGlance";
+import { tomorrowFor } from "@/server/local/calendar";
 import { loadBriefData } from "@/lib/brief/data";
 import { formatTime } from "@/lib/brief/time";
 import { buildWrap } from "@/lib/brief/wrap";
@@ -51,6 +53,7 @@ export default async function Wrap() {
           </Section>
         </>
       )}
+      <TomorrowGlance meetings={await tomorrowFor(store, user, now)} />
     </Shell>
   );
 }

@@ -1,4 +1,5 @@
 import type { BriefLine, BriefModel } from "@/lib/types";
+import { renderTomorrowSection } from "@/lib/calendar/glance";
 import { renderWrapSection } from "./wrap";
 
 /** The daily note saved as YYYY-MM-DD.md. Plain Markdown that any editor (and the v1.1 desktop app) can open. */
@@ -24,6 +25,7 @@ export function renderMarkdown(m: BriefModel): string {
     if (m.stillOpenCount > m.stillOpen.length) out.push(`- …and ${m.stillOpenCount - m.stillOpen.length} more`);
     out.push("");
   }
+  out.push(...renderTomorrowSection(m.tomorrow));
   out.push(...renderWrapSection(m.wrap, m.openPromises));
   return out.join("\n").replace(/\n{3,}/g, "\n\n").trimEnd() + "\n";
 }
@@ -43,7 +45,9 @@ function section(out: string[], title: string, lines: BriefLine[]) {
 function line(l: BriefLine): string[] {
   const box = l.kind === "decision" ? "-" : "- [ ]";
   const when = l.lateLabel ? ` **(${l.lateLabel})**` : l.dueLabel ? ` (${l.dueLabel})` : "";
-  return [`${box} ${esc(l.text)}${when}`, `  "${esc(l.quote)}" · ${esc(l.meetingTitle)}, ${l.meetingTime}`];
+  const star = l.starred ? "★ " : "";
+  if (l.manual) return [`${box} ${star}${esc(l.text)}${when}`, `  Added by you${l.person ? ` · ${esc(l.person)}` : ""}${l.note ? ` · ${esc(l.note)}` : ""}`];
+  return [`${box} ${star}${esc(l.text)}${when}`, `  "${esc(l.quote)}" · ${esc(l.meetingTitle)}, ${l.meetingTime}${l.shared ? " · shared" : ""}`];
 }
 
 /** Keep transcript text from turning into Markdown structure. */

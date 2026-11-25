@@ -8,14 +8,14 @@ export class FakeWispr {
   meetings = new Map<string, WisprMeeting[]>();
   transcripts = new Map<string, string>();
   failingUsers = new Set<string>();
-  sinceCalls: Array<{ userId: string; since: string }> = [];
+  sinceCalls: Array<{ userId: string; since: string; includeShared?: boolean }> = [];
   transcriptCalls: string[] = [];
 
   client = (userId: string): WisprClient => ({
-    listMeetingsSince: async (since) => {
-      this.sinceCalls.push({ userId, since });
+    listMeetingsSince: async (since, opts) => {
+      this.sinceCalls.push({ userId, since, ...(opts?.includeShared ? { includeShared: true } : {}) });
       if (this.failingUsers.has(userId)) throw new Error("wispr down");
-      return (this.meetings.get(userId) ?? []).filter((m) => m.startedAt >= since);
+      return (this.meetings.get(userId) ?? []).filter((m) => m.startedAt >= since && (!m.shared || opts?.includeShared));
     },
     getTranscript: async (id) => {
       this.transcriptCalls.push(id);

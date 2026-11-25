@@ -1,5 +1,6 @@
 import type { BriefLine, BriefModel, ClosedLine, Item, Meeting, QuotePeekInfo, User } from "@/lib/types";
 import type { Store } from "@/server/store";
+import { isManual, isSnoozed, lineExtras } from "@/lib/capture/items";
 import { dateLabel, dueLabel, formatTime, lateLabel, localDate, localDayBounds } from "./time";
 
 const STILL_OPEN_SHOWN = 5;
@@ -38,27 +39,32 @@ export async function buildBrief(store: Store, user: User, now: Date): Promise<B
       lateLabel: lateMinutes !== null ? lateLabel(lateMinutes) : null,
       meetingId: i.meetingId,
       peek: peekInfo(i, m, tz),
+      ...lineExtras(i),
+      ...(m?.shared ? { shared: true } : {}),
     };
   };
 
-  const fromToday = async (i: Item) => inToday((await meetingOf(i.meetingId))?.startedAt ?? null);
+  // Your own items count from when you added them.
+  const fromToday = async (i: Item) => inToday((await meetingOf(i.meetingId))?.startedAt ?? (isManual(i) ? i.createdAt : null));
   const dueSoon = (i: Item) => !!i.dueAt && Date.parse(i.dueAt) < Date.parse(endIso) + 86400000; // due by end of tomorrow (or overdue)
 
-  const open = items.filter((i) => i.status === "open");
+  // Snoozed items stay out until their day; starred ones are always on Today, at the top.
+  const open = items.filter((i) => i.status === "open" && !isSnoozed(i, date));
   const shown = new Set<string>();
   const pick = async (kind: Item["kind"]) => {
     const out: Item[] = [];
-    for (const i of open.filter((x) => x.kind === kind)) if ((await fromToday(i)) || dueSoon(i)) out.push(i);
+    for (const i of open.filter((x) => x.kind === kind)) if (i.starred || (await fromToday(i)) || dueSoon(i)) out.push(i);
     out.forEach((i) => shown.add(i.id));
     return out;
   };
 
   const owe = await Promise.all((await pick("owe")).map(toLine));
   owe.sort((a, b) =>
+    Number(!!b.starred) - Number(!!a.starred) ||
     (b.lateMinutes ?? -1) - (a.lateMinutes ?? -1) ||
     order(items, a.itemId) - order(items, b.itemId));
   const waiting = await Promise.all((await pick("waiting")).map(toLine));
-  waiting.sort((a, b) => order(items, a.itemId) - order(items, b.itemId));
+  waiting.sort((a, b) => Number(!!b.starred) - Number(!!a.starred) || order(items, a.itemId) - order(items, b.itemId));
 
   const decisionItems: Item[] = [];
   for (const i of items.filter((x) => x.kind === "decision")) if (await fromToday(i)) decisionItems.push(i);

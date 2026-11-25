@@ -1,8 +1,10 @@
 // Daily brief for macOS: a small shell around the local Next.js server.
 //
 // On start it reuses a Daily brief server already on 127.0.0.1:4242 (say, the old launchd agent
-// or `npm start`). Otherwise it starts the bundled Next standalone server with the system Node,
-// waits for /api/health, and then shows the window. Closing the window hides it to the menu bar.
+// or `npm start`). Otherwise it starts the bundled Next standalone server with the system Node.
+// The window shows a starting page until /api/health answers. A watchdog keeps checking: if the
+// server goes away (ours crashed, or the reused one was stopped), it starts ours again.
+// Closing the window hides it to the menu bar.
 
 use std::fs::OpenOptions;
 use std::io::{Read, Write};
@@ -37,6 +39,10 @@ struct Server {
     quitting: AtomicBool,
     /// Open was pressed before the window existed.
     want_show: AtomicBool,
+    /// What the window shows now (None before it exists).
+    page: Mutex<Option<Page>>,
+    /// Quick add was pressed before the app page loaded: open it with the capture input.
+    want_capture: AtomicBool,
 }
 
 // ---------- a tiny HTTP client for 127.0.0.1 (no extra crates) ----------
@@ -239,52 +245,6 @@ fn stop_server(app: &AppHandle) {
     let _ = child.wait();
 }
 
-/// Restarts the server we started if it stops (at most 5 times in 10 minutes).
-fn watch_server(app: AppHandle) {
-    thread::spawn(move || {
-        let mut restarts: Vec<Instant> = Vec::new();
-        loop {
-            thread::sleep(Duration::from_secs(5));
-            let state = app.state::<Server>();
-            if state.quitting.load(Ordering::SeqCst) {
-                return;
-            }
-            let exited = {
-                let mut guard = state.child.lock().unwrap();
-                match guard.as_mut() {
-                    Some(c) => matches!(c.try_wait(), Ok(Some(_))),
-                    None => return, // reusing a server someone else runs
-                }
-            };
-            if !exited {
-                continue;
-            }
-            restarts.retain(|t| t.elapsed() < Duration::from_secs(600));
-            if restarts.len() >= 5 {
-                eprintln!(
-                    "[daily-brief] the server keeps stopping; see {}",
-                    log_path().display()
-                );
-                return;
-            }
-            restarts.push(Instant::now());
-            let node = state.node.lock().unwrap().clone();
-            let Some(node) = node else { return };
-            match spawn_server(&app, &node) {
-                Ok(child) => {
-                    *state.child.lock().unwrap() = Some(child);
-                    if wait_healthy(Duration::from_secs(60), || child_alive(&app)) {
-                        if let Some(w) = app.get_webview_window(WINDOW) {
-                            let _ = w.eval("location.reload()");
-                        }
-                    }
-                }
-                Err(e) => eprintln!("[daily-brief] restart failed: {e}"),
-            }
-        }
-    });
-}
-
 // ---------- window ----------
 
 fn percent_encode(s: &str) -> String {
@@ -325,22 +285,75 @@ fn hide_window(app: &AppHandle) {
     let _ = app.set_activation_policy(tauri::ActivationPolicy::Accessory);
 }
 
-/// Starts or reuses the server off the main thread, then opens the window (hidden at login).
+/// What the window shows. The watchdog only navigates when this changes.
+#[derive(Clone, PartialEq, Eq)]
+enum Page {
+    Starting,
+    App,
+    Error(String, String),
+}
+
+/// The bundled pages in src-tauri/ui (the starting and error page).
+fn local_page(query: &str) -> tauri::Url {
+    #[cfg(windows)]
+    let base = "http://tauri.localhost/index.html";
+    #[cfg(not(windows))]
+    let base = "tauri://localhost/index.html";
+    format!("{base}{query}").parse().expect("valid local url")
+}
+
+/// Points the window at `page` unless it already shows it. Returns true when it changed.
+fn set_page(app: &AppHandle, page: &Page) -> bool {
+    let state = app.state::<Server>();
+    let mut current = state.page.lock().unwrap();
+    if current.as_ref() == Some(page) {
+        return false;
+    }
+    let url = match page {
+        Page::Starting => local_page(""),
+        Page::App if state.want_capture.swap(false, Ordering::SeqCst) => {
+            format!("{APP_URL}/?capture=1").parse().expect("valid url")
+        }
+        Page::App => APP_URL.parse().expect("valid url"),
+        Page::Error(title, detail) => local_page(&format!(
+            "?title={}&detail={}",
+            percent_encode(title),
+            percent_encode(detail)
+        )),
+    };
+    if let Some(w) = app.get_webview_window(WINDOW) {
+        if let Err(e) = w.navigate(url) {
+            eprintln!("[daily-brief] couldn't load the page: {e}");
+            return false;
+        }
+    }
+    *current = Some(page.clone());
+    true
+}
+
+/// Shows an error page. Brings the window forward when the error is new, so a server that
+/// stopped while the app sat in the menu bar isn't silent.
+fn set_error(app: &AppHandle, title: &str, detail: String) {
+    if set_page(app, &Page::Error(title.into(), detail)) {
+        show_window(app);
+    }
+}
+
+/// How long the server may stay unreachable before the app acts on it.
+const GRACE: Duration = Duration::from_secs(10);
+/// A server that answers too slowly (rather than refusing) gets longer: it may just be busy.
+const SLOW_GRACE: Duration = Duration::from_secs(60);
+const MAX_STARTS: usize = 5;
+const START_WINDOW: Duration = Duration::from_secs(600);
+
+/// Opens the window on the starting page, then watches the server for as long as the app runs:
+/// - Daily brief answers: show it (and reload it after a restart).
+/// - Nobody answers for 10 s (our server stopped, or the reused launchd server was unloaded):
+///   start our own server, the same way as on first launch, at most 5 times in 10 minutes.
+/// - Something else holds the port: show the error page.
 fn start(app: AppHandle, start_hidden: bool) {
     thread::spawn(move || {
-        let result = ensure_server(&app);
-        let url = match &result {
-            Ok(()) => WebviewUrl::External(APP_URL.parse().expect("valid url")),
-            Err((title, detail)) => WebviewUrl::App(
-                format!(
-                    "index.html?title={}&detail={}",
-                    percent_encode(title),
-                    percent_encode(detail)
-                )
-                .into(),
-            ),
-        };
-        let built = WebviewWindowBuilder::new(&app, WINDOW, url)
+        let built = WebviewWindowBuilder::new(&app, WINDOW, WebviewUrl::App("index.html".into()))
             .title("Daily brief")
             .inner_size(1120.0, 800.0)
             .min_inner_size(420.0, 480.0)
@@ -355,13 +368,101 @@ fn start(app: AppHandle, start_hidden: bool) {
             eprintln!("[daily-brief] couldn't open the window: {e}");
             return;
         }
-        // Errors always show, even at login, so a broken setup isn't silent.
+        *app.state::<Server>().page.lock().unwrap() = Some(Page::Starting);
         let want = app.state::<Server>().want_show.load(Ordering::SeqCst);
-        if !start_hidden || want || result.is_err() {
+        if !start_hidden || want {
             show_window(&app);
         }
-        if result.is_ok() {
-            watch_server(app.clone());
+
+        let mut starts: Vec<Instant> = Vec::new();
+        let mut down_since: Option<Instant> = None;
+        let mut first = true;
+        let mut last_error: Option<(String, String)> = None;
+        loop {
+            let state = app.state::<Server>();
+            if state.quitting.load(Ordering::SeqCst) {
+                return;
+            }
+            let port = probe();
+            if matches!(port, Port::DailyBrief) {
+                down_since = None;
+                set_page(&app, &Page::App);
+            } else {
+                let since = *down_since.get_or_insert_with(Instant::now);
+                let (ours, ours_alive) = {
+                    let mut guard = state.child.lock().unwrap();
+                    match guard.as_mut() {
+                        Some(c) => (true, matches!(c.try_wait(), Ok(None))),
+                        None => (false, false),
+                    }
+                };
+                let grace = if matches!(port, Port::Other(0)) {
+                    SLOW_GRACE
+                } else {
+                    GRACE
+                };
+                if ours && ours_alive {
+                    // Our server is still starting (or busy). Give it time; it is not killed.
+                } else if first || (ours && !ours_alive) || since.elapsed() >= grace {
+                    if ours {
+                        stop_server(&app); // reap the process that stopped
+                    }
+                    match port {
+                        Port::Other(status) if status != 0 || !first => {
+                            let answer = if status == 0 {
+                                "doesn't answer in time".to_string()
+                            } else {
+                                format!("answers with HTTP {status}")
+                            };
+                            set_error(
+                                &app,
+                                "Port 4242 is taken",
+                                format!(
+                                    "Something other than this version of Daily brief is on port 4242 and {answer}. If it's an older Daily brief started at login, run npm run uninstall-login in the project folder. The app keeps checking and connects once the port is free."
+                                ),
+                            )
+                        }
+                        Port::Other(_) => {} // first look, slow answer: wait for the grace period
+                        _ => {
+                            starts.retain(|t| t.elapsed() < START_WINDOW);
+                            if starts.len() >= MAX_STARTS {
+                                // Keep showing why the last start failed, if it did.
+                                if let Some((title, detail)) = last_error.clone() {
+                                    set_error(&app, &title, detail);
+                                } else {
+                                    set_error(
+                                    &app,
+                                    "Daily brief keeps stopping",
+                                    format!(
+                                        "The server stopped {MAX_STARTS} times in 10 minutes, so the app has stopped restarting it for now. Details are in {}.",
+                                        log_path().display()
+                                    ),
+                                );
+                                }
+                            } else {
+                                starts.push(Instant::now());
+                                set_page(&app, &Page::Starting);
+                                match ensure_server(&app) {
+                                    Ok(()) => {
+                                        down_since = None;
+                                        last_error = None;
+                                        set_page(&app, &Page::App);
+                                    }
+                                    Err((title, detail)) => {
+                                        // Try again after another grace period (say, once
+                                        // Node is installed), within the start budget.
+                                        down_since = Some(Instant::now());
+                                        set_error(&app, &title, detail.clone());
+                                        last_error = Some((title, detail));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            first = false;
+            thread::sleep(Duration::from_secs(3));
         }
     });
 }
@@ -378,6 +479,24 @@ fn check_meetings_now() {
     );
 }
 
+/// Quick add: bring the window forward on the one-line capture input (src/components/QuickCapture.tsx).
+fn quick_add(app: &AppHandle) {
+    show_window(app);
+    let on_app = *app.state::<Server>().page.lock().unwrap() == Some(Page::App);
+    match app.get_webview_window(WINDOW) {
+        Some(w) if on_app => {
+            if let Err(e) = w.eval("window.dispatchEvent(new CustomEvent('db:capture'))") {
+                eprintln!("[daily-brief] quick add: {e}");
+            }
+        }
+        // Still starting: the app page opens with the input once the server answers.
+        _ => app
+            .state::<Server>()
+            .want_capture
+            .store(true, Ordering::SeqCst),
+    }
+}
+
 fn quit(app: &AppHandle) {
     app.state::<Server>().quitting.store(true, Ordering::SeqCst);
     stop_server(app);
@@ -387,6 +506,7 @@ fn quit(app: &AppHandle) {
 fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
     let at_login = app.autolaunch().is_enabled().unwrap_or(false);
     let open = MenuItem::with_id(app, "open", "Open Daily brief", true, None::<&str>)?;
+    let quick = MenuItem::with_id(app, "quick", "Quick add…", true, None::<&str>)?;
     let browser = MenuItem::with_id(app, "browser", "Open in browser", true, None::<&str>)?;
     let check = MenuItem::with_id(app, "check", "Check meetings now", true, None::<&str>)?;
     let login = CheckMenuItem::with_id(
@@ -402,7 +522,9 @@ fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
     let sep2 = PredefinedMenuItem::separator(app)?;
     let menu = Menu::with_items(
         app,
-        &[&open, &browser, &check, &sep1, &login, &sep2, &quit_item],
+        &[
+            &open, &quick, &browser, &check, &sep1, &login, &sep2, &quit_item,
+        ],
     )?;
 
     let login_item = login.clone();
@@ -414,6 +536,7 @@ fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
         .show_menu_on_left_click(true)
         .on_menu_event(move |app, event| match event.id.as_ref() {
             "open" => show_window(app),
+            "quick" => quick_add(app),
             "browser" => open_in_browser(APP_URL),
             "check" => check_meetings_now(),
             "login" => {

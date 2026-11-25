@@ -68,7 +68,7 @@ export function formatItem(i: Item, s: Snapshot): string {
   const head = [`[${i.id}] ${KIND_LABEL[i.kind]}${status}`, i.person, dueText(i, s)].filter(Boolean).join(" · ");
   const m = s.byId.get(i.meetingId);
   const src = m ? `${m.title}, ${day(m.startedAt, tz)}` : "a meeting";
-  const out = [head, `  ${i.text}`, `  ${src} · "${i.quote}"`];
+  const out = [head, `  ${i.text}`, i.source === "manual" ? `  Added by you${i.note ? ` · ${i.note}` : ""}` : `  ${src} · "${i.quote}"`];
   if (i.status === "done") {
     const cm = i.closedByMeetingId ? s.byId.get(i.closedByMeetingId) : undefined;
     if (i.closeQuote) out.push(`  Closed in ${cm ? `${cm.title}, ${day(cm.startedAt, tz)}` : "a later meeting"}: "${i.closeQuote}"`);

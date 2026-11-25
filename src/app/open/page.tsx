@@ -3,7 +3,8 @@ import { redirect } from "next/navigation";
 import { BriefItem, Section } from "@/components/BriefList";
 import { Shell } from "@/components/Shell";
 import { peekInfo } from "@/lib/brief/build";
-import { formatTime, dueLabel, lateLabel } from "@/lib/brief/time";
+import { formatTime, dueLabel, lateLabel, localDate } from "@/lib/brief/time";
+import { isSnoozed, lineExtras, starredFirst } from "@/lib/capture/items";
 import type { BriefLine, Item } from "@/lib/types";
 import { getStore, me } from "@/server/local/app";
 import { pastDays } from "../_lib/days";
@@ -17,10 +18,13 @@ export default async function AllOpen() {
   if (!user) redirect("/setup");
   const store = getStore();
   const now = new Date();
-  const open = (await store.listItems(user.id, { status: "open" })).filter((i) => i.kind !== "decision");
+  const all = (await store.listItems(user.id, { status: "open" })).filter((i) => i.kind !== "decision");
+  const today = localDate(now, user.timeZone);
+  const snoozed = all.filter((i) => isSnoozed(i, today)).sort((a, b) => (a.snoozedUntil ?? "").localeCompare(b.snoozedUntil ?? ""));
+  const open = all.filter((i) => !isSnoozed(i, today));
 
   const meetings = new Map<string, { title: string; startedAt: string; link?: string | null } | null>();
-  for (const i of open) if (!meetings.has(i.meetingId)) meetings.set(i.meetingId, await store.getMeeting(i.meetingId));
+  for (const i of all) if (!meetings.has(i.meetingId)) meetings.set(i.meetingId, await store.getMeeting(i.meetingId));
   const started = (i: Item) => meetings.get(i.meetingId)?.startedAt ?? i.createdAt;
 
   const line = (i: Item): BriefLine => {
@@ -34,16 +38,18 @@ export default async function AllOpen() {
       dueLabel: i.dueAt && late === null ? dueLabel(i.dueAt, now, user.timeZone) : null,
       lateMinutes: late, lateLabel: late !== null ? lateLabel(late) : null,
       meetingId: i.meetingId, peek: peekInfo(i, m ?? null, user.timeZone),
+      ...lineExtras(i),
     };
   };
 
   const group = (kind: Item["kind"]) => {
     const byPerson = new Map<string, Item[]>();
-    for (const i of open.filter((x) => x.kind === kind).sort((a, b) => started(a).localeCompare(started(b)))) {
+    for (const i of starredFirst(open.filter((x) => x.kind === kind).sort((a, b) => started(a).localeCompare(started(b))))) {
       const k = i.person?.trim() || "No one named";
       byPerson.set(k, [...(byPerson.get(k) ?? []), i]);
     }
-    return [...byPerson.entries()].sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]));
+    const stars = (xs: Item[]) => xs.filter((x) => x.starred).length;
+    return [...byPerson.entries()].sort((a, b) => stars(b[1]) - stars(a[1]) || b[1].length - a[1].length || a[0].localeCompare(b[0]));
   };
   const owe = group("owe");
   const waiting = group("waiting");
@@ -69,6 +75,11 @@ export default async function AllOpen() {
           </div>
         ))}
       </Section>
+      {snoozed.length ? (
+        <Section title="Snoozed" count={String(snoozed.length)}>
+          {snoozed.map((i) => <BriefItem key={i.id} line={{ ...line(i), snoozedUntil: i.snoozedUntil ?? null }} back="/open" />)}
+        </Section>
+      ) : null}
     </Shell>
   );
 }

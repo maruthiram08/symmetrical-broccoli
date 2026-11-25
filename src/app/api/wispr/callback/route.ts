@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { buildDeps, me, wisprAuthContext } from "@/server/local/app";
+import { buildDeps, getStore, me, wisprAuthContext } from "@/server/local/app";
 import { appUrl } from "@/server/local/paths";
 import { backfillUser } from "@/server/jobs/backfill";
 import { runExclusive } from "@/server/local/scheduler";
 import { logJobError } from "@/server/jobs/types";
 import { finishWisprAuth, openPending, PENDING_COOKIE } from "@/server/wispr/oauth";
+import { errLine } from "@/server/local/log";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -17,22 +18,28 @@ function done(path: string) {
   return res;
 }
 
-// Finishes OAuth, saves the connection, reads the last 7 days, then shows the Connected page.
+// Finishes OAuth and saves the connection. On a first run it returns to /welcome (step 3 picks the
+// range to read); on a reconnect it reads the last 7 days, then shows the Connected page.
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const user = await me();
-  if (url.searchParams.get("error")) return done("/setup?error=wispr");
+  // First run (nothing read yet): back to /welcome, whose step 3 asks how far back to read.
+  const before = user ? await getStore().getConnection(user.id) : null;
+  const firstRun = !before || before.lastSeenAt === null;
+  const failed = firstRun ? "/welcome?error=wispr" : "/setup?error=wispr";
+  if (url.searchParams.get("error")) return done(failed);
   const code = url.searchParams.get("code");
   const state = url.searchParams.get("state");
-  if (!code || !state || !user) return done("/setup?error=wispr");
+  if (!code || !state || !user) return done(failed);
 
   try {
     const pending = openPending((await cookies()).get(PENDING_COOKIE)?.value, new Date());
     await finishWisprAuth(wisprAuthContext(user.id), { pending, code, state });
   } catch (e) {
-    console.error("[wispr/callback]", e instanceof Error ? e.message : e);
-    return done("/setup?error=wispr");
+    console.error(`[wispr/callback] ${errLine(e)}`);
+    return done(failed);
   }
+  if (firstRun) return done("/welcome");
 
   // The app keeps running, so a slow backfill just carries on after we redirect.
   const deps = buildDeps();

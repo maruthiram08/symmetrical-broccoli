@@ -7,6 +7,12 @@ import { CommandPalette } from "@/components/CommandPalette";
 import { Keys } from "@/components/Keys";
 import "./closewrap.css";
 import "./wow2.css";
+import "./wow3.css";
+import "./ask.css";
+import "./calendar.css";
+import "./capture.css";
+import { QuickCapture } from "@/components/QuickCapture";
+import { ItemKeys } from "@/components/ItemKeys";
 
 const sans = Instrument_Sans({ subsets: ["latin"], weight: ["400", "500", "600"], variable: "--font-instrument-sans", display: "swap" });
 const mono = Geist_Mono({ subsets: ["latin"], weight: ["400", "500"], variable: "--font-geist-mono", display: "swap" });
@@ -30,6 +36,8 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         {children}
         <CommandPalette />
         <Keys />
+        <QuickCapture />
+        <ItemKeys />
       </body>
     </html>
   );
