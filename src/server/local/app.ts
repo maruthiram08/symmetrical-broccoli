@@ -13,6 +13,7 @@ import type { WisprAuthContext } from "@/server/wispr/oauth";
 import { FileStore } from "./file-store";
 import { appUrl, dataDir, notesDir } from "./paths";
 import { publishLocal } from "./publish";
+import { withTomorrow } from "./calendar";
 
 /** A random key kept next to the data, used to seal the short-lived OAuth state cookie. */
 function ensureLocalKey(): void {
@@ -60,7 +61,7 @@ export function buildDeps(): Deps {
     extract: (input) => extractMeeting(input),
     costInr,
     model: env.extractionModel,
-    buildBrief,
+    buildBrief: async (store, user, at) => withTomorrow(store, user, at, await buildBrief(store, user, at)),
     renderMarkdown,
     publish: (user, model, markdown, week) => publishLocal(notesDir(), user, model, markdown, undefined, week),
     now,

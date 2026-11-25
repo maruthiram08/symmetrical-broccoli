@@ -1,4 +1,4 @@
-import type { Connection, Item, LastLook, Meeting, UpcomingCache, User } from "@/lib/types";
+import type { CalendarCache, Connection, Health, Item, LastLook, Meeting, UpcomingCache, User } from "@/lib/types";
 import { manualItem, type ManualInput } from "@/lib/capture/items";
 
 /**
@@ -34,6 +34,16 @@ export interface Store {
   /** Upcoming meetings cached by the poll (prep card). Optional: stores without it skip prep. */
   saveUpcoming?(userId: string, cache: UpcomingCache): Promise<void>;
   getUpcoming?(userId: string): Promise<UpcomingCache | null>;
+  /** Calendar events and meeting series cached by the poll (src/server/jobs/calendar.ts). Optional. */
+  saveCalendar?(userId: string, cache: CalendarCache): Promise<void>;
+  getCalendar?(userId: string): Promise<CalendarCache | null>;
+  /** Count a failed read of a meeting (it stays unprocessed). Optional: stores without it never give up. */
+  recordMeetingFailure?(meetingId: string, failure: string, at: string): Promise<void>;
+  /** Retry: forget failed attempts, so set-aside meetings are read again. Returns how many. */
+  resetMeetingFailures?(userId: string): Promise<number>;
+  /** What the app last managed to do. Optional: stores without it show no Health section. */
+  getHealth?(): Promise<Health>;
+  setHealth?(patch: Partial<Health>): Promise<void>;
 }
 
 let seq = 0;
@@ -53,6 +63,9 @@ export class MemoryStore implements Store {
   upcoming = new Map<string, UpcomingCache>();
   /** "userId:calendarId:startsAt" of meetings already announced with a prep notification. */
   prepNotified = new Set<string>();
+  /** Calendar cache per user (events, meeting series). */
+  calendar = new Map<string, CalendarCache>();
+  health: Health = {};
 
   addUser(u: Partial<User> & { email: string }): User {
     const user: User = { id: this.newId(), name: "", aliases: [], timeZone: "Asia/Kolkata", briefTime: "18:00", createdAt: new Date().toISOString(), ...u };
@@ -87,8 +100,21 @@ export class MemoryStore implements Store {
       if (it && it.userId === userId && it.status === "open") Object.assign(it, { status: "done", closedByMeetingId: meetingId, closeQuote: c.quote, closedAt: at });
     }
     const m = this.meetings.get(meetingId);
-    if (m) m.processedAt = at;
+    if (m) Object.assign(m, { processedAt: at, failedAttempts: 0, lastFailedAt: null, lastFailure: null });
   }
+  async recordMeetingFailure(meetingId: string, failure: string, at: string) {
+    const m = this.meetings.get(meetingId);
+    if (m && !m.processedAt) Object.assign(m, { failedAttempts: (m.failedAttempts ?? 0) + 1, lastFailedAt: at, lastFailure: failure });
+  }
+  async resetMeetingFailures(userId: string) {
+    let n = 0;
+    for (const m of this.meetings.values()) {
+      if (m.userId === userId && !m.processedAt && m.failedAttempts) { Object.assign(m, { failedAttempts: 0, lastFailedAt: null, lastFailure: null }); n++; }
+    }
+    return n;
+  }
+  async getHealth(): Promise<Health> { return { ...this.health }; }
+  async setHealth(patch: Partial<Health>) { this.health = { ...this.health, ...patch }; }
   async listItems(userId: string, filter?: { status?: Item["status"] }) {
     return [...this.items.values()].filter((i) => i.userId === userId && (!filter?.status || i.status === filter.status));
   }
@@ -119,6 +145,15 @@ export class MemoryStore implements Store {
   async saveLastLook(userId: string, look: LastLook): Promise<void> { this.looks.set(userId, look); }
   async saveUpcoming(userId: string, cache: UpcomingCache) { this.upcoming.set(userId, cache); }
   async getUpcoming(userId: string) { return this.upcoming.get(userId) ?? null; }
+  async saveCalendar(userId: string, cache: CalendarCache) { this.calendar.set(userId, cache); }
+  async getCalendar(userId: string) { return this.calendar.get(userId) ?? null; }
+  /** Set (or clear) an open item's due time. Returns false when there is no such item of this user. */
+  async setItemDue(userId: string, itemId: string, dueAt: string | null): Promise<boolean> {
+    const it = this.items.get(itemId);
+    if (!it || it.userId !== userId) return false;
+    it.dueAt = dueAt;
+    return true;
+  }
   /** Record a prep notification. Returns false when this meeting was already announced. */
   async markPrepNotified(key: string): Promise<boolean> {
     if (this.prepNotified.has(key)) return false;
@@ -126,7 +161,7 @@ export class MemoryStore implements Store {
     return true;
   }
   async deleteUser(userId: string) {
-    this.users.delete(userId); this.connections.delete(userId); this.looks.delete(userId); this.upcoming.delete(userId);
+    this.users.delete(userId); this.connections.delete(userId); this.looks.delete(userId); this.upcoming.delete(userId); this.calendar.delete(userId);
     for (const k of this.prepNotified) if (k.startsWith(userId + ":")) this.prepNotified.delete(k);
     for (const [k, m] of this.meetings) if (m.userId === userId) this.meetings.delete(k);
     for (const [k, i] of this.items) if (i.userId === userId) this.items.delete(k);

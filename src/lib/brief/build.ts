@@ -40,6 +40,7 @@ export async function buildBrief(store: Store, user: User, now: Date): Promise<B
       meetingId: i.meetingId,
       peek: peekInfo(i, m, tz),
       ...lineExtras(i),
+      ...(m?.shared ? { shared: true } : {}),
     };
   };
 

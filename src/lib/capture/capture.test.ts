@@ -147,3 +147,21 @@ describe("your notes in the daily note", () => {
     expect(readFileSync(join(dir, "2026-11-25.md"), "utf8")).toBe(withNotes("# second\n", "my words"));
   });
 });
+
+describe("your own items elsewhere", () => {
+  const base: Item = { id: "x", userId: "u", kind: "waiting", text: "Tarun to send API spec", person: "Tarun", quote: "", meetingId: "manual", dueAt: null, status: "open", closedByMeetingId: null, closeQuote: null, createdAt: "2026-11-20T06:00:00Z", closedAt: null, source: "manual" };
+  it("is never a meeting 'mentioning' or 'related to' another item", async () => {
+    const { timeline, relatedItems } = await import("@/lib/wow/timeline");
+    const meetingItem: Item = { ...base, id: "m", source: "extracted", quote: "I'll send the API spec", meetingId: "mt", createdAt: "2026-11-19T06:00:00Z" };
+    const later: Item = { ...base, id: "later", createdAt: "2026-11-21T06:00:00Z" };
+    const mt = { id: "mt", userId: "u", providerMeetingId: "p", title: "Sync", startedAt: "2026-11-19T05:00:00Z", participants: [], processedAt: "x" };
+    expect(timeline(meetingItem, [meetingItem, later], [mt], new Date("2026-11-25T00:00:00Z")).some((e) => e.kind === "mentioned")).toBe(false);
+    expect(relatedItems(later, [meetingItem, base, later], [mt]).map((r) => r.item.id)).toEqual(["m"]);
+  });
+  it("nudge drafts read fine without a quote", async () => {
+    const { templateNudge, buildNudgeMessage } = await import("@/lib/nudge/nudge");
+    const ctx = { user: { name: "Maruthi", timeZone: TZ }, item: { ...base, dueAt: "2026-11-20T12:30:00Z" }, meeting: null, related: [], now: "2026-11-25T06:00:00Z" } as never;
+    expect(templateNudge(ctx)).toBe("Hi Tarun, quick nudge on this: Tarun to send API spec. Any update on when it'll be done?");
+    expect(buildNudgeMessage(ctx)).toContain("added this item by hand");
+  });
+});

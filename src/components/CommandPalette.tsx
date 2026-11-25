@@ -125,10 +125,14 @@ export function CommandPalette() {
       id: "act-add", group: "Actions", label: typed && ws.length ? `Add “${typed}”` : "Add…", keys: ["C"],
       run: () => window.dispatchEvent(new CustomEvent<CaptureDetail>(OPEN_CAPTURE, { detail: { text: typed && ws.length ? typed : "" } })),
     };
+    const asking: Row = q.trim()
+      ? { id: "act-ask", group: "Actions", label: `Ask “${q.trim().slice(0, 120)}”`, sub: "Claude answers from your items", href: `/ask?q=${encodeURIComponent(q.trim().slice(0, 500))}` }
+      : { id: "act-ask", group: "Actions", label: "Ask…", sub: "a question about your meetings", href: "/ask" };
     if (addFirst) out.push(add);
     out.push(...goRows);
     if (!ws.length || matches(check.label, ws)) out.push(check);
     if (!ws.length) out.push(add);
+    if (!addFirst) out.push(asking);
     out.push(...people, ...days);
     if (ws.length) {
       for (const r of results.rows) {

@@ -13,11 +13,12 @@ export function templateDraft(ctx: HandoffContext): MessageDraft {
   const sign = firstName(ctx.user.name) ?? ctx.user.name;
 
   if (ctx.item.kind === "waiting") {
-    const slack = `${hi} quick nudge on this${where}: "${quote}". Any update on when it'll be done?`;
+    const what = quote ? `: "${quote}"` : `: ${ctx.item.text.trim().replace(/[.!]+$/, "")}`; // items you added have no quote
+    const slack = `${hi} quick nudge on this${where}${what}. Any update on when it'll be done?`;
     return {
       slack,
       emailSubject: clip(`Following up: ${ctx.item.text}`, 80),
-      emailBody: `${hi}\n\nFollowing up on this${where}: "${quote}".\n\nAny update on when it'll be done? Let me know if you need anything from me.\n\nThanks,\n${sign}`,
+      emailBody: `${hi}\n\nFollowing up on this${where}${what}.\n\nAny update on when it'll be done? Let me know if you need anything from me.\n\nThanks,\n${sign}`,
     };
   }
   const slack = `${hi} update on ${task}${where}. I'm on it and will share it shortly. Let me know if anything has changed on your side.`;

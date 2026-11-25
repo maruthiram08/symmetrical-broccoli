@@ -7,6 +7,9 @@ import { QuotePeek } from "./QuotePeek";
 import { HandoffSlot } from "./HandoffSlot";
 import { StartThisButton } from "./StartThis";
 import { EditButton, SnoozeMenu, StarToggle } from "./ItemTools";
+import { BlockLink, DueHintRow } from "./CalendarSlot";
+import { NudgeSlot } from "./NudgeSlot";
+import { PersonPeek } from "./PersonPeek";
 
 function Act({ id, status, label, back }: { id: string; status: "done" | "wrong" | "open"; label: string; back?: string }) {
   return (
@@ -57,9 +60,13 @@ export function BriefItem({ line, back }: { line: BriefLine; back?: string }) {
         />
         {personLink ? <span className="db-item__src">· {personLink}</span> : null}
         <span className="db-item__src">· {line.meetingTitle}{line.meetingTime ? `, ${line.meetingTime}` : ""}</span>
+        {line.shared ? <span className="db-item__src db-item__shared" title="From a meeting someone else recorded and shared with you">shared</span> : null}
         </>}
+        <Link className="db-item__src w3-history" href={`/item/${encodeURIComponent(line.itemId)}`}>· History</Link>
       </span>
+      <DueHintRow line={line} back={back} />
       <span className="db-item__acts">
+        <BlockLink line={line} />
         {actionable && !line.starred ? <StarToggle itemId={line.itemId} starred={false} /> : null}
         {actionable ? <SnoozeMenu itemId={line.itemId} snoozedUntil={line.snoozedUntil} /> : null}
         {line.manual && line.kind !== "decision" ? (
@@ -69,6 +76,7 @@ export function BriefItem({ line, back }: { line: BriefLine; back?: string }) {
         {actionable ? <Act id={line.itemId} status="done" label="Done" back={back} /> : null}
         {line.manual ? null : <Act id={line.itemId} status="wrong" label="Wrong" back={back} />}
       </span>
+      {line.kind === "waiting" ? <NudgeSlot line={line} /> : null}
       {line.kind !== "decision" ? <HandoffSlot line={line} /> : null}
     </div>
   );
@@ -89,7 +97,7 @@ function withPerson(text: string, i: number, len: number, bold: boolean) {
 function PersonLink({ name, children }: { name: string; children?: React.ReactNode }) {
   const slug = personSlug(name);
   if (!slug) return <>{children ?? name}</>;
-  return <Link className="db-plink" href={`/people/${encodeURIComponent(slug)}`}>{children ?? name}</Link>;
+  return <PersonPeek slug={slug}>{children ?? name}</PersonPeek>;
 }
 
 export function ClosedItem({ line }: { line: ClosedLine }) {

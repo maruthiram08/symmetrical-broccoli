@@ -1,7 +1,8 @@
 import { z } from "zod";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import type { UpcomingMeeting } from "@/lib/types";
+import type { CalendarEvent, UpcomingMeeting } from "@/lib/types";
+import { listMeetingSeries, searchCalendarEvents, type SeriesOccurrence } from "./calendar";
 import { ensureFreshAccessToken, WisprOAuthProvider, type RefreshFn, type WisprAuthContext } from "./oauth";
 
 export interface WisprMeeting {
@@ -14,15 +15,28 @@ export interface WisprMeeting {
   hasTranscript: boolean;
   /** The meeting's notes page (share_link), when Wispr Flow has one. */
   link?: string | null;
+  /** Someone else's meeting shared with the user (search_meetings shared=true). Only present when true. */
+  shared?: boolean;
+  /** owner.name of a shared meeting, when Wispr Flow gives one. */
+  ownerName?: string | null;
+}
+
+export interface ListOptions {
+  /** Also return meetings others shared with the user. Default false: only the user's own. */
+  includeShared?: boolean;
 }
 
 export interface WisprClient {
-  /** Meetings that started at or after sinceIso, oldest first. */
-  listMeetingsSince(sinceIso: string): Promise<WisprMeeting[]>;
+  /** Meetings that started at or after sinceIso, oldest first. Shared meetings only with includeShared. */
+  listMeetingsSince(sinceIso: string, opts?: ListOptions): Promise<WisprMeeting[]>;
   /** Full plaintext transcript ("" when there is none). Never store or log it. */
   getTranscript(providerMeetingId: string): Promise<string>;
   /** Calendar events starting in the next `windowHours`, soonest first. Optional: older fakes lack it. */
   listUpcoming?(windowHours: number): Promise<UpcomingMeeting[]>;
+  /** Timed calendar events starting in [sinceIso, untilIso), soonest first. Optional (calendar.ts). */
+  searchCalendar?(sinceIso: string, untilIso: string): Promise<CalendarEvent[]>;
+  /** Recorded occurrences of the recurring series a meeting belongs to; null when not recurring. */
+  listSeries?(providerMeetingId: string): Promise<{ occurrences: SeriesOccurrence[]; recurringId: string | null } | null>;
   close?(): Promise<void>;
 }
 
@@ -64,8 +78,10 @@ export const WISPR_TOOLS = {
     name: "list_upcoming_meetings",
     args: (windowHours: number) => ({ window_hours: Math.max(1, Math.min(168, Math.ceil(windowHours))), limit: 50 }),
   },
-  /** Results with shared=true are someone else's notes. OPEN QUESTION: include them? Off for sprint 1. */
-  includeShared: false,
+  /**
+   * Results with shared=true are someone else's notes (owner.name). They are skipped unless the
+   * user turns on "Include meetings others shared with me" (User.includeShared).
+   */
   /** A meeting still unfinalized after this long is queued anyway so it can't block lastSeenAt forever. */
   unfinalizedGiveUpMs: 24 * 60 * 60 * 1000,
 } as const;
@@ -89,7 +105,10 @@ const MeetingSchema = z
     participants: z.array(z.unknown()).nullish(),
     finalized: z.boolean().nullish(),
     has_transcript: z.boolean().nullish(),
-    shared: z.boolean().nullish(),
+    // shared=true marks another person's notes (tool description, 2026-11-25). Own meetings omit it.
+    shared: z.union([z.boolean(), z.string(), z.number()]).nullish(),
+    is_shared: z.union([z.boolean(), z.string(), z.number()]).nullish(),
+    owner: z.unknown().optional(),
     share_link: z.string().nullish(),
   })
   .passthrough();
@@ -140,6 +159,22 @@ function toIso(s: string | null | undefined): string | null {
   return Number.isNaN(t) ? null : new Date(t).toISOString();
 }
 
+/** true, "true", 1: Wispr Flow documents a boolean, but a string or number must not slip through as "own". */
+function truthy(v: unknown): boolean {
+  return v === true || v === 1 || (typeof v === "string" && v.trim().toLowerCase() === "true");
+}
+
+/** owner.name (or owner as a plain string), trimmed; null when missing or not a name. */
+function ownerNameOf(owner: unknown): string | null {
+  if (typeof owner === "string") return owner.trim() || null;
+  if (owner && typeof owner === "object") {
+    const o = owner as Record<string, unknown>;
+    const n = o.name ?? o.display_name ?? o.full_name;
+    return typeof n === "string" && n.trim() ? n.trim() : null;
+  }
+  return null;
+}
+
 export function parseMeetings(payload: unknown): Array<WisprMeeting & { shared: boolean }> {
   const r = SearchResultSchema.parse(payload);
   const list = r.meetings ?? r.results ?? r.items ?? [];
@@ -150,6 +185,8 @@ export function parseMeetings(payload: unknown): Array<WisprMeeting & { shared: 
     const startedAt = toIso(m.data.start ?? m.data.start_time ?? m.data.started_at ?? m.data.created_at);
     if (!startedAt) continue;
     const people = (m.data.attendees ?? m.data.participants ?? []).map(participantName).filter((x): x is string => !!x);
+    const shared = truthy(m.data.shared) || truthy(m.data.is_shared);
+    const ownerName = shared ? ownerNameOf(m.data.owner) : null;
     out.push({
       providerMeetingId: m.data.id,
       title: m.data.title?.trim() || "Untitled meeting",
@@ -157,7 +194,8 @@ export function parseMeetings(payload: unknown): Array<WisprMeeting & { shared: 
       participants: [...new Set(people)],
       finalized: m.data.finalized !== false,
       hasTranscript: m.data.has_transcript !== false,
-      shared: m.data.shared === true,
+      shared,
+      ...(ownerName ? { ownerName } : {}),
       ...(httpsUrl(m.data.share_link) ? { link: httpsUrl(m.data.share_link) } : {}),
     });
   }
@@ -269,7 +307,7 @@ export class McpWisprClient implements WisprClient {
     }
   }
 
-  async listMeetingsSince(sinceIso: string): Promise<WisprMeeting[]> {
+  async listMeetingsSince(sinceIso: string, opts: ListOptions = {}): Promise<WisprMeeting[]> {
     const tools = await this.tools();
     const t = WISPR_TOOLS.searchMeetings;
     const seen = new Map<string, WisprMeeting>();
@@ -278,11 +316,12 @@ export class McpWisprClient implements WisprClient {
       const batch = parseMeetings(toolPayload(await tools.callTool(t.name, t.args(sinceIso, until)), t.name));
       for (const m of batch) {
         if (m.startedAt < sinceIso) continue;
-        if (m.shared && !WISPR_TOOLS.includeShared) continue;
+        if (m.shared && !opts.includeShared) continue;
         seen.set(m.providerMeetingId, {
           providerMeetingId: m.providerMeetingId, title: m.title, startedAt: m.startedAt,
           participants: m.participants, finalized: m.finalized, hasTranscript: m.hasTranscript,
           ...(m.link ? { link: m.link } : {}),
+          ...(m.shared ? { shared: true, ...(m.ownerName ? { ownerName: m.ownerName } : {}) } : {}),
         });
       }
       // sort:"start" has no cursor: a full page means there may be older ones; narrow `until`.
@@ -312,6 +351,16 @@ export class McpWisprClient implements WisprClient {
     const tools = await this.tools();
     const t = WISPR_TOOLS.listUpcoming;
     return parseUpcoming(toolPayload(await tools.callTool(t.name, t.args(windowHours)), t.name));
+  }
+
+  async searchCalendar(sinceIso: string, untilIso: string): Promise<CalendarEvent[]> {
+    const tools = await this.tools();
+    return searchCalendarEvents(async (name, args) => toolPayload(await tools.callTool(name, args), name), sinceIso, untilIso);
+  }
+
+  async listSeries(providerMeetingId: string) {
+    const tools = await this.tools();
+    return listMeetingSeries(async (name, args) => toolPayload(await tools.callTool(name, args), name), providerMeetingId);
   }
 
   async close(): Promise<void> {

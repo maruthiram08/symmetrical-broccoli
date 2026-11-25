@@ -2,6 +2,7 @@ import { formatTime } from "@/lib/brief/time";
 import { nextUpcoming, prepFor, prepNotice, type Prep } from "@/lib/wow/prep";
 import type { User } from "@/lib/types";
 import type { MemoryStore } from "@/server/store";
+import { errLine } from "./log";
 import { macNotify } from "./publish";
 
 /** Notify this many minutes (or fewer) before a meeting starts. Ticks are 5 minutes apart. */
@@ -36,7 +37,7 @@ export async function notifyPrep(
       sent++;
     }
   } catch (e) {
-    console.error("[prep]", e instanceof Error ? `${e.name}: ${e.message.slice(0, 200)}` : e);
+    console.error(`[prep] ${errLine(e)}`);
   }
   return sent;
 }
