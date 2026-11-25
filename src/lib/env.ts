@@ -10,5 +10,5 @@ export const env = {
   get extractionModel() { return process.env.EXTRACTION_MODEL ?? "claude-sonnet-5-5"; },
   /** 32-byte key, base64. The local app generates one in the data folder on first run. */
   get tokenKey() { return need("TOKEN_ENCRYPTION_KEY"); },
-  get wisprMcpUrl() { return process.env.WISPR_MCP_URL ?? "https://mcp.wisprflow.ai/mcp"; },
+  get wisprMcpUrl() { return process.env.WISPR_MCP_URL ?? "https://api.wisprflow.ai/connect/mcp"; },
 };
