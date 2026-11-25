@@ -61,7 +61,7 @@ describe("tomorrow at a glance", () => {
     expect(md).toContain("  - [ ] You owe Arjun: Send Arjun the FAQ copy **(4h late)**");
     expect(md).toContain("  - 1 more with them, under Nitin 1:1");
     expect(md).toContain("- 3:30 PM · Nitin 1:1 (with Nitin Kumar)\n  - [ ] Waiting on Nitin: Nitin to send the budget");
-    expect(renderTomorrowSection([])).toEqual(["## Tomorrow at a glance", "", "No meetings tomorrow.", ""]);
+    expect(renderTomorrowSection([])).toEqual([]);
     expect(renderTomorrowSection(undefined)).toEqual([]);
   });
 

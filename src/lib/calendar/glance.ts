@@ -59,11 +59,10 @@ export function alsoLabel(m: Pick<GlanceMeeting, "alsoOpen" | "alsoIn">): string
   return `${m.alsoOpen} more with them, under ${where}`;
 }
 
-/** The daily note's "## Tomorrow at a glance" section. Nothing when the calendar was never read. */
+/** The daily note's "## Tomorrow at a glance" section. Nothing when there are no meetings tomorrow or the calendar was never read. */
 export function renderTomorrowSection(tomorrow: GlanceMeeting[] | undefined): string[] {
-  if (!tomorrow) return [];
+  if (!tomorrow?.length) return [];
   const out = ["## Tomorrow at a glance", ""];
-  if (!tomorrow.length) return [...out, "No meetings tomorrow.", ""];
   for (const m of tomorrow) {
     out.push(`- ${m.time} · ${esc(m.title)}${m.people.length ? ` (with ${m.people.map(esc).join(", ")})` : ""}`);
     const when = (g: GlanceItem) => (g.when ? (g.late ? ` **(${g.when})**` : ` (${g.when})`) : "");

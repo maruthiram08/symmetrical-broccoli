@@ -20,7 +20,7 @@ function Row({ g, kind }: { g: GlanceItem; kind: "owe" | "waiting" }) {
 
 /** Wrap's "Tomorrow at a glance": each of tomorrow's meetings and what's open with its people. */
 export function TomorrowGlance({ meetings }: { meetings: GlanceMeeting[] | undefined }) {
-  if (!meetings) return null;
+  if (!meetings?.length) return null;
   return (
     <section className="db-section cal-glance" aria-labelledby="cal-glance-title">
       <div className="db-section__head">

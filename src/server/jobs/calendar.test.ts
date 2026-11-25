@@ -4,7 +4,8 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CalendarEvent } from "@/lib/types";
 import { FileStore } from "@/server/local/file-store";
-import { withTomorrow } from "@/server/local/calendar";
+import { renderMarkdown } from "@/lib/brief/markdown";
+import { dueHintsFor, withTomorrow } from "@/server/local/calendar";
 import { MemoryStore } from "@/server/store";
 import { connect, emptyBrief, FakeWispr, meeting } from "@/server/testing";
 import { McpWisprClient, type ToolCaller, type WisprClient } from "@/server/wispr/client";
@@ -219,5 +220,20 @@ describe("stores", () => {
     await cacheCalendar(store, u, fakeCalendarClient().client, NOW, []);
     const withIt = await withTomorrow(store, u, NOW, brief);
     expect(withIt.tomorrow?.map((m) => [m.time, m.title])).toEqual([["10:30 AM", "Standup"]]);
+  });
+
+  it("degrades to nothing when Wispr Flow returns no events", async () => {
+    const store = new MemoryStore();
+    const u = store.addUser({ email: "a@x.com", name: "Maruthi" });
+    store.items.set("i", { id: "i", userId: u.id, kind: "owe", text: "t", person: "Nitin", quote: "", meetingId: "m", dueAt: null, status: "open", closedByMeetingId: null, closeQuote: null, createdAt: "", closedAt: null });
+    // live shape for a user with no calendar events visible
+    const call = async () => ({ events: [], count: 0, has_more: false });
+    const { client } = fakeCalendarClient({ searchCalendar: (a, b) => searchCalendarEvents(call, a, b) });
+    await cacheCalendar(store, u, client, NOW, []);
+    expect((await store.getCalendar(u.id))?.events).toEqual([]);
+    const brief = await withTomorrow(store, u, NOW, emptyBrief(u, "2026-11-25"));
+    expect(brief.tomorrow).toBeUndefined();
+    expect(renderMarkdown(brief)).not.toContain("Tomorrow");
+    expect((await dueHintsFor(store, u, NOW)).size).toBe(0);
   });
 });
