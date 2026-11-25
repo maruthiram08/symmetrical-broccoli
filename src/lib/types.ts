@@ -122,6 +122,8 @@ export interface BriefModel {
   dateLabel: string;     // "Wednesday, 25 November"
   meetingCount: number;  // meetings processed for this local date
   wrap: { meetings: number; made: number; kept: number; late: number };
+  /** Every promise (owe item) still open, for the note's Wrap section. Optional: added after v1. */
+  openPromises?: number;
   youOwe: BriefLine[];   // overdue first, then by due time
   waitingOn: BriefLine[];
   decisions: BriefLine[];
@@ -130,4 +132,11 @@ export interface BriefModel {
   stillOpen: BriefLine[]; // up to 5 oldest-first from before today
   empty: "nothing_owed" | "no_meetings" | null;
   subject: string;
+}
+
+/** When the user last looked at Today. `since` is the start of the current look, so a refresh keeps the close moment. */
+export interface LastLook {
+  lastLookedAt: string;
+  /** Closes after this instant belong to this look's "Closed since you last looked". Null on the very first look. */
+  since: string | null;
 }

@@ -1,3 +1,5 @@
+import { loadBriefData } from "@/lib/brief/data";
+import { buildWeek, isRecapDay, renderWeekMarkdown } from "@/lib/brief/week";
 import type { User } from "@/lib/types";
 import { processPending } from "./process";
 import { logJobError, mapLimit, type Deps } from "./types";
@@ -49,7 +51,8 @@ export async function deliverUser(deps: Deps, user: User, now: Date): Promise<De
 
     const model = await deps.buildBrief(deps.store, user, now);
     const markdown = deps.renderMarkdown(model);
-    const { id } = await deps.publish(user, model, markdown);
+    const week = isRecapDay(date) ? await weekNote(deps, user, now) : undefined;
+    const { id } = await deps.publish(user, model, markdown, week);
     const sentAt = deps.now().toISOString();
     await deps.store.saveBrief(user.id, date, markdown, sentAt, id);
     await deps.store.logEvent({ userId: user.id, type: "brief_sent", payload: { date, publishedId: id, meetings: model.meetingCount } });
@@ -57,6 +60,17 @@ export async function deliverUser(deps: Deps, user: User, now: Date): Promise<De
   } catch (e) {
     await logJobError(deps, user.id, "deliver", e, { date });
     return { userId: user.id, status: "failed", error: e instanceof Error ? e.name : "Error" };
+  }
+}
+
+/** Friday's weekly recap. A failure here is logged and never stops the daily brief. */
+async function weekNote(deps: Deps, user: User, now: Date): Promise<{ key: string; markdown: string } | undefined> {
+  try {
+    const w = buildWeek(await loadBriefData(deps.store, user.id), now, user.timeZone);
+    return { key: w.key, markdown: renderWeekMarkdown(w) };
+  } catch (e) {
+    await logJobError(deps, user.id, "week", e);
+    return undefined;
   }
 }
 

@@ -1,8 +1,10 @@
 import { redirect } from "next/navigation";
 import { BriefItem, ClosedItem, Section } from "@/components/BriefList";
+import { CloseMoment, SummaryLinks } from "@/components/CloseWrap";
 import { Shell } from "@/components/Shell";
 import { buildBrief } from "@/lib/brief/build";
 import { getStore, me } from "@/server/local/app";
+import { takeCloseMoment } from "@/server/local/closewrap";
 import { checkMeetingsNow, setStatus } from "./actions";
 import { formatBriefTime } from "./_lib/time";
 import { pastDays } from "./_lib/days";
@@ -16,7 +18,9 @@ export default async function Today({ searchParams }: { searchParams: Promise<{ 
   const conn = await store.getConnection(user.id);
   if (!conn) redirect("/setup");
 
-  const b = await buildBrief(store, user, new Date());
+  const now = new Date();
+  const b = await buildBrief(store, user, now);
+  const closedSinceLook = await takeCloseMoment(store, user, now);
   const { undo, was } = await searchParams;
   const n = (k: number, one: string, many = one + "s") => `${k} ${k === 1 ? one : many}`;
   const openCount = (await store.listItems(user.id, { status: "open" })).filter((i) => i.kind !== "decision").length;
@@ -38,6 +42,7 @@ export default async function Today({ searchParams }: { searchParams: Promise<{ 
         {b.meetingCount ? `From ${n(b.meetingCount, "meeting")} today` : "No meetings yet today"} · Brief at{" "}
         <span className="db-mono">{formatBriefTime(user.briefTime)}</span>
       </p>
+      <SummaryLinks />
 
       {conn.status === "needs_reconnect" ? (
         <p className="db-banner" role="status">
@@ -53,6 +58,7 @@ export default async function Today({ searchParams }: { searchParams: Promise<{ 
         </form>
       ) : null}
 
+      <CloseMoment lines={closedSinceLook} />
       <Section title="You owe" count={owedCount} empty={b.meetingCount ? "Nothing owed. Go home." : "Nothing owed today."}>
         {b.youOwe.map((l) => <BriefItem key={l.itemId} line={l} />)}
       </Section>

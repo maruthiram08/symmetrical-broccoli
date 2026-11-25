@@ -4,9 +4,12 @@ import { join } from "node:path";
 import { renderDecisionsAppend } from "@/lib/brief/markdown";
 import type { BriefModel, User } from "@/lib/types";
 
+/** The weekly recap handed over on Fridays: written as week-YYYY-Www.md. */
+export interface WeekNote { key: string; markdown: string }
+
 /**
  * Deliver a brief on this Mac: write YYYY-MM-DD.md, append today's decisions to decisions.md
- * (once per day), and show a notification. Returns the note's path.
+ * (once per day), write the weekly recap when given one, and show a notification. Returns the note's path.
  */
 export async function publishLocal(
   dir: string,
@@ -14,6 +17,7 @@ export async function publishLocal(
   model: BriefModel,
   markdown: string,
   notify: (title: string, body: string) => void = macNotify,
+  week?: WeekNote,
 ): Promise<{ id: string }> {
   mkdirSync(dir, { recursive: true });
   const notePath = join(dir, `${model.date}.md`);
@@ -26,6 +30,8 @@ export async function publishLocal(
     if (!existsSync(decisionsPath)) writeFileSync(decisionsPath, "# Decisions\n\n");
     appendFileSync(decisionsPath, decisions);
   }
+
+  if (week) writeFileSync(join(dir, `week-${week.key}.md`), week.markdown);
 
   notify(model.subject, notificationBody(model));
   return { id: notePath };

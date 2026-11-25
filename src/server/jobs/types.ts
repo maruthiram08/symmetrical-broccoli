@@ -13,7 +13,8 @@ export interface Deps {
   buildBrief: (store: Store, user: User, now: Date) => Promise<BriefModel>;
   renderMarkdown: (model: BriefModel) => string;
   /** Hand the finished brief to the user: on the local app, write the note and show a notification. */
-  publish: (user: User, model: BriefModel, markdown: string) => Promise<{ id: string }>;
+  /** On Fridays `week` carries the weekly recap (week-YYYY-Www.md). */
+  publish: (user: User, model: BriefModel, markdown: string, week?: { key: string; markdown: string }) => Promise<{ id: string }>;
   now: () => Date;
 }
 

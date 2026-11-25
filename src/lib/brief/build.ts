@@ -81,11 +81,12 @@ export async function buildBrief(store: Store, user: User, now: Date): Promise<B
   const late = owe.filter((l) => l.lateMinutes !== null).length;
 
   const wrap = { meetings: todaysMeetings.length, made: madeToday.length, kept, late };
+  const openPromises = open.filter((i) => i.kind === "owe").length;
   const empty: BriefModel["empty"] = todaysMeetings.length === 0 ? "no_meetings" : owe.length === 0 ? "nothing_owed" : null;
 
   return {
     userId: user.id, date, dateLabel: dateLabel(date), meetingCount: todaysMeetings.length,
-    wrap, youOwe: owe, waitingOn: waiting, decisions, closedToday,
+    wrap, openPromises, youOwe: owe, waitingOn: waiting, decisions, closedToday,
     stillOpenCount: rest.length, stillOpen, empty,
     subject: subjectFor({ owe: owe.length, late, waiting: waiting.length, decisions: decisions.length, meetings: todaysMeetings.length, stillOpen: rest.length + owe.length + waiting.length }),
   };
