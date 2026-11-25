@@ -116,3 +116,42 @@ describe("last look and weekly note", () => {
     expect(readFileSync(join(dir, "2026-11-25.md"), "utf8")).toBe("# Friday\n");
   });
 });
+
+describe("re-read keeps hand-made marks", () => {
+  it("re-applies Done/Wrong to the matching new item, not to auto-closes", async () => {
+    const path = join(tmp(), "state.json");
+    const s = new FileStore(path);
+    const u = s.addUser({ email: "you@this-mac", name: "Maruthi" });
+    const { meeting } = await s.upsertMeeting({ userId: u.id, providerMeetingId: "p1", title: "Standup", startedAt: "2026-11-25T05:30:00Z", participants: [] });
+    const base = { meetingId: meeting.id, dueAt: null };
+    await s.commitExtraction({ meetingId: meeting.id, userId: u.id, at: "2026-11-25T06:00:00Z", closes: [], newItems: [
+      { ...base, kind: "owe", text: "Send Nitin the banner text", person: "Nitin", quote: "I'll send the banner text to Nitin tonight" },
+      { ...base, kind: "owe", text: "Review the tag config", person: "Tarun", quote: "let me review the tag config" },
+      { ...base, kind: "waiting", text: "Tarun shares the API spec", person: "Tarun", quote: "Tarun will share the API spec" },
+    ] });
+    const [a, b, c] = await s.listItems(u.id);
+    await s.setItemStatus(a.id, "done", "2026-11-25T08:00:00Z");
+    await s.setItemStatus(c.id, "wrong", "2026-11-25T08:00:00Z");
+    expect(b.status).toBe("open");
+
+    expect(await s.resetExtraction(u.id)).toBe(1);
+    expect(await s.listItems(u.id)).toHaveLength(0);
+
+    // The new prompt words things a little differently and finds one more item.
+    const reread = new FileStore(path);
+    await reread.commitExtraction({ meetingId: meeting.id, userId: u.id, at: "2026-11-26T06:00:00Z", closes: [], newItems: [
+      { ...base, kind: "owe", text: "Send Nitin the final banner text", person: "Nitin", quote: "I'll send the banner text to Nitin tonight" },
+      { ...base, kind: "owe", text: "Review the tag config", person: "Tarun", quote: "let me review the tag config" },
+      { ...base, kind: "waiting", text: "Tarun shares the API spec doc", person: "Tarun", quote: "Tarun will share the API spec" },
+      { ...base, kind: "owe", text: "Book the demo room", person: null, quote: "I think I'll book the room" },
+    ] });
+    const after = Object.fromEntries((await reread.listItems(u.id)).map((i) => [i.text, i.status]));
+    expect(after).toEqual({
+      "Send Nitin the final banner text": "done",
+      "Review the tag config": "open",
+      "Tarun shares the API spec doc": "wrong",
+      "Book the demo room": "open",
+    });
+    expect(new FileStore(path).marks).toHaveLength(0);
+  });
+});

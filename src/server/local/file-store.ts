@@ -17,6 +17,54 @@ interface State {
   events: Array<Record<string, unknown>>;
   /** Added after v1 shipped: missing in older files, which still load. */
   looks?: Array<[string, LastLook]>;
+  /** Items the user marked Done/Wrong by hand before a re-read; re-applied to matching new items. */
+  marks?: Mark[];
+}
+
+/** A hand-made Done/Wrong that should survive the meeting being read again. */
+export interface Mark {
+  userId: string;
+  meetingId: string;
+  kind: Item["kind"];
+  text: string;
+  quote: string;
+  status: Exclude<Item["status"], "open">;
+  closedAt: string | null;
+}
+
+const words = (s: string) =>
+  new Set(s.toLowerCase().replace(/[^a-z0-9\u0900-\u097f ]+/g, " ").split(/\s+/).filter((w) => w.length > 2));
+
+/** Word overlap (Jaccard) between two strings, 0..1. */
+export function similarity(a: string, b: string): number {
+  const A = words(a), B = words(b);
+  if (!A.size || !B.size) return 0;
+  let n = 0;
+  for (const w of A) if (B.has(w)) n++;
+  return n / (A.size + B.size - n);
+}
+
+/**
+ * Re-apply saved marks to freshly extracted items of one meeting. Each mark goes to at most one
+ * item: the most similar item of the same kind, by quote or text, if similar enough.
+ * Returns the marks that found no item (kept for a later read).
+ */
+export function applyMarks(items: Item[], marks: Mark[]): Mark[] {
+  const left: Mark[] = [];
+  const used = new Set<string>();
+  for (const m of marks) {
+    let best: Item | null = null, bestScore = 0;
+    for (const i of items) {
+      if (used.has(i.id) || i.kind !== m.kind || i.meetingId !== m.meetingId) continue;
+      const score = Math.max(similarity(i.quote, m.quote), similarity(i.text, m.text));
+      if (score > bestScore) { best = i; bestScore = score; }
+    }
+    if (best && bestScore >= 0.4) {
+      used.add(best.id);
+      Object.assign(best, { status: m.status, closedAt: m.closedAt, closedByMeetingId: null, closeQuote: null });
+    } else left.push(m);
+  }
+  return left;
 }
 
 const MAX_EVENTS = 2000;
@@ -28,6 +76,7 @@ const MAX_EVENTS = 2000;
  */
 export class FileStore extends MemoryStore implements OAuthClientStore {
   oauthClients = new Map<string, OAuthClientInformationMixed>();
+  marks: Mark[] = [];
   protected newId = () => randomUUID();
 
   private loadedMtime = 0;
@@ -52,6 +101,7 @@ export class FileStore extends MemoryStore implements OAuthClientStore {
     this.oauthClients = new Map(s.oauthClients ?? []);
     this.events = s.events ?? [];
     this.looks = new Map(s.looks ?? []);
+    this.marks = s.marks ?? [];
     this.loadedMtime = mtime;
   }
 
@@ -67,6 +117,7 @@ export class FileStore extends MemoryStore implements OAuthClientStore {
       oauthClients: [...this.oauthClients.entries()],
       events: this.events.slice(-MAX_EVENTS),
       looks: [...this.looks.entries()],
+      marks: this.marks,
     };
     mkdirSync(dirname(this.path), { recursive: true, mode: 0o700 });
     const tmp = `${this.path}.tmp`;
@@ -115,6 +166,12 @@ export class FileStore extends MemoryStore implements OAuthClientStore {
     const m = this.meetings.get(args.meetingId);
     if (m?.processedAt) return; // idempotent: a meeting is only ever committed once
     await super.commitExtraction(args);
+    const mine = this.marks.filter((k) => k.meetingId === args.meetingId);
+    if (mine.length) {
+      const fresh = [...this.items.values()].filter((i) => i.meetingId === args.meetingId && i.createdAt === args.at && i.status === "open");
+      const left = applyMarks(fresh, mine);
+      this.marks = [...this.marks.filter((k) => k.meetingId !== args.meetingId), ...left];
+    }
     this.flush();
   }
   async setItemStatus(itemId: string, status: Item["status"], at: string) { this.reload(); await super.setItemStatus(itemId, status, at); this.flush(); }
@@ -126,10 +183,16 @@ export class FileStore extends MemoryStore implements OAuthClientStore {
 
   /**
    * Forget every extracted item and mark all meetings unread, so they can be read again oldest
-   * first (later meetings then close earlier promises). Meetings and the connection are kept.
+   * first (later meetings then close earlier promises). Meetings and the connection are kept, and so are hand-made Done/Wrong marks (see applyMarks).
    */
   async resetExtraction(userId: string): Promise<number> {
     this.reload();
+    // Keep what the user marked by hand so the re-read doesn't undo it.
+    for (const i of this.items.values()) {
+      if (i.userId === userId && i.status !== "open" && !i.closedByMeetingId) {
+        this.marks.push({ userId, meetingId: i.meetingId, kind: i.kind, text: i.text, quote: i.quote, status: i.status, closedAt: i.closedAt });
+      }
+    }
     for (const [id, i] of this.items) if (i.userId === userId) this.items.delete(id);
     let n = 0;
     for (const m of this.meetings.values()) if (m.userId === userId) { m.processedAt = null; n++; }
