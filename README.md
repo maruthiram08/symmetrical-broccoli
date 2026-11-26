@@ -36,8 +36,71 @@ When something needs you, every page says so with a button: Wispr Flow signed yo
 - `.daily-brief/state.json.bak` and `state.json.bak-daily`, hourly and daily copies of it. If `state.json` is ever damaged, the app keeps it as `state.json.corrupt-<time>`, restores the newest good copy and tells you on every page.
 - `.daily-brief/scheduler.lock`, so only one copy of the app (say, the Mac app and the launchd agent) checks meetings and sends the brief.
 - `.daily-brief/key`, a local key for the Wispr Flow sign-in step.
+- `.daily-brief/phone.json`, Phone access: on or off, paired phones and widget tokens (hashes only).
+- `.daily-brief/prefs.json`, which model reads meetings (Claude or a local Ollama model).
 
 To start over, quit the app and delete `.daily-brief/`.
+
+## On your phone
+
+Daily brief works as an app on your phone (a PWA): Today, All open and People, with the same
+buttons. It is off by default; the app only answers on this computer (127.0.0.1).
+
+**Turn it on:** Settings › **Phone access**. The app then also listens on your Mac's Wi-Fi address,
+on port 4243 (say `http://192.168.1.20:4243`), and shows a 6-digit pairing code. On the phone, open
+that address, enter the code, then:
+
+- **iPhone:** Safari › Share › **Add to Home Screen**.
+- **Android:** Chrome › ⋮ › **Add to Home screen** (or **Install app**).
+
+How it is kept safe:
+
+- The app itself still listens on 127.0.0.1 only. A separate small server on the LAN address checks
+  every request before passing it on, refuses requests for any other host name, and is not started
+  at all while Phone access is off.
+- A pairing code is good for one phone, for 10 minutes and 5 tries. Each phone gets its own random
+  key in an HttpOnly cookie; only its hash is stored (`.daily-brief/phone.json`). **Remove** a phone
+  in Settings to sign it out, or **Sign out all phones**.
+- Phone access, widget tokens and the reading model can only be changed on the Mac, never from a phone.
+- Plain Wi-Fi means plain HTTP: someone else on the same network could read the pages you load. Turn
+  it on at home or on networks you trust. For HTTPS, point the app at a certificate in
+  `.daily-brief/settings.env`:
+
+  ```bash
+  PHONE_TLS_CERT=/path/to/cert.pem
+  PHONE_TLS_KEY=/path/to/key.pem
+  PHONE_HOSTNAME=my-mac.tailnet-name.ts.net   # the name in the certificate
+  ```
+
+  The easy way is [Tailscale](https://tailscale.com): `tailscale cert my-mac.tailnet-name.ts.net`
+  makes a real certificate, and your phone reaches the Mac from anywhere on your tailnet. `PHONE_BIND`
+  (an address) and `PHONE_PORT` change where it listens. Restart the app after changing these.
+
+**Offline:** once it is served over HTTPS (or on the Mac at `localhost`), a service worker keeps
+Today, All open and People (and any person or item you opened) on the device, so they open
+read-only without a connection, with an *Offline* pill. Pages it never saved show a short offline
+page. Phones only allow this over HTTPS, so over plain Wi-Fi the phone needs the Mac awake and nearby.
+
+**Widget:** an iOS Shortcut or widget can show *3 you owe today · 1 overdue* from `/api/widget`
+with a widget token from Settings › **Phone widget**. Recipe: [`docs/WIDGET.md`](docs/WIDGET.md). The
+Mac's menu bar item shows the same count as its title.
+
+## Reading meetings on this computer (Ollama)
+
+Settings › **Reading model** › **Local (Ollama)** reads meetings with a model on this computer
+instead of Claude: transcripts never leave it and reading costs nothing. It uses the same prompt and
+output schema (Ollama's JSON mode), and the same check that every quote is really in the transcript.
+
+```bash
+brew install ollama        # or see ollama.com for Windows and Linux
+ollama serve &
+ollama pull qwen2.5:14b    # or llama3.1:8b on a smaller machine
+```
+
+Then pick Local, set the model, and press **Save and test Ollama**. Expect lower quality: local
+models miss more promises, close fewer items and handle Hinglish worse. If Ollama isn't running, a
+meeting waits and is tried again later. Claude stays the default; Ask, nudges and changed-decision
+checks keep using Claude when a key is set.
 
 ## Workspaces, templates, links and sync
 
@@ -182,6 +245,35 @@ cp -R "src-tauri/target/aarch64-apple-darwin/release/bundle/macos/Daily Brief.ap
 The app keeps its secrets in the macOS Keychain (service `app.dailybrief`), not in files: the Anthropic API key, and the Wispr Flow token key, which moves there from `.daily-brief/key` on first start. `EXTRACTION_MODEL` and `WISPR_MCP_URL` go in `.daily-brief/settings.env` (`keychain:import` copies them). `npm start` still reads `.env.local` and falls back to the Keychain. The app always uses `~/Daily Brief`. The log is `~/Library/Logs/daily-brief.log`; the app rotates it at 5 MB and keeps three old copies (`.1` to `.3`). It never holds keys, tokens or transcript text.
 
 **First launch.** The app isn't signed with an Apple Developer ID. A copy you built yourself opens normally. If macOS says it can't be opened (say, you copied it from another Mac): right-click (or Control-click) the app in Finder, choose **Open**, then **Open** again. Or allow it under System Settings › Privacy & Security › **Open Anyway**, or run `xattr -dr com.apple.quarantine "/Applications/Daily Brief.app"`.
+
+## Windows and Linux
+
+The same app builds for Windows (x64) and Linux (AppImage and .deb). Pushing a version tag runs
+`.github/workflows/desktop.yml`, which builds macOS (Apple Silicon), Windows and Linux and attaches
+the installers to a draft GitHub release:
+
+```bash
+git tag v0.2.0 && git push origin v0.2.0
+```
+
+To build one yourself: `node scripts/stage-server.mjs` (the standalone server), then
+`npx tauri build`. On Linux first install `libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf`.
+
+What differs per system:
+
+| | macOS | Windows | Linux |
+| --- | --- | --- | --- |
+| Node.js (18.18+) | Homebrew, or your shell's PATH | Program Files, nvm-windows, Volta, or `where node` | /usr/bin, /usr/local/bin, Volta, snap, or your login shell (nvm) |
+| Secrets | Keychain | Credential Manager (`app.dailybrief:<NAME>`) | Desktop keyring through `secret-tool` (package `libsecret-tools`) |
+| Notifications | Notification Center | Toast | `notify-send` (package `libnotify-bin`) |
+| Launch at login | LaunchAgent | Run key in the registry | `~/.config/autostart` |
+| Log | `~/Library/Logs/daily-brief.log` | `%LOCALAPPDATA%\Daily Brief\daily-brief.log` | `~/.local/state/daily-brief/daily-brief.log` |
+
+Put your key in the secret store with `npm run keychain:import` (from a checkout with `.env.local`),
+or by hand: `cmdkey /generic:app.dailybrief:ANTHROPIC_API_KEY /user:ANTHROPIC_API_KEY /pass` on
+Windows, `secret-tool store --label="Daily brief ANTHROPIC_API_KEY" service app.dailybrief account ANTHROPIC_API_KEY`
+on Linux. Your notes folder is `~/Daily Brief` on every system. The builds are unsigned: Windows
+SmartScreen asks once (**More info › Run anyway**); on Linux, `chmod +x` the AppImage.
 
 ## Keep it running at login without the app
 
