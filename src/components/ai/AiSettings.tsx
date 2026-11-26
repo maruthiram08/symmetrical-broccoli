@@ -10,6 +10,7 @@ import { PRICES_USD_PER_MTOK } from "@/lib/extract/cost";
 import { aiPrefs, baseUrlOf, keyHints, keyStoreLabel, messageFor, priceFor, resolveTask, structuredOf } from "@/server/ai-config";
 import { isHosted } from "@/server/mode";
 import { TaskPicker, type PickerProvider } from "./TaskPicker";
+import { CrossCheckSettings } from "@/components/crosscheck/CrossCheck";
 
 const when = (iso: string) => new Date(iso).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 
@@ -73,6 +74,7 @@ export async function AiSettings({ flash, remote }: { flash?: { ai?: string; p?:
           transcript. <Link href="/setup/compare">Compare models on a past meeting</Link>.
         </p>
       </div>
+      <CrossCheckSettings />
 
       <div className="ai-block">
         <h3 className="ai-h3">Providers</h3>

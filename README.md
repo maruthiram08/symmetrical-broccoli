@@ -334,6 +334,15 @@ Without installing: `npm run -s cli -- today`. Reads take `--json`; `--limit N` 
 
 You owe on Today and in `daily-brief owe` is ordered by a local score: overdue (more the later it is), due within a day or three, starred, how many other things the same person is waiting on from you, and how long it has been open. The three highest show as "Top 3 today" above You owe; hover one to see why. No API calls.
 
+## Cross-check with Wispr Flow
+
+Wispr Flow writes its own action items in each meeting's Flow Summary ("Next steps", "Action items", "Follow-ups"). The cross-check puts them next to what Daily brief found, so you can see what either side missed.
+
+- **Turn it on** in Settings › AI › Cross-check with Wispr Flow (off by default, Mac app only). After that, each Wispr Flow meeting is cross-checked right after it is read. A failed cross-check never affects the read.
+- **Older meetings:** open `/crosscheck` (Review › Wispr cross-check) and press **Cross-check all meetings**. It runs one meeting at a time in the background, like the other long jobs, and shows progress. Running it again keeps your Ignore and Add choices.
+- **What it sends:** the summary is fetched from Wispr Flow without the transcript, and one small call per meeting goes to the model picked for **Extraction** in Settings › AI (your Anthropic key, your Claude plan or any other provider). That call gets only the summary, the item texts and your name and aliases, never the transcript. With Anthropic, it costs well under ₹1 a meeting.
+- **What you see:** totals for Matched, Missed by Daily brief, Only in Daily brief and Not yours (tasks between other people, which Daily brief leaves out on purpose). Each missed item has **Add as You owe**, **Add as Waiting on** (a new item of yours, linked to the meeting) and **Ignore**. A meeting's page shows "Wispr Flow also listed…" when it has missed items.
+
 ## Monthly review and Year in review
 
 Review in the sidebar opens `/review/month/YYYY-MM` (and `/review/year/YYYY`): promises made, kept, late and closed by meetings, the people you promised most, decisions by week or month, the longest-open and fastest-closed items. Download HTML saves the review as one static file to share. Quotes from meetings are left out unless you press Include quotes first.

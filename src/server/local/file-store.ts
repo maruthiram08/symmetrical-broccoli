@@ -10,6 +10,7 @@ import type { AppStore } from "@/server/app-store";
 import type { ChangeCtx, Directory, PeopleChange } from "@/lib/directory/directory";
 import type { SavedView } from "@/lib/structure/views";
 import type { RoutineDoc } from "@/lib/routines/types";
+import type { CrossCheckRecord } from "@/lib/crosscheck/compare";
 
 interface State {
   version: 1;
@@ -40,6 +41,8 @@ interface State {
   views?: Array<[string, SavedView[]]>;
   /** Added with routines: missing in older files (no routines). */
   routines?: Array<[string, RoutineDoc]>;
+  /** Added with Cross-check with Wispr Flow: one record per meeting. Missing in older files. */
+  crosscheck?: CrossCheckRecord[];
 }
 
 /** What happened when state.json couldn't be read. */
@@ -167,6 +170,8 @@ export class FileStore extends MemoryStore implements OAuthClientStore, AppStore
   recovery: Recovery | null = null;
   /** Saved views per user (src/lib/structure/views.ts). */
   views = new Map<string, SavedView[]>();
+  /** Cross-check with Wispr Flow results, by meeting id (src/server/crosscheck). */
+  crosschecks = new Map<string, CrossCheckRecord>();
 
   /** The file as this copy last read or wrote it; null before the first good read. */
   private loaded: FileSig | null = null;
@@ -284,6 +289,7 @@ export class FileStore extends MemoryStore implements OAuthClientStore, AppStore
       routines: Array.isArray(d.routines) ? d.routines : [], occurrences: Array.isArray(d.occurrences) ? d.occurrences : [],
       suggestions: Array.isArray(d.suggestions) ? d.suggestions : [], notified: Array.isArray(d.notified) ? d.notified : [],
     }]));
+    this.crosschecks = new Map((Array.isArray(s.crosscheck) ? s.crosscheck : []).map((r) => [r.meetingId, r]));
   }
 
   /** True when state.json is no longer the file this copy last read or wrote. */
@@ -335,6 +341,7 @@ export class FileStore extends MemoryStore implements OAuthClientStore, AppStore
       peopleLog: [...this.peopleLog.entries()],
       ...(this.views.size ? { views: [...this.views.entries()] } : {}),
       ...(this.routines.size ? { routines: [...this.routines.entries()] } : {}),
+      ...(this.crosschecks.size ? { crosscheck: [...this.crosschecks.values()] } : {}),
     };
     mkdirSync(dirname(this.path), { recursive: true, mode: 0o700 });
     const json = JSON.stringify(state);
@@ -488,6 +495,13 @@ export class FileStore extends MemoryStore implements OAuthClientStore, AppStore
   async addRoutineSuggestions(...a: Parameters<MemoryStore["addRoutineSuggestions"]>) { return this.change(() => super.addRoutineSuggestions(...a), (n) => n > 0); }
   async setRoutineSuggestionStatus(...a: Parameters<MemoryStore["setRoutineSuggestionStatus"]>) { return this.change(() => super.setRoutineSuggestionStatus(...a), (s) => !!s); }
   async markRoutineNotified(...a: Parameters<MemoryStore["markRoutineNotified"]>) { return this.change(() => super.markRoutineNotified(...a), (fresh) => fresh); }
+  async listCrossChecks(userId: string) { this.reload(); return [...this.crosschecks.values()].filter((r) => r.userId === userId); }
+  async getCrossCheck(meetingId: string) { this.reload(); return this.crosschecks.get(meetingId) ?? null; }
+  async saveCrossCheck(rec: CrossCheckRecord) { await this.change(() => { this.crosschecks.set(rec.meetingId, rec); }); }
+  /** Change one stored record (Ignore, Add); `fn` returns false to leave it as it was. */
+  async updateCrossCheck(meetingId: string, fn: (r: CrossCheckRecord) => boolean) {
+    return this.change(() => { const r = this.crosschecks.get(meetingId); return !!r && fn(r); }, (ok) => ok);
+  }
 
   async getOAuthClient(userId: string) { this.reload(); return this.oauthClients.get(userId) ?? null; }
   async saveOAuthClient(userId: string, info: OAuthClientInformationMixed) { await this.change(() => { this.oauthClients.set(userId, info); }); }

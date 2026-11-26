@@ -40,6 +40,8 @@ export interface ManualInput {
   /** Tags and project (quick capture's #tag and +project). */
   tags?: string[];
   project?: string | null;
+  /** The meeting it came up in (Cross-check's "Add as You owe"). Missing = no meeting. */
+  meetingId?: string;
 }
 
 /** Quick-captured with neither a person nor a due date: it goes to the Inbox. */
@@ -49,7 +51,7 @@ export const goesToInbox = (input: { person?: string | null; dueAt?: string | nu
 export function manualItem(id: string, userId: string, input: ManualInput, at: string): Item {
   return {
     id, userId, kind: input.kind, text: input.text.trim(), person: input.person?.trim() || null,
-    quote: "", meetingId: MANUAL_MEETING_ID, dueAt: input.dueAt, status: input.inbox ? "inbox" : "open",
+    quote: "", meetingId: input.meetingId || MANUAL_MEETING_ID, dueAt: input.dueAt, status: input.inbox ? "inbox" : "open",
     closedByMeetingId: null, closeQuote: null, createdAt: at, closedAt: null,
     source: "manual", note: input.note?.trim() || null, starred: false, snoozedUntil: null,
     ...(input.tags?.length ? { tags: [...new Set(input.tags)] } : {}), ...(input.project ? { project: input.project } : {}),

@@ -53,6 +53,12 @@ See the "Where we are" table in the roadmap doc. In short:
 - **Routines (`/routines`):** recurring tasks (daily, weekdays, chosen weekdays, monthly on day N with month-end clamping, every N days), ticked per day on Today, in the brief, notified at their time, with quick-add parsing ("every Monday …") and suggestions from meetings via the extraction's optional `recurrence` field. Date logic in `src/lib/routines/`, storage in the FileStore (`routines` in state.json), suggestion step in `src/server/jobs/routines.ts`. Not in the hosted store yet (`routineStore()` returns null there, and recurring promises stay ordinary items).
 - **Hosted version:** Supabase sign-in, Postgres store with row-level security, Vercel crons, Resend email, teams and Razorpay billing (test mode only). Built and tested locally; never run against real accounts.
 
+## Cross-check with Wispr Flow (26 Nov)
+
+Off by default (Settings › AI). Code: `src/lib/crosscheck/` (parse the Flow Summary's next steps; compare and classify), `src/server/crosscheck/` (fetch, store, the batch run), `/crosscheck`, and a hook after commit in `src/server/jobs/process.ts` via `src/server/jobs/after-extract.ts` (never throws). Results live in `state.json` under `crosscheck`, one record per meeting. `WisprClient.getSummary` calls `get_meeting` without `view_transcript`.
+
+Not verified: the real Flow Summary's shape (the parser was tested on hand-written summaries only) and the matching quality on real meetings with a real model. To try it: turn it on, open `/crosscheck`, press Cross-check all meetings, and compare a few rows with the meetings' notes in Wispr Flow. If next steps aren't found, add the summary's heading to `SECTION` in `src/lib/crosscheck/parse.ts`.
+
 ## Costs
 
 The API key is yours (claude-sonnet-5-5).
