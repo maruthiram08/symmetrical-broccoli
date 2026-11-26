@@ -6,11 +6,13 @@ import {
   type Density, type FontId, type Palette, type Radius, type Theme, type ThemeState,
 } from "@/lib/theme/theme";
 import { deleteThemeAction, importThemesAction, saveThemeAction, applyThemeAction, type ThemeResult } from "@/app/theme-actions";
+import { ModeSwitch } from "./ModeSwitch";
+import type { Mode } from "@/lib/theme/mode";
 
 const reload = () => window.location.reload();
 
 /** Settings › Appearance: your themes, an editor with a live light and dark preview, import and export. */
-export function AppearanceSettings({ initial }: { initial: ThemeState }) {
+export function AppearanceSettings({ initial, mode = "system" }: { initial: ThemeState; mode?: Mode }) {
   const [state, setState] = useState(initial);
   const [draft, setDraft] = useState<Theme | null>(null);
   const [variant, setVariant] = useState<"light" | "dark">("light");
@@ -74,7 +76,8 @@ export function AppearanceSettings({ initial }: { initial: ThemeState }) {
   return (
     <section className="db-stack db-subsection th" id="appearance" aria-labelledby="appearance-title">
       <h2 className="db-section__title" id="appearance-title">Appearance</h2>
-      <p className="db-field__hint">Themes change colours, type, spacing and corners. Each has a light and a dark version, which follow your system setting.</p>
+      <ModeSwitch initial={mode} />
+      <p className="db-field__hint">Themes change colours, type, spacing and corners. Each has a light and a dark version, used by the mode above.</p>
 
       <ul className="th-list" aria-label="Themes">
         {all.map((t) => {
