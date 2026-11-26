@@ -4,14 +4,14 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { Client } from "pg";
+import { sslFor } from "../src/server/hosted/db";
 import { loadEnvFile } from "./hosted-env";
 
 async function main() {
   loadEnvFile(process.argv);
   const url = process.env.DATABASE_URL;
   if (!url) throw new Error("DATABASE_URL is not set");
-  const ca = process.env.DATABASE_CA_CERT?.replace(/\\n/g, "\n");
-  const db = new Client({ connectionString: url, ssl: ca ? { ca } : { rejectUnauthorized: false } });
+  const db = new Client({ connectionString: url, ssl: sslFor(url, process.env.DATABASE_CA_CERT) });
   await db.connect();
   try {
     await db.query("create table if not exists _daily_brief_migrations (name text primary key, applied_at timestamptz not null default now())");

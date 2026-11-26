@@ -5,6 +5,7 @@ import { readdirSync } from "node:fs";
 import { join } from "node:path";
 import { Client } from "pg";
 import { checkHostedEnv } from "../src/server/hosted/config";
+import { sslFor } from "../src/server/hosted/db";
 import { loadEnvFile } from "./hosted-env";
 
 async function main() {
@@ -14,8 +15,7 @@ async function main() {
   for (const w of warnings) console.log(`  warning  ${w}`);
   for (const e of errors) console.log(`  problem  ${e}`);
   if (process.argv.includes("--connect") && process.env.DATABASE_URL) {
-    const ca = process.env.DATABASE_CA_CERT?.replace(/\\n/g, "\n");
-    const db = new Client({ connectionString: process.env.DATABASE_URL, ssl: ca ? { ca } : { rejectUnauthorized: false } });
+    const db = new Client({ connectionString: process.env.DATABASE_URL, ssl: sslFor(process.env.DATABASE_URL, process.env.DATABASE_CA_CERT) });
     try {
       await db.connect();
       const want = readdirSync(join(process.cwd(), "supabase", "migrations")).filter((f) => f.endsWith(".sql")).sort();

@@ -26,16 +26,27 @@ export function getDb(): Db {
   if (!g.__dbPgPool) {
     const url = process.env.DATABASE_URL;
     if (!url) throw new Error("Missing environment variable DATABASE_URL (hosted mode)");
-    const ca = process.env.DATABASE_CA_CERT?.replace(/\\n/g, "\n");
     g.__dbPgPool = new Pool({
       connectionString: url,
       max: Number(process.env.DATABASE_POOL_MAX ?? 4),
       idleTimeoutMillis: 10_000,
-      // Supabase signs its certificates with its own CA: pass it in DATABASE_CA_CERT to verify.
-      ssl: ca ? { ca, rejectUnauthorized: true } : /localhost|127\.0\.0\.1/.test(url) ? undefined : { rejectUnauthorized: false },
+      ssl: sslFor(url, process.env.DATABASE_CA_CERT),
     });
+    // An idle connection dropped by the pooler must not crash the function.
+    g.__dbPgPool.on("error", (e) => console.error(`[db] idle connection error: ${e.message}`));
   }
   return g.__dbPgPool as unknown as Db;
+}
+
+/**
+ * TLS for the database. Supabase signs its certificates with its own CA: pass it (PEM, "\\n" for
+ * newlines is fine) in DATABASE_CA_CERT to verify. A local database gets no TLS.
+ */
+export function sslFor(url: string, caPem?: string): { ca: string; rejectUnauthorized: true } | { rejectUnauthorized: false } | undefined {
+  const ca = caPem?.replace(/\\n/g, "\n");
+  if (ca) return { ca, rejectUnauthorized: true };
+  if (/@(localhost|127\.0\.0\.1)[:/]/.test(url)) return undefined;
+  return { rejectUnauthorized: false };
 }
 
 /** Run fn in one transaction on one connection. Rolls back on any error. */
