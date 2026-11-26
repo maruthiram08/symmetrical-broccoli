@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ExtractionInput } from "../types";
-import { notTheUsers, postProcess, type ModelOutput, type PostProcessReport } from "./extract";
+import { TOOL_NAME } from "./prompt";
+import { extractMeeting, notTheUsers, postProcess, type AnthropicLike, type ModelOutput, type PostProcessReport } from "./extract";
 
 type Item = ModelOutput["newItems"][number];
 const base = { text: "x", person: "Nitin", quote: "q", dueAt: null } as const;
@@ -57,5 +58,26 @@ Nitin: Maruthi, I'll share the API doc with you tomorrow.`;
     );
     expect(out.newItems.map((i) => i.person)).toEqual(["Nitin"]);
     expect(report.droppedItems[0].reason).toMatch(/two other people/);
+  });
+});
+
+describe("extractMeeting reports what it dropped", () => {
+  it("returns dropped items with their reason, so the run log can count them", async () => {
+    const input: ExtractionInput = {
+      transcript: "Rahul: Priya, I'll send you the build tonight.",
+      user: { name: "Maruthi", aliases: [], timeZone: "Asia/Kolkata" },
+      meeting: { title: "Stand-up", startedAt: "2026-11-26T04:30:00.000Z", participants: [] },
+      openItems: [],
+    };
+    const toolInput = { newItems: [{ kind: "waiting", madeBy: "other", madeTo: "other", text: "Send Priya the build", person: "Rahul", quote: "Priya, I'll send you the build tonight.", dueAt: null }], closes: [] };
+    const client = { messages: { create: async () => ({
+      stop_reason: "tool_use", usage: { input_tokens: 1, output_tokens: 1 },
+      content: [{ type: "tool_use", id: "t", name: TOOL_NAME, input: toolInput }],
+    }) } } as unknown as AnthropicLike;
+    const r = await extractMeeting(input, { client, model: "m" });
+    expect(r.newItems).toEqual([]);
+    expect(r.dropped).toHaveLength(1);
+    expect(r.dropped![0]).toMatchObject({ text: "Send Priya the build" });
+    expect(r.dropped![0].reason).toMatch(/two other people/);
   });
 });

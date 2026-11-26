@@ -174,7 +174,7 @@ async function processMeetingOnce(
   await store.logEvent({
     userId: meeting.userId,
     type: "extract_run",
-    payload: { meetingId: meeting.id, model: deps.model, newItems: newItems.length, closes: closes.length, emptyTranscript: usage.inputTokens === 0, ...(meeting.shared ? { shared: true } : {}) },
+    payload: { meetingId: meeting.id, model: deps.model, newItems: newItems.length, closes: closes.length, emptyTranscript: usage.inputTokens === 0, ...(meeting.shared ? { shared: true } : {}), ...(result.dropped?.length ? { dropped: result.dropped.slice(0, 50).map((d) => ({ reason: d.reason, text: d.text.slice(0, 200) })) } : {}) },
     tokensIn: usage.inputTokens,
     tokensOut: usage.outputTokens,
     costInr: usage.inputTokens || usage.outputTokens ? deps.costInr(deps.model, usage) : 0,

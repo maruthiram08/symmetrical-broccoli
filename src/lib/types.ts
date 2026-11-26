@@ -185,6 +185,8 @@ export interface ExtractionResult {
   }>;
   closes: Array<{ itemId: string; quote: string }>;
   usage: { inputTokens: number; outputTokens: number };
+  /** Items the model proposed that post-processing dropped, and why (logged, never shown as items). */
+  dropped?: Array<{ reason: string; text: string }>;
 }
 
 export type Attribution = "label" | "content";

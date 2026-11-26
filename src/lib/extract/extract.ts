@@ -463,5 +463,8 @@ export async function extractMeeting(
     });
   }
 
-  return { ...postProcess(parsed.data, input, deps.report), usage };
+  const report: PostProcessReport = deps.report ?? { droppedItems: [], droppedCloses: [] };
+  const out = postProcess(parsed.data, input, report);
+  const dropped = report.droppedItems.map((d) => ({ reason: d.reason, text: d.item.text }));
+  return { ...out, usage, ...(dropped.length ? { dropped } : {}) };
 }
