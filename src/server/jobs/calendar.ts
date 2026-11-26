@@ -29,7 +29,8 @@ export async function cacheCalendar(
 ): Promise<boolean> {
   if (!store.saveCalendar || !store.getCalendar || (!client.searchCalendar && !client.listSeries)) return false;
   try {
-    const old = await store.getCalendar(user.id);
+    // Raw: this cache is written back, and corrected names must never be stored in it.
+    const old = await (store.getCalendarRaw ? store.getCalendarRaw(user.id) : store.getCalendar(user.id));
     if (old && now.getTime() < Date.parse(old.nextFetchAt)) return false;
 
     const today = localDate(now, user.timeZone);

@@ -1,7 +1,8 @@
 // Due-date sanity: "before the next standup" or no due at all, when there's a recurring meeting
 // with that person, suggests the series' next occurrence as the due time. Pure.
 
-import { belongsTo, groupNames } from "@/lib/people";
+import { groupNames, nameIsGroup, ownsItem } from "@/lib/people";
+import type { Person } from "@/lib/directory/directory";
 import type { CalendarEvent, Item, Meeting, MeetingSeries } from "@/lib/types";
 import { nextOccurrence, normTitle, seriesPeople } from "./series";
 
@@ -62,6 +63,8 @@ export function dueHints(args: {
   events: CalendarEvent[];
   now: Date;
   self?: string[];
+  /** The people directory, so confirmed people are never merged by first-name guess. */
+  people?: Person[];
 }): Map<string, DueHint> {
   const out = new Map<string, DueHint>();
   const self = args.self ?? [];
@@ -70,7 +73,7 @@ export function dueHints(args: {
   if (!scheduled.length) return out;
   const people = new Map(scheduled.map((s) => [s.id, seriesPeople(s, args.meetings, self)]));
   const open = args.items.filter((i) => i.status === "open" && (i.kind === "owe" || i.kind === "waiting"));
-  const groups = groupNames([...open.map((i) => i.person ?? "").filter(Boolean), ...[...people.values()].flat()], self);
+  const groups = groupNames([...open.map((i) => i.person ?? "").filter(Boolean), ...[...people.values()].flat()], self, args.people ?? []);
 
   const hint = (i: Item, s: MeetingSeries, reason: DueHint["reason"]): void => {
     const at = next.get(s.id)!.startsAt;
@@ -81,8 +84,8 @@ export function dueHints(args: {
   for (const i of open) {
     if (i.source === "manual" && i.dueAt) continue; // a due you set by hand stays yours
     const ref = dueReference(`${i.text} ${i.quote}`, scheduled);
-    const g = i.person ? groups.find((x) => belongsTo(x, i.person)) : undefined;
-    const withPerson = (s: MeetingSeries) => !!g && people.get(s.id)!.some((p) => belongsTo(g, p));
+    const g = i.person ? groups.find((x) => ownsItem(x, i)) : undefined;
+    const withPerson = (s: MeetingSeries) => !!g && people.get(s.id)!.some((p) => nameIsGroup(g, p));
     if (ref?.kind === "named") { hint(i, ref.series.find(withPerson) ?? ref.series[0], "named"); continue; }
     if (i.dueAt && ref?.kind !== "generic") continue;
     if (!g) continue;

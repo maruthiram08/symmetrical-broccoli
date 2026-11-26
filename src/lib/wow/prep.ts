@@ -1,6 +1,7 @@
 // Prep card: what's open with the people in your next meeting. Pure.
 
-import { belongsTo, groupNames, normalizeName } from "@/lib/people";
+import { groupNames, nameIsGroup, normalizeName, ownsItem } from "@/lib/people";
+import type { Person } from "@/lib/directory/directory";
 import type { Item, UpcomingMeeting } from "@/lib/types";
 
 export interface Prep {
@@ -31,13 +32,14 @@ export function nextUpcoming(meetings: UpcomingMeeting[], now: Date, windowMin =
  * feature's grouping, so "Nitin" on an item matches "Nitin Kumar" in the invite (and
  * "nitin.kumar@acme.com"), but "Nitin Rao" does not match "Nitin Kumar".
  */
-export function prepFor(meeting: UpcomingMeeting, items: Item[], self: string[] = []): Prep {
+export function prepFor(meeting: UpcomingMeeting, items: Item[], self: string[] = [], directory: Person[] = []): Prep {
   const selfKeys = new Set(self.map(normalizeName).filter(Boolean));
   const people = meeting.attendees.map(attendeeName).filter((a) => a && !selfKeys.has(normalizeName(a)));
   const open = items.filter((i) => i.status === "open" && i.kind !== "decision" && i.person);
-  const groups = groupNames([...open.map((i) => i.person!), ...people], self);
-  const theirs = groups.filter((g) => people.some((p) => belongsTo(g, p)));
-  const matches = (i: Item) => theirs.some((g) => belongsTo(g, i.person));
+  // Confirmed people are fixed groups: an attendee "Nitin" is never guessed to be a confirmed "Nitin Kumar".
+  const groups = groupNames([...open.map((i) => i.person!), ...people], self, directory);
+  const theirs = groups.filter((g) => people.some((p) => nameIsGroup(g, p)));
+  const matches = (i: Item) => theirs.some((g) => ownsItem(g, i));
   const byDue = (a: Item, b: Item) => (a.dueAt ?? "9999").localeCompare(b.dueAt ?? "9999") || a.createdAt.localeCompare(b.createdAt);
   return {
     meeting,

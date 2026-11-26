@@ -402,6 +402,7 @@ export class FileStore extends MemoryStore implements OAuthClientStore, AppStore
   async getUpcoming(userId: string) { this.reload(); return super.getUpcoming(userId); }
   async saveCalendar(userId: string, cache: CalendarCache) { await this.change(() => super.saveCalendar(userId, cache)); }
   async getCalendar(userId: string) { this.reload(); return super.getCalendar(userId); }
+  async getCalendarRaw(userId: string) { this.reload(); return super.getCalendarRaw(userId); }
   async setItemDue(userId: string, itemId: string, dueAt: string | null) { return this.change(() => super.setItemDue(userId, itemId, dueAt), (ok) => ok); }
   async markPrepNotified(key: string) { return this.change(() => super.markPrepNotified(key), (fresh) => fresh); }
   async deleteUser(userId: string) { await this.change(async () => { await super.deleteUser(userId); this.oauthClients.delete(userId); }); }

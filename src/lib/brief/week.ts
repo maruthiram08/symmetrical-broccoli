@@ -75,11 +75,12 @@ export function buildWeek(data: BriefData, now: Date, timeZone: string): WeekMod
   const people = (kind: "owe" | "waiting"): PersonCount[] => {
     const rel = data.items.filter((i) => i.kind === kind && !!i.person?.trim() && (fromWeek(i) || i.status === "open"));
     // One row per person, as on the People page: "nitin" and "Nitin" (and "Nitin K") are the same person.
-    const groups = groupNames(rel.map((i) => i.person!));
+    // People in the directory group by their id (never merged by guess); the rest by spelling.
+    const groups = groupNames(rel.filter((i) => !i.personId).map((i) => i.person!));
     const groupOf = new Map(groups.flatMap((g) => g.keys.map((k) => [k, g] as const)));
     const by = new Map<string, PersonCount>();
     for (const i of rel) {
-      const g = groupOf.get(normalizeName(i.person!.trim().replace(/\s+/g, " ")));
+      const g = i.personId ? { slug: `id:${i.personId}`, name: i.person! } : groupOf.get(normalizeName(i.person!.trim().replace(/\s+/g, " ")));
       if (!g) continue;
       const p = by.get(g.slug) ?? { person: g.name, total: 0, open: 0 };
       p.total++;

@@ -4,7 +4,7 @@
 // and passing another user's id throws. Pages only ever get a scoped store (src/server/hosted/app.ts).
 import { randomUUID } from "node:crypto";
 import type { OAuthClientInformationMixed } from "@modelcontextprotocol/sdk/shared/auth.js";
-import { applyOps, emptyDirectory, resolveItems, resolveMeeting, resolveUpcoming, undoOps, type ChangeCtx, type Directory, type PeopleChange } from "@/lib/directory/directory";
+import { applyOps, emptyDirectory, resolveItems, resolveMeeting, resolveUpcoming, resolveCalendar, undoOps, type ChangeCtx, type Directory, type PeopleChange } from "@/lib/directory/directory";
 import { manualItem, type ManualInput } from "@/lib/capture/items";
 import type { CalendarCache, Connection, Health, Item, LastLook, Meeting, UpcomingCache, User } from "@/lib/types";
 import type { AppStore, RecoveryNotice } from "@/server/app-store";
@@ -463,7 +463,12 @@ export class HostedStore implements AppStore {
     return c && d ? { ...c, meetings: c.meetings.map((m) => resolveUpcoming(m, d)) } : c;
   }
   saveCalendar(userId: string, cache: CalendarCache) { return this.saveCache(userId, "calendar", cache); }
-  getCalendar(userId: string) { return this.getCache<CalendarCache>(userId, "calendar"); }
+  /** Attendee names resolved through the people directory; the stored cache is untouched. */
+  async getCalendar(userId: string) {
+    const c = await this.getCache<CalendarCache>(userId, "calendar");
+    return c ? resolveCalendar(c, await this.directoryOf(userId)) : c;
+  }
+  getCalendarRaw(userId: string) { return this.getCache<CalendarCache>(userId, "calendar"); }
 
   // ---------- people directory (kept in caches: "people" and "people_log") ----------
 

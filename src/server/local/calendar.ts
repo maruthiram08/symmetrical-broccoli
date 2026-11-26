@@ -12,6 +12,7 @@ export async function tomorrowFor(store: Store, user: User, now: Date): Promise<
   const glance = tomorrowGlance({
     events: freshEvents(cache, now), items: await store.listItems(user.id, { status: "open" }), series: cache.series,
     today: localDate(now, user.timeZone), timeZone: user.timeZone, now, self: [user.name, ...user.aliases],
+    people: (await store.getPeople?.(user.id))?.people ?? [],
   });
   // No events tomorrow (or a calendar Wispr Flow can't see): show nothing rather than an empty heading.
   return glance.length ? glance : undefined;
@@ -38,5 +39,6 @@ export async function dueHintsFor(store: Store, user: User, now: Date): Promise<
     series: cache.series,
     meetings: await store.listMeetingsBetween(user.id, "0000", "9999"),
     events, now, self: [user.name, ...user.aliases],
+    people: (await store.getPeople?.(user.id))?.people ?? [],
   });
 }

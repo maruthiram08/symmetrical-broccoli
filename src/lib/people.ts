@@ -257,3 +257,26 @@ export function isActive(p: PersonSummary, now: Date, days = 30): boolean {
   if (p.youOwe || p.theyOwe) return true;
   return !!p.lastSeenAt && Date.parse(p.lastSeenAt) >= now.getTime() - days * 86400000;
 }
+
+/**
+ * Are two items about the same person? When either is in the people directory, only the same
+ * directory person counts (no first-name guess between confirmed people); otherwise `guess` decides.
+ */
+export function itemsSamePerson(
+  a: Pick<Item, "person" | "personId">,
+  b: Pick<Item, "person" | "personId">,
+  guess: (x: string | null, y: string | null) => boolean,
+): boolean {
+  if (a.personId || b.personId) return !!a.personId && a.personId === b.personId;
+  return guess(a.person, b.person);
+}
+
+/**
+ * Does a written name (an attendee, a participant) mean this group? A confirmed person matches only
+ * its own spellings; other groups use belongsTo.
+ */
+export function nameIsGroup(group: PersonGroup, raw: string | null | undefined): boolean {
+  if (!raw) return false;
+  if (group.personId) return group.keys.includes(normalizeName(raw.includes("@") ? raw.split("@")[0].replace(/[._]+/g, " ") : raw));
+  return belongsTo(group, raw);
+}

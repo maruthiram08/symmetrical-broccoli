@@ -1,6 +1,7 @@
 // Builds a HandoffContext from stored rows. Pure: the caller does the reads.
 import type { Item, Meeting, User } from "../types";
 import type { HandoffContext } from "./types";
+import { itemsSamePerson } from "../people";
 
 export const RELATED_MAX = 5;
 
@@ -27,7 +28,7 @@ export function buildContext(args: {
   if (item.kind === "decision") return null;
   const m = meetings.get(item.meetingId) ?? null;
   const related = allItems
-    .filter((i) => i.id !== item.id && i.status !== "wrong" && i.kind !== "decision" && samePerson(i.person, item.person))
+    .filter((i) => i.id !== item.id && i.status !== "wrong" && i.kind !== "decision" && itemsSamePerson(i, item, samePerson))
     .sort((a, b) => (b.status === "open" ? 1 : 0) - (a.status === "open" ? 1 : 0) || b.createdAt.localeCompare(a.createdAt))
     .slice(0, RELATED_MAX)
     .map((i) => ({ kind: i.kind, text: i.text, status: i.status, meetingTitle: meetings.get(i.meetingId)?.title ?? null }));

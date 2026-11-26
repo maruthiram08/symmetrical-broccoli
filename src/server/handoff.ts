@@ -5,6 +5,7 @@ import { env } from "@/lib/env";
 import { costInr } from "@/lib/extract/cost";
 import { DraftCache } from "@/lib/handoff/cache";
 import { buildContext, samePerson } from "@/lib/handoff/context";
+import { itemsSamePerson } from "@/lib/people";
 import { draftHandoff, templateDrafts } from "@/lib/handoff/draft";
 import { HANDOFF_EVENT, latestHandoffs, startedLabel } from "@/lib/handoff/started";
 import type { Drafts, HandoffTarget } from "@/lib/handoff/types";
@@ -27,7 +28,7 @@ export async function draftsFor(itemId: string): Promise<DraftsResponse> {
 
   const meetings = new Map<string, Pick<Meeting, "title" | "startedAt"> | null>();
   for (const i of all) {
-    if (i.id !== item.id && !samePerson(i.person, item.person)) continue;
+    if (i.id !== item.id && !itemsSamePerson(i, item, samePerson)) continue;
     if (!meetings.has(i.meetingId)) meetings.set(i.meetingId, await store.getMeeting(i.meetingId));
   }
   const ctx = buildContext({ item, user, meetings, allItems: all, now: new Date() });
