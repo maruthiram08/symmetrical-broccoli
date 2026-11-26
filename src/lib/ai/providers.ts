@@ -92,7 +92,7 @@ export const PROVIDERS: Record<ProviderId, ProviderInfo> = {
   },
 };
 
-export const AI_TASKS = ["extraction", "ask", "assist", "nudges"] as const;
+export const AI_TASKS = ["extraction", "ask", "assist", "nudges", "canvas"] as const;
 export type AiTask = (typeof AI_TASKS)[number];
 
 export const TASK_LABELS: Record<AiTask, { label: string; hint: string }> = {
@@ -100,6 +100,7 @@ export const TASK_LABELS: Record<AiTask, { label: string; hint: string }> = {
   ask: { label: "Ask", hint: "Answers questions from the passages local search finds." },
   assist: { label: "Writing assist", hint: "Tidy, Shorter, Slack message and Translate in notes." },
   nudges: { label: "Nudges", hint: "Drafts nudges for late promises, and checks changed decisions." },
+  canvas: { label: "Canvas", hint: "Ask on the canvas, and the draft window when you start an item." },
 };
 
 export function isProviderId(v: unknown): v is ProviderId {

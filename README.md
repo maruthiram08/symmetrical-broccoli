@@ -146,9 +146,11 @@ checks keep using Claude when a key is set, unless you pick another provider for
 ## Settings › AI: other providers, per job
 
 Settings › **AI** picks a provider and model for each job: **Extraction** (reading meetings),
-**Ask**, **Writing assist** and **Nudges** (nudge drafts and changed-decision checks). The Anthropic
-API with your existing key stays the default for every job; nothing changes until you pick
-something else. Providers: Anthropic, OpenAI, Google Gemini, OpenRouter, Groq, DeepSeek, Mistral,
+**Ask**, **Writing assist**, **Nudges** (nudge drafts and changed-decision checks) and **Canvas**
+(Ask on the canvas and the draft window when you start an item). The Anthropic API with your
+existing key stays the default for every job; nothing changes until you pick something else. The
+one exception is Canvas with no Anthropic key: it uses your Claude plan through Claude Code when
+that's installed, as before (`DAILY_BRIEF_CANVAS_AI=key` turns that off). Providers: Anthropic, OpenAI, Google Gemini, OpenRouter, Groq, DeepSeek, Mistral,
 xAI, any OpenAI-compatible server (LM Studio, vLLM, llama.cpp: give its base URL), Ollama, and
 **Your Claude plan (Claude Code)**.
 

@@ -5,7 +5,7 @@ import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { buildAskMessage, fitSources } from "@/lib/ask/prompt";
 import { ASK_SYSTEM_PROMPT } from "@/lib/ask/prompt";
-import type { Source } from "@/lib/ask/retrieve";
+import type { ItemSource } from "@/lib/ask/retrieve";
 import { startContext } from "@/lib/canvas/build";
 import type { CanvasWindow } from "@/lib/canvas/model";
 import { addDays, localDate, zonedTime } from "@/lib/brief/time";
@@ -13,7 +13,7 @@ import { claudeUrl } from "@/lib/handoff/links";
 import { getStore, me } from "@/server/local/app";
 import { draftsFor, recordHandoff } from "@/server/handoff";
 import { resolveContradiction } from "@/server/ai";
-import { canvasAi, canvasCtx, getWindow, openInClaudeCode, saveWindow, WINDOW_SYSTEM } from "@/server/canvas/data";
+import { canvasAi, canvasCtx, canvasError, getWindow, openInClaudeCode, saveWindow, WINDOW_SYSTEM } from "@/server/canvas/data";
 
 const textOf = (m: { content: Array<{ type: string; text?: string }> }) => m.content.map((b) => (b.type === "text" ? b.text ?? "" : "")).join("").trim();
 
@@ -31,21 +31,21 @@ export async function canvasAsk(question: string, itemIds: string[], meetingIds:
   const byId = new Map(c.meetings.map((m) => [m.id, m]));
   const picked = c.items.filter((i) => i.status !== "wrong" && (ids.has(i.id) || ms.has(i.meetingId)));
   if (!picked.length) return { ok: false, error: "Nothing is plugged in. Turn on at least one card." };
-  const raw: Source[] = picked.map((i, k) => ({
+  const raw: ItemSource[] = picked.map((i, k) => ({
     n: k + 1, itemId: i.id, kind: i.kind, status: i.status, text: i.text, person: i.person, quote: i.quote,
     closeQuote: i.closeQuote, dueAt: i.dueAt, meetingTitle: byId.get(i.meetingId)?.title ?? "a meeting", at: byId.get(i.meetingId)?.startedAt ?? i.createdAt,
   }));
   const sources = fitSources(raw, user.timeZone).map((s, k) => ({ ...s, n: k + 1 }));
-  const ai = canvasAi();
-  if (!ai) return { ok: false, error: "No AI is set up. Sign in to Claude Code, or add an Anthropic key in Settings." };
+  const ai = await canvasAi();
+  if ("error" in ai) return { ok: false, error: ai.error };
   try {
     const r = await ai.client.messages.create({
       model: ai.model, max_tokens: 1500, system: ASK_SYSTEM_PROMPT,
       messages: [{ role: "user", content: buildAskMessage(q, sources, { userName: user.name, timeZone: user.timeZone, now: c.now }) }],
     });
-    return { ok: true, text: textOf(r as never), sources: sources.map((s) => ({ n: s.n, itemId: s.itemId, title: s.text })), via: ai.via === "plan" ? "your Claude plan" : "your API key" };
+    return { ok: true, text: textOf(r as never), sources: sources.map((s) => ({ n: s.n, itemId: s.itemId, title: s.text })), via: ai.via };
   } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : "Claude couldn't answer that." };
+    return { ok: false, error: canvasError(ai.provider, e) };
   }
 }
 
@@ -78,20 +78,20 @@ export async function canvasStart(itemId: string, kind: StartKind): Promise<{ ok
     return { ok: true };
   }
   w.title = "Claude";
-  const ai = canvasAi();
-  if (!ai) {
+  const ai = await canvasAi();
+  if ("error" in ai) {
     // No AI here: hand the context to claude.ai instead.
     done({ status: "ready", output: "No AI is set up on this Mac, so this opens in claude.ai with the context filled in." });
     return { ok: true, url: claudeUrl(ctx) };
   }
-  saveWindow({ ...w, title: `Claude · ${ai.via === "plan" ? "your plan" : "API key"}` });
+  saveWindow({ ...w, title: `AI · ${ai.via}` });
   try {
     const r = await ai.client.messages.create({ model: ai.model, max_tokens: 2000, system: WINDOW_SYSTEM, messages: [{ role: "user", content: ctx }] });
-    done({ title: `Claude · ${ai.via === "plan" ? "your plan" : "API key"}`, status: "ready", output: textOf(r as never) || "Claude didn't write anything." });
+    done({ title: `AI · ${ai.via}`, status: "ready", output: textOf(r as never) || "Claude didn't write anything." });
     await recordHandoff(itemId, "claude", "open");
     return { ok: true };
   } catch (e) {
-    const msg = e instanceof Error ? e.message : "Claude couldn't do that.";
+    const msg = canvasError(ai.provider, e);
     done({ status: "error", output: msg });
     return { ok: false, error: msg };
   }

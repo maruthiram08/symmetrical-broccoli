@@ -4,8 +4,10 @@ import { execFile } from "node:child_process";
 import { writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import type Anthropic from "@anthropic-ai/sdk";
-import { env } from "@/lib/env";
-import { claudePlanClient, findClaudeBinary } from "@/lib/claude-plan/client";
+import { findClaudeBinary } from "@/lib/claude-plan/client";
+import { classifyProviderError } from "@/lib/ai/errors";
+import type { ProviderId } from "@/lib/ai/providers";
+import { clientForTask, messageFor, noteProblem, resolveTask } from "@/server/ai-config";
 import type { Ctx } from "@/lib/canvas/build";
 import type { CanvasWindow } from "@/lib/canvas/model";
 import type { User } from "@/lib/types";
@@ -51,13 +53,27 @@ export function getWindow(id: string): CanvasWindow | null {
 // ---------- AI ----------
 
 /**
- * The client for canvas AI: your Claude plan through Claude Code when it's installed, otherwise the
- * Anthropic API key from Settings. Null when there is neither.
+ * The client for canvas AI: the provider and model picked for Canvas in Settings › AI. With nothing
+ * picked, the Anthropic key, or without one your Claude plan through Claude Code when it's installed
+ * (local app only; see resolveTask). `via` names it on the canvas. Null, with a reason, when it
+ * isn't set up.
  */
-export function canvasAi(): { client: Pick<Anthropic, "messages">; model: string; via: "plan" | "key" } | null {
-  if (process.env.DAILY_BRIEF_CANVAS_AI !== "key" && findClaudeBinary()) return { client: claudePlanClient() as unknown as Pick<Anthropic, "messages">, model: "sonnet", via: "plan" };
-  const c = aiClient();
-  return c ? { client: c, model: env.extractionModel, via: "key" } : null;
+export async function canvasAi(): Promise<{ client: Pick<Anthropic, "messages">; model: string; via: string; provider: ProviderId } | { error: string }> {
+  const t = resolveTask("canvas");
+  if (t.provider === "anthropic") {
+    const c = aiClient();
+    return c ? { client: c, model: t.model, via: "your Anthropic API key", provider: t.provider } : { error: "No AI is set up. Pick one for Canvas in Settings › AI, add an Anthropic key, or sign in to Claude Code." };
+  }
+  const r = await clientForTask("canvas");
+  if (!r.ok) return { error: r.error };
+  return { client: r.client as unknown as Pick<Anthropic, "messages">, model: t.qualified, via: t.provider === "claude-plan" ? "your Claude plan" : `${t.label} · ${t.model}`, provider: t.provider };
+}
+
+/** A failure worded for the provider that Canvas used, recorded against it like any other job. */
+export function canvasError(provider: ProviderId, e: unknown): string {
+  const kind = classifyProviderError(e);
+  if (provider !== "anthropic" && (kind === "auth" || kind === "credit")) noteProblem(provider, kind);
+  return messageFor(provider, kind);
 }
 
 export const WINDOW_SYSTEM = `You help a busy person get one item from their meetings done. You get the item, the exact words from the meeting, what was decided and what else is open with the same person.

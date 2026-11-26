@@ -10,6 +10,7 @@ export const TYPICAL: Record<AiTask, { input: number; output: number; per: strin
   ask: { input: 4_000, output: 800, per: "a question" },
   assist: { input: 1_200, output: 500, per: "a rewrite" },
   nudges: { input: 700, output: 150, per: "a nudge" },
+  canvas: { input: 3_000, output: 1_000, per: "an answer" },
 };
 
 export type Price = { input: number; output: number };

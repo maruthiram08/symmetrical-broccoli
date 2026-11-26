@@ -53,7 +53,8 @@ afterEach(() => { cfg.setSdkFactory(undefined); cfg.setClaudePlanClient(undefine
 
 describe("defaults", () => {
   it("every job uses the Anthropic API with the extraction model until you pick something", () => {
-    for (const t of ["extraction", "ask", "assist", "nudges"] as const) {
+    process.env.ANTHROPIC_API_KEY = "sk-ant-test-not-real";
+    for (const t of ["extraction", "ask", "assist", "nudges", "canvas"] as const) {
       expect(cfg.resolveTask(t)).toMatchObject({ provider: "anthropic", model: "claude-sonnet-5-5", qualified: "claude-sonnet-5-5" });
     }
     expect(cfg.aiPrefs().search.localOnly).toBe(true);
@@ -176,3 +177,26 @@ describe("Test and prices", () => {
   });
 });
 
+describe("Canvas", () => {
+  afterEach(() => { process.env.ANTHROPIC_API_KEY = "sk-ant-test-not-real"; delete process.env.DAILY_BRIEF_CANVAS_AI; });
+  it("follows the Canvas pick in Settings › AI", async () => {
+    await cfg.saveKey("groq", "gsk-test-not-real-000");
+    cfg.saveAiPrefs((p) => { p.tasks.canvas = { provider: "groq", model: "fast" }; });
+    const { canvasAi } = await import("@/server/canvas/data");
+    const ai = await canvasAi();
+    expect(ai).toMatchObject({ model: "groq:fast", via: "Groq · fast", provider: "groq" });
+    expect(sdkCalls.at(-1)).toMatchObject({ provider: "groq" });
+  });
+  it("with nothing picked: the Anthropic key, else your Claude plan, never in hosted mode", () => {
+    cfg.setClaudePlanClient(() => ({ messages: { create: vi.fn(), stream: vi.fn() } }) as never); // stands in for an installed Claude Code
+    expect(cfg.resolveTask("canvas").provider).toBe("anthropic");
+    delete process.env.ANTHROPIC_API_KEY;
+    expect(cfg.resolveTask("canvas")).toMatchObject({ provider: "claude-plan", qualified: "claude-plan:sonnet" });
+    process.env.DAILY_BRIEF_CANVAS_AI = "key";
+    expect(cfg.resolveTask("canvas").provider).toBe("anthropic");
+    delete process.env.DAILY_BRIEF_CANVAS_AI;
+    expect(cfg.resolveTask("canvas", cfg.aiPrefs(), true).provider).toBe("anthropic");
+    cfg.saveAiPrefs((p) => { p.tasks.canvas = { provider: "claude-plan", model: "opus" }; });
+    expect(cfg.resolveTask("canvas", cfg.aiPrefs(), true).provider).toBe("anthropic");
+  });
+});

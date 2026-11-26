@@ -12,7 +12,7 @@ import Groq from "groq-sdk";
 import OpenAI from "openai";
 import { join } from "node:path";
 import { adapt, geminiBackend, mistralBackend, ollamaBackend, openAiBackend, openRouterBackend, type AiClient, type GeminiLike, type MistralLike, type OpenAiLike, type OpenRouterLike } from "@/lib/ai/adapters";
-import { claudePlanClient, checkClaudePlan } from "@/lib/claude-plan/client";
+import { claudePlanClient, checkClaudePlan, findClaudeBinary } from "@/lib/claude-plan/client";
 import { failureMessage } from "@/lib/ai/errors";
 import { AI_TASKS, PROVIDERS, isProviderId, qualifiedModel, splitModel, type AiTask, type ProviderId, type StructuredMode } from "@/lib/ai/providers";
 import { classifyProviderError } from "@/lib/ai/errors";
@@ -103,9 +103,20 @@ export function resolveTask(task: AiTask, p: AiPrefs = aiPrefs(), hosted = isHos
     const old = extractionPrefs();
     if (old.provider === "ollama") c = { provider: "ollama", model: old.ollamaModel };
   }
+  if (!c && task === "canvas") c = canvasFallback(hosted) ?? undefined;
   if (!c || (hosted && PROVIDERS[c.provider].localOnly)) c = { provider: "anthropic", model: "" };
   const model = c.model.trim() || (c.provider === "anthropic" ? env.extractionModel : c.provider === "ollama" ? extractionPrefs().ollamaModel : c.provider === "claude-plan" ? "sonnet" : "");
   return { task, provider: c.provider, model, qualified: qualifiedModel(c.provider, model), label: PROVIDERS[c.provider].label };
+}
+
+/**
+ * Canvas with nothing picked: the Anthropic key when there is one (the default for every job), and
+ * only without a key your Claude plan through Claude Code when it's installed, as Canvas did before
+ * it had a picker. Never in hosted mode. DAILY_BRIEF_CANVAS_AI=key turns that fallback off.
+ */
+function canvasFallback(hosted: boolean): AiPrefs["tasks"][AiTask] | null {
+  if (hosted || process.env.ANTHROPIC_API_KEY || process.env.DAILY_BRIEF_CANVAS_AI === "key") return null;
+  return g.__dbPlan || findClaudeBinary() ? { provider: "claude-plan", model: "sonnet" } : null;
 }
 
 export function baseUrlOf(provider: ProviderId, p: AiPrefs = aiPrefs()): string | null {
