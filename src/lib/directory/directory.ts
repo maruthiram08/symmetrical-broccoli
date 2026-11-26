@@ -4,6 +4,7 @@
 // Pure: the store keeps one Directory per user and applies the ops these functions return.
 
 import type { Item, Meeting, UpcomingMeeting } from "@/lib/types";
+import { isSpeakerLabel, unlabelText } from "./speakers";
 
 export type PersonStatus = "confirmed" | "ignored";
 
@@ -95,7 +96,9 @@ export function resolver(d: Directory | null | undefined): Resolver {
     lookup,
     item(i) {
       const movedTo = d?.moved[i.id];
-      const p = (movedTo ? byId.get(movedTo) : undefined) ?? (i.person ? lookup(i.person) : null);
+      const moved = movedTo ? byId.get(movedTo) : undefined;
+      if (!moved && isSpeakerLabel(i.person)) return unattributed(i);
+      const p = moved ?? (i.person ? lookup(i.person) : null);
       if (!p) return i;
       const person = p.status === "confirmed" ? p.name : null;
       return { ...i, person, personRaw: i.person, personId: p.id };
@@ -107,9 +110,14 @@ export function resolver(d: Directory | null | undefined): Resolver {
   };
 }
 
-/** Resolve a list of items; the same array back when there is no directory. */
+/** An item named only by a speaker label: no person, the label replaced in its text. The raw name stays in personRaw. */
+export function unattributed(i: Item): Item {
+  return { ...i, person: null, personRaw: i.person, text: i.person ? unlabelText(i.text, i.person) : i.text, unattributed: true };
+}
+
+/** Resolve a list of items; the same array back when there is no directory and no speaker label. */
 export function resolveItems(items: Item[], d: Directory | null | undefined): Item[] {
-  if (isEmpty(d)) return items;
+  if (isEmpty(d)) return items.some((i) => isSpeakerLabel(i.person)) ? items.map((i) => (isSpeakerLabel(i.person) ? unattributed(i) : i)) : items;
   const r = resolver(d);
   return items.map(r.item);
 }

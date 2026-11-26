@@ -145,6 +145,8 @@ export interface Item {
   personRaw?: string | null;
   /** Set on read: the directory person this item belongs to. Never stored. */
   personId?: string;
+  /** Set on read when the person was only a speaker label ("Speaker 5"): shown as nobody. Never stored. */
+  unattributed?: boolean;
   /** A ticket made from this item in Jira, Linear, Notion or Todoist (src/server/integrations). */
   ticket?: ItemTicket | null;
   /** Why it closed when neither a meeting nor you closed it: "Closed in Linear". */

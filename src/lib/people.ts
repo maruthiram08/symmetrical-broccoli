@@ -3,6 +3,7 @@
 
 import type { Item, Meeting } from "@/lib/types";
 import type { Person } from "@/lib/directory/directory";
+import { isSpeakerLabel } from "@/lib/directory/speakers";
 
 /** "  Nitin  K. " -> "nitin k". Lowercase, punctuation to spaces, collapsed. */
 export function normalizeName(name: string): string {
@@ -56,7 +57,7 @@ export function groupNames(names: Iterable<string>, exclude: Iterable<string> = 
   for (const raw of names) {
     const shown = raw.trim().replace(/\s+/g, " ");
     const key = normalizeName(shown);
-    if (!key || skip.has(key)) continue;
+    if (!key || skip.has(key) || isSpeakerLabel(shown)) continue;
     const m = spellings.get(key) ?? new Map<string, number>();
     m.set(shown, (m.get(shown) ?? 0) + 1);
     spellings.set(key, m);

@@ -145,3 +145,16 @@ export function scorePair(a: string, b: string): { score: number; why: string[] 
   if (sameFirst) why.push("same first name");
   return { score, why };
 }
+
+/** Speaker labels hidden from Check names ("Speaker 5": 3 items), most items first. */
+export function unlabelledSpeakers(items: Item[]): Array<{ label: string; items: number }> {
+  const counts = new Map<string, { label: string; items: number }>();
+  for (const i of items) {
+    if (!live(i) || !i.unattributed || !i.personRaw) continue;
+    const k = normalizeName(i.personRaw);
+    const c = counts.get(k) ?? { label: i.personRaw.trim(), items: 0 };
+    c.items++;
+    counts.set(k, c);
+  }
+  return [...counts.values()].sort((a, b) => b.items - a.items || a.label.localeCompare(b.label, undefined, { numeric: true }));
+}

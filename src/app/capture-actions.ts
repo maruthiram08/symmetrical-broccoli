@@ -7,6 +7,7 @@ import { addDays, localDate, zonedTime } from "@/lib/brief/time";
 import { DUE_TIME } from "@/lib/capture/parse";
 import { goesToInbox, isManual } from "@/lib/capture/items";
 import { normalizeName } from "@/lib/people";
+import { isSpeakerLabel } from "@/lib/directory/speakers";
 import { listPeople } from "@/lib/people";
 import { getStore, me } from "@/server/local/app";
 import { saveDayNotes } from "@/server/local/notes";
@@ -101,7 +102,7 @@ export async function captureContextAction(): Promise<{ people: string[]; self: 
   const self = [user.name, ...user.aliases].filter(Boolean);
   const skip = new Set(self.map(normalizeName));
   const people = listPeople({ items, meetings, now: new Date(), self, people: dir }).map((p) => p.name);
-  for (const m of meetings) for (const p of m.participants) if (!p.includes("@") && !skip.has(normalizeName(p))) people.push(p);
+  for (const m of meetings) for (const p of m.participants) if (!p.includes("@") && !skip.has(normalizeName(p)) && !isSpeakerLabel(p)) people.push(p);
   return { people: [...new Set(people)], self, timeZone: user.timeZone };
 }
 

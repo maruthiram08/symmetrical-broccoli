@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { Item, Meeting } from "@/lib/types";
 import { buildUserMessage } from "@/lib/extract/prompt";
-import { findPerson, listPeople } from "@/lib/people";
+import { findPerson, groupNames, listPeople } from "@/lib/people";
 import { MemoryStore } from "@/server/store";
 import { FileStore } from "@/server/local/file-store";
 import { processMeeting } from "@/server/jobs/process";
@@ -312,5 +312,37 @@ describe("widget", () => {
     const after = await widgetSummary(s, u, now);
     expect({ ...after, updatedAt: "" }).toEqual({ ...before, updatedAt: "" });
     expect(after.owe).toBe(2);
+  });
+});
+
+describe("speaker labels", () => {
+  it("recognises generic labels, case-insensitive, and not real names", async () => {
+    const { isSpeakerLabel } = await import("./speakers");
+    for (const s of ["Speaker 5", "speaker A", "SPEAKER_2", "Unknown", "Unknown Speaker", "Participant 3", "participant", "Guest", "Guest 2", "S1", "Speaker #4", "Unidentified speaker"]) expect(isSpeakerLabel(s), s).toBe(true);
+    for (const s of ["Nitin", "Mangku", "Sujay", "Guestin", "Speakman", "Sp", "Priya Speaker", null, ""]) expect(isSpeakerLabel(s), String(s)).toBe(false);
+  });
+
+  it("shows items unattributed without rewriting stored names, with or without a directory", async () => {
+    const { unlabelledSpeakers } = await import("./review");
+    const raw = [item({ person: "Speaker 5", text: "Send Speaker 5 the deck" }), item({ person: "speaker_5", kind: "waiting", text: "Get the numbers" }), item({ person: "Nitin" })];
+    for (const d of [emptyDirectory(), (() => { const x = emptyDirectory(); apply(x, confirmNew(x, { name: "Nitin", spellings: ["Nitin"] }, ctx())); return x; })()]) {
+      const items = resolveItems(raw, d);
+      expect(items[0]).toMatchObject({ person: null, personRaw: "Speaker 5", unattributed: true, text: "Send someone (unlabelled speaker) the deck" });
+      expect(items[1]).toMatchObject({ person: null, unattributed: true });
+      expect(raw[0].person).toBe("Speaker 5");
+      expect(listPeople({ items, meetings: [], now: new Date("2026-11-25T00:00:00Z"), people: d.people }).map((p) => p.name)).toEqual(["Nitin"]);
+      expect(namesToCheck({ items, meetings: [], people: d.people }).map((n) => n.name)).toEqual(d.people.length ? [] : ["Nitin"]);
+      expect(unlabelledSpeakers(items)).toEqual([{ label: "Speaker 5", items: 2 }]);
+    }
+  });
+
+  it("a split still assigns a speaker-labelled item to a real person", () => {
+    const d = emptyDirectory();
+    apply(d, moveItems(d, ["sp1"], { name: "Ravi" }, ctx()));
+    expect(resolveItems([item({ id: "sp1", person: "Speaker 3" })], d)[0]).toMatchObject({ person: "Ravi" });
+  });
+
+  it("keeps speaker labels out of grouping (participants, prep)", () => {
+    expect(groupNames(["Speaker 1", "Nitin", "Guest"]).map((g) => g.name)).toEqual(["Nitin"]);
   });
 });

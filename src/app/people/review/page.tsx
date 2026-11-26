@@ -4,7 +4,8 @@ import { redirect } from "next/navigation";
 import { NameReview } from "@/components/NameReview";
 import { Shell } from "@/components/Shell";
 import { confirmed } from "@/lib/directory/directory";
-import { namesToCheck } from "@/lib/directory/review";
+import { namesToCheck, unlabelledSpeakers } from "@/lib/directory/review";
+import { UNLABELLED } from "@/lib/directory/speakers";
 import { me } from "@/server/local/app";
 import { pastDays } from "../../_lib/days";
 import { loadAll, shortDate } from "../../_lib/lines";
@@ -20,6 +21,7 @@ export default async function CheckNames() {
   const known = confirmed({ people, moved: {} });
   const names = namesToCheck({ items, meetings, people: known, self: [user.name, ...user.aliases] });
   const lastSeen = Object.fromEntries(names.filter((n) => n.lastSeenAt).map((n) => [n.key, shortDate(n.lastSeenAt!, user.timeZone)]));
+  const speakers = unlabelledSpeakers(items);
   const openCount = items.filter((i) => i.status === "open" && i.kind !== "decision").length;
 
   return (
@@ -30,6 +32,15 @@ export default async function CheckNames() {
         Transcription guesses names. Say who each one is: the same as someone you know, a new person, or not a person at all.
         Every page and future meetings use your answer.
       </p>
+      {speakers.length ? (
+        <details className="nr-hidden">
+          <summary>{speakers.length} unlabelled {speakers.length === 1 ? "speaker" : "speakers"} hidden</summary>
+          <p>
+            Transcription couldn’t name these voices, so their items show “{UNLABELLED}” and they aren’t listed as people:{" "}
+            {speakers.map((s) => `${s.label} (${s.items})`).join(", ")}.
+          </p>
+        </details>
+      ) : null}
       <NameReview
         names={names}
         people={known.map((p) => ({ id: p.id, name: p.name })).sort((a, b) => a.name.localeCompare(b.name))}
