@@ -61,7 +61,7 @@ export default async function Workspaces({ searchParams }: { searchParams: Promi
         <h2 className="db-section__title">Add a workspace</h2>
         <Field id="ws-name" name="name" label="Name" placeholder="Side project" maxLength={60} required />
         <Field id="ws-folder" name="folder" label="Folder" placeholder="~/Documents/Side project brief" required
-          hint="Its notes go here, and its data in a hidden .daily-brief folder inside. Created if it doesn't exist. An existing workspace folder is picked up as it is." />
+          hint="Its notes go here, and its data in a hidden .daily-brief folder inside. Created if it doesn't exist. An existing workspace folder, or any Markdown folder such as an Obsidian vault, is picked up as it is." />
         <div className="db-row">
           <Button type="submit">Add and switch</Button>
           <Link className="db-link" href="/">Back to today</Link>

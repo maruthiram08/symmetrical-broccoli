@@ -33,6 +33,12 @@ const FIXTURES: Record<string, string> = {
   escapes: "\\*not em\\* and \\[[not link]] &amp; &copy;\n",
   hardBreaks: "line one\\\nline two\n",
   lazyQuote: "> quote\nlazy continuation\n",
+  highlight: "Some ==marked== text, a == b, and ===three===\n",
+  embeds: "![[Other note]]\n![[Other note|shown as]]\n![[Pasted image 20261126.png]]\n",
+  images: "![alt text](attachments/pic%201.png \"Title\")\n![](<with space.png>)\n",
+  footnotes: "A claim[^1] and another[^note].\n\n[^1]: First.\n[^note]: Second, with **bold**.\n",
+  mermaid: "```mermaid\ngraph TD\n  A[Start] --> B{Ok?}\n```\n",
+  obsidian: "---\naliases: [Q4]\ntags:\n  - plan\n---\n\n# Plan %% comment %%\n\n> [!tip]- Folded\n> body\n\n#tag/nested ^block-id\n",
 };
 
 describe("markdown round trip", () => {

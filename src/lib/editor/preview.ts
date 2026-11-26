@@ -5,6 +5,7 @@ import { StateEffect, StateField, type EditorState, type Extension, type Range }
 import { Decoration, EditorView, WidgetType, type DecorationSet } from "@codemirror/view";
 import { previewSpecs, type Spec } from "./preview-specs";
 import type { LinkResolver } from "./links";
+import { mermaidCached, renderMermaid } from "./mermaid";
 
 export const setFocused = StateEffect.define<boolean>();
 
@@ -126,7 +127,154 @@ class HintWidget extends WidgetType {
   toDOM() { const s = document.createElement("span"); s.className = "cm-md-hint"; s.textContent = `↵ ${this.text.replace(/^Enter /, "")}`; return s; }
 }
 
-export function toDecorations(specs: Spec[]): DecorationSet {
+class ImageWidget extends WidgetType {
+  constructor(readonly src: string | null, readonly alt: string, readonly from: number) { super(); }
+  eq(o: ImageWidget) { return o.src === this.src && o.alt === this.alt && o.from === this.from; }
+  toDOM() {
+    const wrap = document.createElement("span");
+    wrap.className = "cm-md-img";
+    wrap.dataset.tableFrom = String(this.from);
+    if (!this.src) { wrap.classList.add("cm-md-img--missing"); wrap.textContent = this.alt ? `Image: ${this.alt}` : "Image"; return wrap; }
+    const img = document.createElement("img");
+    img.src = this.src;
+    img.alt = this.alt;
+    img.loading = "lazy";
+    img.decoding = "async";
+    img.referrerPolicy = "no-referrer";
+    img.onerror = () => { wrap.classList.add("cm-md-img--missing"); wrap.textContent = this.alt ? `Image not found: ${this.alt}` : "Image not found"; };
+    wrap.append(img);
+    return wrap;
+  }
+  ignoreEvent() { return false; }
+}
+
+export interface EmbedContent { title: string; markdown: string; href: string }
+const embedCache = new Map<string, { at: number; p: Promise<EmbedContent | null> }>();
+
+/** A note shown inside another, read only: its lines drawn simply (headings, lists, tasks, text). */
+export function embedLines(md: string, max = 40): Array<{ cls: string; text: string }> {
+  const out: Array<{ cls: string; text: string }> = [];
+  const body = md.replace(/^﻿/, "").replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, "");
+  let fence = false;
+  for (const raw of body.split(/\r?\n/)) {
+    if (out.length >= max) { out.push({ cls: "more", text: "…" }); break; }
+    if (/^\s*(```|~~~)/.test(raw)) { fence = !fence; continue; }
+    if (fence) { out.push({ cls: "code", text: raw }); continue; }
+    if (!raw.trim()) { if (out.length && out[out.length - 1].cls !== "gap") out.push({ cls: "gap", text: "" }); continue; }
+    const h = raw.match(/^(#{1,6})\s+(.*?)\s*#*\s*$/);
+    if (h) { out.push({ cls: `h${Math.min(3, h[1].length)}`, text: cellText(h[2]) }); continue; }
+    const task = raw.match(/^\s*(?:[-*+]|\d+[.)])\s+\[([ xX])\]\s+(.*)$/);
+    if (task) { out.push({ cls: task[1] === " " ? "task" : "task done", text: `${task[1] === " " ? "☐" : "☑"} ${cellText(task[2])}` }); continue; }
+    const li = raw.match(/^(\s*)(?:[-*+]|\d+[.)])\s+(.*)$/);
+    if (li) { out.push({ cls: "li", text: `${"  ".repeat(Math.min(4, Math.floor(li[1].length / 2)))}• ${cellText(li[2])}` }); continue; }
+    out.push({ cls: raw.startsWith(">") ? "quote" : "p", text: cellText(raw.replace(/^\s*(?:>\s?)+(?:\[![a-z]+\]\s*)?/i, "")) });
+  }
+  while (out.length && out[out.length - 1].cls === "gap") out.pop();
+  return out;
+}
+
+class EmbedWidget extends WidgetType {
+  constructor(readonly target: string, readonly label: string, readonly load: ((t: string) => Promise<EmbedContent | null>) | undefined) { super(); }
+  eq(o: EmbedWidget) { return o.target === this.target && o.label === this.label; }
+  toDOM() {
+    const box = document.createElement("span");
+    box.className = "cm-md-embed";
+    const head = document.createElement("a");
+    head.className = "cm-md-embed__title cm-md-wiki";
+    head.textContent = this.label;
+    const body = document.createElement("span");
+    body.className = "cm-md-embed__body";
+    body.textContent = this.load ? "Loading…" : "";
+    box.append(head, body);
+    if (!this.load) return box;
+    let hit = embedCache.get(this.target);
+    if (!hit || Date.now() - hit.at > 15_000) { hit = { at: Date.now(), p: this.load(this.target).catch(() => null) }; embedCache.set(this.target, hit); }
+    void hit.p.then((c) => {
+      body.textContent = "";
+      if (!c) { box.classList.add("cm-md-embed--missing"); body.textContent = `No note called “${this.target}” yet.`; return; }
+      head.textContent = this.label !== this.target ? this.label : c.title;
+      head.href = c.href;
+      head.dataset.href = c.href;
+      const lines = embedLines(c.markdown);
+      // The title is already on the chip.
+      if (lines[0]?.cls === "h1" && lines[0].text.trim().toLowerCase() === c.title.trim().toLowerCase()) { lines.shift(); if (lines[0]?.cls === "gap") lines.shift(); }
+      if (!lines.length) { body.textContent = "Empty note"; body.classList.add("cm-md-embed__body--empty"); }
+      for (const l of lines) {
+        const row = document.createElement("span");
+        row.className = `cm-md-embed__line cm-md-embed__line--${l.cls.replace(" ", " cm-md-embed__line--")}`;
+        row.textContent = l.text;
+        body.append(row);
+      }
+    });
+    return box;
+  }
+  ignoreEvent() { return false; }
+}
+
+class FootRefWidget extends WidgetType {
+  constructor(readonly label: string, readonly text: string) { super(); }
+  eq(o: FootRefWidget) { return o.label === this.label && o.text === this.text; }
+  toDOM() {
+    const s = document.createElement("sup");
+    s.className = "cm-md-footref";
+    s.textContent = this.label;
+    if (this.text) s.title = cellText(this.text);
+    return s;
+  }
+}
+
+class FootDefWidget extends WidgetType {
+  constructor(readonly label: string) { super(); }
+  eq(o: FootDefWidget) { return o.label === this.label; }
+  toDOM() { const s = document.createElement("span"); s.className = "cm-md-footdef-label"; s.textContent = this.label; return s; }
+}
+
+class MermaidWidget extends WidgetType {
+  constructor(readonly code: string, readonly from: number) { super(); }
+  eq(o: MermaidWidget) { return o.code === this.code && o.from === this.from; }
+  get estimatedHeight() { return 160; }
+  toDOM() {
+    const wrap = document.createElement("div");
+    wrap.className = "cm-md-mermaid";
+    wrap.dataset.tableFrom = String(this.from);
+    wrap.setAttribute("role", "img");
+    wrap.setAttribute("aria-label", "Diagram");
+    const cached = mermaidCached(this.code);
+    if (cached) { wrap.innerHTML = cached; return wrap; }
+    wrap.textContent = this.code.trim() ? "Drawing diagram…" : "Empty diagram";
+    if (!this.code.trim()) return wrap;
+    void renderMermaid(this.code).then(
+      (svg) => { wrap.innerHTML = svg; },
+      (e: unknown) => {
+        wrap.textContent = "";
+        wrap.classList.add("cm-md-mermaid--error");
+        const msg = document.createElement("span");
+        msg.textContent = `Can't draw this diagram: ${(e instanceof Error ? e.message : String(e)).split("\n")[0].slice(0, 200)}`;
+        wrap.append(msg);
+      },
+    );
+    return wrap;
+  }
+  ignoreEvent() { return false; }
+}
+
+export type WidgetConfig = Partial<Pick<PreviewConfig, "asset" | "embed">>;
+
+/** Where an image's src points: http(s) as is, files in the notes folder through the app. */
+export function defaultAsset(src: string, wiki: boolean, base = ""): string | null {
+  if (/^(https?:)?\/\//i.test(src) || /^data:image\//i.test(src)) return src;
+  if (/^[a-z][a-z0-9+.-]*:/i.test(src)) return null;
+  let clean = src;
+  try { clean = decodeURIComponent(src); } catch { /* keep as typed */ }
+  clean = clean.split(/[?#]/)[0];
+  if (wiki) return `/api/vault/file?name=${encodeURIComponent(clean)}&from=${encodeURIComponent(base)}`;
+  const parts = (clean.startsWith("/") ? clean.slice(1) : base ? `${base}/${clean}` : clean).split("/");
+  const out: string[] = [];
+  for (const p of parts) { if (p === "..") out.pop(); else if (p && p !== ".") out.push(p); }
+  return `/api/vault/file?path=${encodeURIComponent(out.join("/"))}`;
+}
+
+export function toDecorations(specs: Spec[], cfg: WidgetConfig = {}): DecorationSet {
   const ranges: Range<Decoration>[] = [];
   for (const s of specs) {
     switch (s.t) {
@@ -141,13 +289,18 @@ export function toDecorations(specs: Spec[]): DecorationSet {
       case "toggle": ranges.push(Decoration.replace({ widget: new ToggleWidget(s.title, s.folded, s.foldFrom, s.foldTo) }).range(s.from, s.to)); break;
       case "table": ranges.push(Decoration.replace({ widget: new TableWidget(s.rows, s.align, s.from), block: true }).range(s.from, s.to)); break;
       case "hint": ranges.push(Decoration.widget({ widget: new HintWidget(s.text), side: 1 }).range(s.at)); break;
+      case "image": ranges.push(Decoration.replace({ widget: new ImageWidget((cfg.asset ?? defaultAsset)(s.src, s.wiki), s.alt, s.from) }).range(s.from, s.to)); break;
+      case "embed": ranges.push(Decoration.replace({ widget: new EmbedWidget(s.target, s.label, cfg.embed) }).range(s.from, s.to)); break;
+      case "footref": ranges.push(Decoration.replace({ widget: new FootRefWidget(s.label, s.text) }).range(s.from, s.to)); break;
+      case "footdef": ranges.push(Decoration.replace({ widget: new FootDefWidget(s.label) }).range(s.from, s.to)); break;
+      case "mermaid": ranges.push(Decoration.replace({ widget: new MermaidWidget(s.code, s.from), block: true }).range(s.from, s.to)); break;
     }
   }
   return Decoration.set(ranges, true);
 }
 
-function build(state: EditorState, resolver: () => LinkResolver): DecorationSet {
-  try { return toDecorations(previewSpecs(state, { focused: state.field(focusField), resolver: resolver() })); }
+function build(state: EditorState, resolver: () => LinkResolver, cfg: WidgetConfig = {}): DecorationSet {
+  try { return toDecorations(previewSpecs(state, { focused: state.field(focusField), resolver: resolver() }), cfg); }
   catch { return Decoration.none; }
 }
 
@@ -166,14 +319,18 @@ export interface PreviewConfig {
   onTask?: (lineText: string, checked: boolean) => void;
   /** Open an app link (client-side navigation). */
   navigate: (href: string, newTab: boolean) => void;
+  /** The URL for an image's src (`![](a.png)`, or `![[a.png]]` when wiki). Null to not load it. */
+  asset?: (src: string, wiki: boolean) => string | null;
+  /** The note an `![[embed]]` shows. */
+  embed?: (target: string) => Promise<EmbedContent | null>;
 }
 
 export function livePreview(cfg: PreviewConfig): Extension {
   const field = StateField.define<DecorationSet>({
-    create: (s) => build(s, cfg.resolver),
+    create: (s) => build(s, cfg.resolver, cfg),
     update(deco, tr) {
       const focusChanged = tr.effects.some((e) => e.is(setFocused) || e.is(foldEffect) || e.is(unfoldEffect));
-      if (tr.docChanged || tr.selection || focusChanged || tr.reconfigured || syntaxTree(tr.state) !== syntaxTree(tr.startState)) return build(tr.state, cfg.resolver);
+      if (tr.docChanged || tr.selection || focusChanged || tr.reconfigured || syntaxTree(tr.state) !== syntaxTree(tr.startState)) return build(tr.state, cfg.resolver, cfg);
       // The parser may have finished more of the document since.
       return deco.map(tr.changes);
     },
