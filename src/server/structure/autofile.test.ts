@@ -4,8 +4,8 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { DEFAULT_TYPES } from "@/lib/structure/note-types";
 import { FileStore } from "@/server/local/file-store";
-import { autoFileProjects, naturalLabel, readExamples, recordFiling, suggestProjects } from "./autofile";
-import { createTypedNote, setNoteProperties } from "./notes";
+import { autoFileProjects, naturalLabel, readExamples, recordFiling, recordFilings, removeProject, suggestProjects } from "./autofile";
+import { createTypedNote, projectRows, setNoteProperties } from "./notes";
 
 const AT = "2026-11-26T10:00:00.000Z";
 const project = DEFAULT_TYPES.find((t) => t.id === "project")!;
@@ -109,5 +109,55 @@ describe("automatic project filing", () => {
   it("names a topic as the meeting titles spell it", () => {
     expect(naturalLabel("earning tag", ["Weekly sync", "Earnings Tag QA Estimation"])).toBe("Earnings tag");
     expect(naturalLabel("stock split", [])).toBe("Stock split");
+  });
+});
+
+describe("moving and removing projects", () => {
+  it("moves several items at once, as your own filings, and leaves them there", async () => {
+    const { store, u, add } = await setup();
+    createTypedNote(project, "Chart alerts", "2026-11-26", dir);
+    createTypedNote(project, "Dubai move", "2026-11-26", dir);
+    await add("Filler", filler.map((f) => f.text));
+    await add("Alerts", ["Share the chart alerts requirement with Jay", "Fix the chart alerts colour bug"]);
+    await autoFileProjects(store, u.id);
+    const before = [...(await byText(store, u.id)).values()].filter((i) => i.project === "chart-alerts");
+    expect(before).toHaveLength(2);
+    expect(await recordFilings(store, u.id, before.map((i) => ({ ...i })), "dubai-move", AT)).toBe(2);
+    const after = await byText(store, u.id);
+    expect(after.get("Share the chart alerts requirement with Jay")).toMatchObject({ project: "dubai-move", projectBy: "you" });
+    expect(after.get("Fix the chart alerts colour bug")).toMatchObject({ project: "dubai-move", projectBy: "you" });
+    expect(readExamples().find((e) => e.text === "Fix the chart alerts colour bug")).toMatchObject({ project: "dubai-move", not: ["chart-alerts"] });
+    // And out of any project.
+    await recordFilings(store, u.id, [after.get("Fix the chart alerts colour bug")!], null, AT);
+    expect((await byText(store, u.id)).get("Fix the chart alerts colour bug")).toMatchObject({ project: null, projectBy: "you" });
+  });
+
+  it("removing a project sends its items back to Needs a project and archives it", async () => {
+    const { store, u, add } = await setup();
+    createTypedNote(project, "Chart alerts", "2026-11-26", dir);
+    await add("Filler", filler.map((f) => f.text));
+    await add("Alerts", ["Share the chart alerts requirement with Jay", "Fix the chart alerts colour bug"]);
+    await autoFileProjects(store, u.id);
+    const one = (await byText(store, u.id)).get("Fix the chart alerts colour bug")!;
+    await recordFiling(store, u.id, { ...one }, "chart-alerts", AT);
+    expect(await removeProject(store, u.id, "chart-alerts")).toBe(2);
+    for (const i of (await byText(store, u.id)).values()) expect(i.project ?? null).toBeNull();
+    expect(projectRows().find((p) => p.slug === "chart-alerts")?.props.status).toBe("archived");
+    expect(readExamples().some((e) => e.project === "chart-alerts")).toBe(false);
+    // Archived: a new matching item isn't filed into it.
+    await add("More", ["Ship the chart alerts v2"]);
+    await autoFileProjects(store, u.id);
+    expect((await byText(store, u.id)).get("Ship the chart alerts v2")?.project ?? null).toBeNull();
+  });
+
+  it("Undo right after making a project deletes its note", async () => {
+    const { store, u, add } = await setup();
+    createTypedNote(project, "Chart alerts", "2026-11-26", dir);
+    await add("Filler", filler.map((f) => f.text));
+    await add("Alerts", ["Share the chart alerts requirement with Jay"]);
+    await autoFileProjects(store, u.id);
+    await removeProject(store, u.id, "chart-alerts", { deleteNote: true });
+    expect(projectRows().some((p) => p.slug === "chart-alerts")).toBe(false);
+    expect((await byText(store, u.id)).get("Share the chart alerts requirement with Jay")?.project ?? null).toBeNull();
   });
 });

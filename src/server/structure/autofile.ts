@@ -11,7 +11,8 @@ import type { MemoryStore } from "@/server/store";
 import { dataDir } from "@/server/local/paths";
 import { readJson, writeJson } from "@/server/local/json-file";
 import { noteSlug } from "@/lib/editor/links";
-import { noteRows, projectRows } from "./notes";
+import { deletePage } from "@/server/local/pages";
+import { noteRows, projectRows, setNoteProperties } from "./notes";
 
 type FilingStore = Pick<MemoryStore, "listItems" | "listMeetingsBetween" | "fileItems">;
 
@@ -74,6 +75,40 @@ export async function recordFiling(store: FilingStore, userId: string, item: Ite
   const not = item.projectBy === "auto" && item.project && item.project !== project ? [item.project] : [];
   writeExamples(upsertExample(readExamples(), { itemId: item.id, text: item.text, title: meeting?.title, person: item.personRaw ?? item.person, project, ...(not.length ? { not } : {}), at }));
   await autoFileProjects(store, userId);
+}
+
+/**
+ * You moved several items at once (into `project`, or out of any with null): each one counts as
+ * a hand filing, as recordFiling does for one, and the rest are re-filed once at the end.
+ * `items` are the items as they were before the move. Returns how many moved.
+ */
+export async function recordFilings(store: FilingStore, userId: string, items: Item[], project: string | null, at: string): Promise<number> {
+  const meetings = new Map((await store.listMeetingsBetween(userId, "0000", "9999")).map((m) => [m.id, m]));
+  let ex = readExamples();
+  for (const item of items) {
+    const not = item.projectBy === "auto" && item.project && item.project !== project ? [item.project] : [];
+    ex = upsertExample(ex, { itemId: item.id, text: item.text, title: meetings.get(item.meetingId)?.title, person: item.personRaw ?? item.person, project, ...(not.length ? { not } : {}), at });
+  }
+  writeExamples(ex);
+  const n = await store.fileItems(items.map((i) => ({ id: i.id, project, projectBy: "you" as const, projectWhy: null })));
+  await autoFileProjects(store, userId);
+  return n;
+}
+
+/**
+ * Take a project away: every item in it goes back to "Needs a project" (or wherever the rest of
+ * your projects clearly fit), and the project gets nothing new. The note is archived, or deleted
+ * when `deleteNote` (an Undo right after making it). Hand filings into it are forgotten, so they
+ * don't teach the scorer a project that's gone. Returns how many items it took out.
+ */
+export async function removeProject(store: FilingStore, userId: string, slug: string, opts: { deleteNote?: boolean } = {}): Promise<number> {
+  const items = (await store.listItems(userId)).filter((i) => i.project === slug);
+  if (opts.deleteNote) deletePage(slug);
+  else setNoteProperties(slug, { status: "archived" });
+  writeExamples(readExamples().filter((e) => e.project !== slug));
+  const n = items.length ? await store.fileItems(items.map((i) => ({ id: i.id, project: null, projectBy: null, projectWhy: null }))) : 0;
+  await autoFileProjects(store, userId);
+  return n;
 }
 
 export interface SuggestedProject { key: string; label: string; meetings: number; items: number }

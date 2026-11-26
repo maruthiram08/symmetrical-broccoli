@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { BriefItem } from "@/components/BriefList";
+import { BulkMove, RemoveProjectButton } from "@/components/structure/BulkMove";
 import { starredFirst } from "@/lib/capture/items";
 import type { Item, Meeting, User } from "@/lib/types";
 import { shortDate, toLine } from "../_lib/lines";
@@ -28,6 +29,7 @@ export function ProjectBoardView({ projects, items, meetings, user, now, needs, 
       waiting: starredFirst(open.filter((i) => i.kind === "waiting").sort(oldestFirst)),
       decisions: open.filter((i) => i.kind === "decision").sort((a, b) => started(b).localeCompare(started(a))),
       done: mine.filter((i) => i.status === "done").length,
+      count: mine.length,
     };
   }).sort((a, b) => b.last.localeCompare(a.last));
 
@@ -60,8 +62,10 @@ export function ProjectBoardView({ projects, items, meetings, user, now, needs, 
             <summary className="pf-proj__head">
               <Link className="pf-proj__title" href={`/notes/${encodeURIComponent(g.p.slug)}`}>{g.p.title}</Link>
               <span className="st-list__meta">{bits.join(" · ") || "Nothing yet"}</span>
+              {g.p.status && g.p.status !== "active" ? null : <RemoveProjectButton slug={g.p.slug} title={g.p.title} count={g.count} />}
             </summary>
             <div className="pf-proj__body">
+              <BulkMove current={g.p.slug} rows={[...g.owe, ...g.waiting, ...g.decisions].map((i) => ({ id: i.id, text: i.text, meta: i.kind === "owe" ? "you owe" : i.kind === "waiting" ? "waiting on" : "decision" }))}>
               {g.owe.length ? (
                 <div className="db-group">
                   <h3 className="db-group__title">You owe <span className="db-section__count">{g.owe.length}</span></h3>
@@ -95,6 +99,7 @@ export function ProjectBoardView({ projects, items, meetings, user, now, needs, 
                 </p>
               ) : null}
               {!openN && !g.decisions.length ? <p className="db-section__empty">Nothing open in this project.</p> : null}
+              </BulkMove>
             </div>
           </details>
         );

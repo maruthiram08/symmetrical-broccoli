@@ -11,7 +11,7 @@ import { flatTags, parseTagList, tagTree } from "@/lib/structure/tags";
 import { cleanView, type SavedView, type ViewSource } from "@/lib/structure/views";
 import { getFileStore, getStore, me } from "@/server/local/app";
 import { isHosted } from "@/server/mode";
-import { autoFileProjects, recordFiling } from "@/server/structure/autofile";
+import { autoFileProjects, recordFiling, recordFilings, removeProject } from "@/server/structure/autofile";
 import { readPage, validSlug } from "@/server/local/pages";
 import { loadNoteTypes, saveNoteTypes } from "@/server/structure/note-types";
 import { createTypedNote, noteRows, projectRows, resolveProject, setNoteProperties } from "@/server/structure/notes";
@@ -104,19 +104,58 @@ export async function confirmItemProjectAction(id: string): Promise<{ ok: true }
 }
 
 /** Make a project from a topic your meetings share, seeded with it as a keyword, and file into it. */
-export async function createProjectFromTopicAction(topic: string): Promise<{ ok: true; slug: string; filed: number } | Fail> {
+export async function createProjectFromTopicAction(topic: string): Promise<{ ok: true; slug: string; filed: number; created: boolean } | Fail> {
   const user = await me();
   if (!user || isHosted()) return { ok: false, error: "Projects live on your Mac." };
   const name = typeof topic === "string" ? topic.trim().slice(0, 80) : "";
   if (!name) return { ok: false, error: "Give the project a name." };
+  const existed = new Set(projectRows().map((p) => p.slug));
   const slug = await resolveProject(name, user.timeZone);
   if (!slug) return { ok: false, error: "Couldn't make that project." };
+  const created = !existed.has(slug);
   const row = projectRows().find((p) => p.slug === slug);
   const had = Array.isArray(row?.props.keywords) ? (row!.props.keywords as string[]) : [];
   if (!had.map((k) => String(k).toLowerCase()).includes(name.toLowerCase())) setNoteProperties(slug, { keywords: [...had.map(String), name.toLowerCase()] });
   await autoFileProjects(getFileStore(), user.id);
   const filed = (await getStore().listItems(user.id)).filter((i) => i.project === slug).length;
-  return done({ ok: true, slug, filed });
+  return done({ ok: true, slug, filed, created });
+}
+
+/**
+ * Move several items at once into a project (a slug), or out of any project (""). Each counts as
+ * your own filing, so automatic filing leaves them and learns from them.
+ */
+export async function moveItemsToProjectAction(ids: string[], project: string): Promise<{ ok: true; moved: number } | Fail> {
+  const user = await me();
+  if (!user) return { ok: false, error: "Set up Daily brief first." };
+  if (!Array.isArray(ids) || !ids.length || ids.length > 500 || ids.some((id) => typeof id !== "string" || id.length > 100) || typeof project !== "string") return { ok: false, error: "Pick some items first." };
+  let slug: string | null = null;
+  if (project) {
+    if (!validSlug(project) || !projectRows().some((p) => p.slug === project)) return { ok: false, error: "That project is gone." };
+    slug = project;
+  }
+  const want = new Set(ids);
+  const items = (await getStore().listItems(user.id)).filter((i) => want.has(i.id)).map((i) => ({ ...i }));
+  if (!items.length) return { ok: false, error: "Those items are gone." };
+  if (isHosted()) {
+    for (const i of items) await getStore().updateItem(i.id, { project: slug, projectBy: "you", projectWhy: null });
+    return done({ ok: true, moved: items.length });
+  }
+  const moved = await recordFilings(getFileStore(), user.id, items, slug, new Date().toISOString());
+  return done({ ok: true, moved });
+}
+
+/**
+ * Remove a project: everything in it goes back to "Needs a project" and the project gets nothing
+ * new. `undo` is the Undo right after Make project: the note it just made is deleted too, instead
+ * of archived.
+ */
+export async function removeProjectAction(slug: string, opts: { undo?: boolean } = {}): Promise<{ ok: true; cleared: number } | Fail> {
+  const user = await me();
+  if (!user || isHosted()) return { ok: false, error: "Projects live on your Mac." };
+  if (typeof slug !== "string" || !validSlug(slug) || !projectRows().some((p) => p.slug === slug)) return { ok: false, error: "That project is gone." };
+  const cleared = await removeProject(getFileStore(), user.id, slug, { deleteNote: !!opts.undo });
+  return done({ ok: true, cleared });
 }
 
 /** "File again": re-run automatic filing now (after you edit a project's keywords, say). */

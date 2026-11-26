@@ -3,6 +3,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { BriefItem, Section } from "@/components/BriefList";
 import { Shell } from "@/components/Shell";
+import { BulkMove } from "@/components/structure/BulkMove";
 import { RefileButton, SuggestedProjects } from "@/components/structure/ProjectFiling";
 import type { Item } from "@/lib/types";
 import { getFileStore, me } from "@/server/local/app";
@@ -86,12 +87,16 @@ export default async function Projects({ searchParams }: { searchParams: Promise
         </Section>
       ) : null}
       <Section title="Needs a project" count={needs.length ? String(needs.length) : undefined} empty="Everything open is in a project, or you said it needs none.">
-        {needs.slice(0, 60).map((i) => <BriefItem key={i.id} line={toLine(i, byId, user, now)} back={back} />)}
+        <BulkMove rows={needs.map((i) => ({ id: i.id, text: i.text }))}>
+          {needs.slice(0, 60).map((i) => <BriefItem key={i.id} line={toLine(i, byId, user, now)} back={back} />)}
+        </BulkMove>
       </Section>
       {auto.length ? (
         <Section title="Filed automatically" count={String(auto.length)}>
-          <p className="st-hint">Check these: open Project on one to keep it, move it, or take it out.</p>
-          {auto.slice(0, 40).map((i) => <BriefItem key={i.id} line={toLine(i, byId, user, now)} back={back} />)}
+          <p className="st-hint">Check these: open Project on one to keep it, move it, or take it out. Or Select several and move them at once.</p>
+          <BulkMove rows={auto.map((i) => ({ id: i.id, text: i.text, meta: i.project ? `in ${rows.find((p) => p.slug === i.project)?.title ?? i.project}` : undefined }))}>
+            {auto.slice(0, 40).map((i) => <BriefItem key={i.id} line={toLine(i, byId, user, now)} back={back} />)}
+          </BulkMove>
         </Section>
       ) : null}
     </Shell>
