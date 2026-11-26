@@ -170,3 +170,16 @@ describe("one-time settings messages", () => {
     expect(getFlash("widgetToken", 0)).toBeNull();
   });
 });
+
+describe("desktop builds", () => {
+  it("build macOS arm64, Windows x64 and Linux AppImage/deb on a tag, from a server staged the same way", async () => {
+    const { readFileSync } = await import("node:fs");
+    const wf = readFileSync(join(process.cwd(), ".github/workflows/desktop.yml"), "utf8");
+    expect(wf).toMatch(/tags: \["v\*"\]/);
+    for (const t of ["aarch64-apple-darwin", "x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "appimage,deb", "node scripts/stage-server.mjs"]) expect(wf).toContain(t);
+    const conf = JSON.parse(readFileSync(join(process.cwd(), "src-tauri/tauri.conf.json"), "utf8"));
+    expect(conf.bundle.targets).toBe("all");
+    expect(conf.bundle.icon).toContain("icons/icon.ico");
+    expect(conf.bundle.resources["../build/app-server/"]).toBe("server/");
+  });
+});

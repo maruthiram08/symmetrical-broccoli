@@ -1,7 +1,7 @@
 [package]
 name = "daily-brief"
 version = "0.1.0"
-description = "Daily brief for macOS: your meetings, turned into your day"
+description = "Daily brief: your meetings, turned into your day"
 edition = "2021"
 publish = false
 
