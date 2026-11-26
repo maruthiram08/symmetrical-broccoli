@@ -7,6 +7,9 @@ import { errLine } from "@/server/local/log";
 import { logJobError, mapLimit, type Deps } from "./types";
 
 export const BACKFILL_DAYS = 7;
+const linkSweepDone = new Set<string>();
+/** Tests: forget which users had their link sweep this run. */
+export function resetLinkSweep(): void { linkSweepDone.clear(); }
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 export function backfillStart(now: Date): string {
@@ -34,7 +37,16 @@ export async function pollUser(
     if (conn.status === "needs_reconnect") return { userId, ok: true, skipped: "needs_reconnect", found: 0, created: 0 };
 
     const now = deps.now();
-    const since = opts.since ?? conn.lastSeenAt ?? backfillStart(now);
+    let since = opts.since ?? conn.lastSeenAt ?? backfillStart(now);
+    // Once per app start: reach back to the oldest meeting stored without its Wispr link, so the
+    // upsert below fills links in for meetings kept from before links were stored.
+    if (!opts.since && !linkSweepDone.has(userId)) {
+      linkSweepDone.add(userId);
+      const unlinked = (await store.listMeetingsBetween(userId, "1970-01-01T00:00:00.000Z", now.toISOString()))
+        .filter((m) => !m.link && (m.provider ?? "wispr_flow") === "wispr_flow")
+        .map((m) => m.startedAt).sort()[0];
+      if (unlinked && unlinked < since) since = unlinked;
+    }
     const client = opts.client ?? deps.wispr(userId);
     const includeShared = (await store.getUser(userId))?.includeShared === true;
     let meetings;
