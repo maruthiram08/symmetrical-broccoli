@@ -80,8 +80,8 @@ export function ReviewView({ r, tz, quotes, base, current }: { r: Review; tz: st
         </div>
       </Section>
 
-      <Section title="Longest open" empty="Nothing to show.">
-        {r.longestOpen.map((i) => <Row key={i.id} i={i} tz={tz} quotes={quotes} right={`${durationLabel(i.openMinutes)}${i.stillOpen ? " open" : ""}`} />)}
+      <Section title="Longest open" empty="Everything from this period is closed.">
+        {r.longestOpen.map((i) => <Row key={i.id} i={i} tz={tz} quotes={quotes} right={`open ${durationLabel(i.openMinutes)}`} />)}
       </Section>
       <Section title="Fastest closed" empty="Nothing closed yet.">
         {r.fastestClosed.map((i) => <Row key={i.id} i={i} tz={tz} quotes={quotes} right={durationLabel(i.openMinutes)} />)}

@@ -98,6 +98,7 @@ export interface Review {
   people: ReviewPerson[];
   /** Decisions per month (year) or per week (month). */
   decisionsBy: Array<{ key: string; label: string; count: number }>;
+  /** Still open, oldest first. */
   longestOpen: ReviewItem[];
   fastestClosed: ReviewItem[];
 }
@@ -198,7 +199,7 @@ export function buildReview({ items, meetings, user, period, now, listSize = 5 }
     };
   };
   const trackable = made.filter((i) => i.kind !== "decision");
-  const longestOpen = trackable.map(row).sort((a, b) => b.openMinutes - a.openMinutes).slice(0, listSize);
+  const longestOpen = trackable.filter((i) => i.status === "open").map(row).sort((a, b) => b.openMinutes - a.openMinutes).slice(0, listSize);
   const fastestClosed = trackable
     .filter((i) => i.status === "done" && i.closedAt && Date.parse(i.closedAt) >= Date.parse(madeAt(i)))
     .map(row)

@@ -88,6 +88,7 @@ describe("buildReview (month)", () => {
   it("finds the longest open and the fastest closed", () => {
     expect(r.longestOpen[0]).toMatchObject({ text: "Review Nitin K's plan", stillOpen: true });
     expect(r.longestOpen.map((i) => i.text)).not.toContain("Ship Friday");
+    expect(r.longestOpen.every((i) => i.stillOpen)).toBe(true);
     expect(r.fastestClosed.map((i) => i.text)).toEqual(["Priya to share tokens", "Send Nitin the deck", "Book the venue"]);
     expect(r.fastestClosed[0].openMinutes).toBe(60);
     expect(r.longestOpen.find((i) => i.text === "Manual one")?.meetingTitle).toBe("Added by you");

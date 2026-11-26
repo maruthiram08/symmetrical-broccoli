@@ -18,7 +18,7 @@ h1{font-size:32px;line-height:38px;letter-spacing:-.03em;margin:0 0 4px;font-wei
 h2{font-size:18px;letter-spacing:-.02em;margin:40px 0 8px;font-weight:600}
 .sub{color:var(--muted);margin:0}
 .mono{font-family:"Geist Mono",ui-monospace,"SF Mono",Menlo,monospace}
-.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin:28px 0 0;padding:0}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:28px 0 0;padding:0}
 .stat{border:1px solid var(--border);border-radius:14px;padding:12px 14px;margin:0}
 .stat dt{color:var(--faint);font-size:12px}.stat dd{margin:2px 0 0;font:500 26px/32px "Geist Mono",ui-monospace,monospace}
 .stat--hl{background:var(--hl);border-color:var(--hl);color:var(--on-hl)}.stat--hl dt{color:var(--on-hl);opacity:.7}
@@ -60,8 +60,8 @@ export function renderReviewHtml(r: Review, o: HtmlOptions): string {
     ? r.people.map((p) => `<div class="row"><b>${esc(p.name)}</b><span class="mono meta">${p.made} made · ${p.kept} kept${p.open ? ` · ${p.open} open` : ""}</span></div>`).join("")
     : `<p class="empty">No promises to anyone this ${r.period.kind}.</p>`;
   const longest = r.longestOpen.length
-    ? r.longestOpen.map((i) => itemRow(i, `${durationLabel(i.openMinutes)}${i.stillOpen ? " · open" : ""}`, o.timeZone, o.quotes)).join("")
-    : `<p class="empty">Nothing to show.</p>`;
+    ? r.longestOpen.map((i) => itemRow(i, `open ${durationLabel(i.openMinutes)}`, o.timeZone, o.quotes)).join("")
+    : `<p class="empty">Everything from this period is closed.</p>`;
   const fastest = r.fastestClosed.length
     ? r.fastestClosed.map((i) => itemRow(i, durationLabel(i.openMinutes), o.timeZone, o.quotes)).join("")
     : `<p class="empty">Nothing closed yet.</p>`;
