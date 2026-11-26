@@ -29,6 +29,7 @@ import "./canvas.css";
 import "./structure.css";
 import "./routines.css";
 import "./crosscheck.css";
+import "./reading.css";
 import { PwaRegister } from "@/components/PwaRegister";
 import { cookies } from "next/headers";
 import { MODE_COOKIE, parseMode, themeAttr } from "@/lib/theme/mode";

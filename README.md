@@ -21,6 +21,18 @@ While the app is running it:
 
 When something needs you, every page says so with a button: Wispr Flow signed you out (**Reconnect Wispr Flow**), the Anthropic key was rejected or the account is out of credit, or a meeting couldn't be read after a few tries (**Retry**). Busy or overloaded API calls are retried with backoff by themselves. **Settings › Health** shows the last check, last meeting read, last brief, errors in the last 24 hours, the data file size and the app version.
 
+## The reading pane
+
+Today, All open, a person's page and Projects show three panes: the sidebar, the list and the selected item's detail. Each scrolls on its own. The selection is in the URL (`?item=<id>`, `?project=<slug>` on Projects), so a reload or a shared link opens the same item. Long groups show six rows, then "Show N more".
+
+- **Today:** Late, On today's brief, Back tomorrow and Kept today. Before you pick an item, the right side shows the day's overview: the three to do first and why, today's meetings, what was kept, and what comes back tomorrow and after.
+- **All open:** grouped by the day each item comes back; the list's options switch to grouping by person or project.
+- **Projects:** each project with its open items, decisions, meetings and people; the Filing tab is next to By project.
+- **Item detail:** Mark done, Snooze, Block 30 min, the quote with Open transcript, Get it done (message the person or hand it to Claude through Start this, or make a ticket when Send to is set up in Settings), other items from the same meeting, and the history. `/item/<id>` shows the same detail as a page.
+- **Keys:** `j`/`k` or ↑/↓ move, `e` marks done, `s` snoozes, `b` blocks 30 minutes, `t` starts it, `p` moves it to a project, `f` stars it, Shift+`C` copies the quote, `w` marks it not a promise, `.` opens the ⋯ menu. `c` still adds an item.
+- **Light/Dark:** the switch at the bottom of the sidebar sets the same Mode as Settings › Appearance.
+- Under 900px wide it shows one pane at a time: the list, then the item with a Back button. The sidebar is the Menu button.
+
 ## Add your own, star and snooze
 
 - Press **c** anywhere (or ⌘K › Add…, or **Quick add…** in the menu bar) and type one line: "send Nitin the deck by Fri", "Tarun owes me API spec tomorrow". It's read on your Mac, no AI: kind, person and due date (today, tomorrow, a weekday or a date), which you can change before saving. Items you add show "added by you" and can be edited or deleted.

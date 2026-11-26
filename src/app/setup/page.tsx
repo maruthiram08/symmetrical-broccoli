@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import { Button } from "@/components/Button";
 import { Field } from "@/components/Field";
-import { Page } from "@/components/Page";
+import { Shell } from "@/components/Shell";
+import { WorkspaceBadge } from "@/components/WorkspaceNav";
+import { pastDays } from "../_lib/days";
 import { TimeZoneSelect } from "@/components/TimeZoneSelect";
 import { getFileStore, getStore, me } from "@/server/local/app";
 import { redirect } from "next/navigation";
@@ -54,7 +56,10 @@ export default async function Setup({ searchParams }: { searchParams: Promise<{ 
     return `${d === today ? "Today" : d}, ${formatTime(iso, tz)}`;
   };
   return (
-    <Page title="Set up your brief">
+    <Shell days={await pastDays(user.id, today)} current="settings" title="Settings">
+      <div className="rp-settings">
+      <WorkspaceBadge />
+      <h1 className="db-title">Set up your brief</h1>
       <p className="db-lead">{connected ? "Change your details. Your meetings stay connected." : (isHosted() ? "A few things, then connect your meetings. Your brief arrives by email." : "A few things, then connect your meetings. Everything stays on this Mac.")}</p>
       <form action={saveSetup} className="db-stack">
         <Field id="name" name="name" label="Your name" hint="So we know which promises are yours." defaultValue={user?.name ?? ""} autoComplete="name" required />
@@ -198,6 +203,7 @@ export default async function Setup({ searchParams }: { searchParams: Promise<{ 
           </dl>
         </section>
       ) : null}
-    </Page>
+      </div>
+    </Shell>
   );
 }

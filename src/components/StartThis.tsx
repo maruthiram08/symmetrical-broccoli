@@ -12,6 +12,12 @@ import type { Drafts, HandoffTarget } from "@/lib/handoff/types";
 
 const openItems = new Set<string>();
 const listeners = new Set<() => void>();
+/** Open an item's Start this panel from elsewhere (the reading pane's "Get it done" rows), on a tab. */
+export function openHandoff(id: string, tab?: HandoffTarget) {
+  setOpen(id, true);
+  if (tab) window.dispatchEvent(new CustomEvent(HANDOFF_TAB, { detail: { id, tab } }));
+}
+const HANDOFF_TAB = "db:handoff-tab";
 function setOpen(id: string, open: boolean) {
   if (open) openItems.add(id);
   else openItems.delete(id);
@@ -86,6 +92,13 @@ export function HandoffPanel({ itemId, kind, person, started, extra }: { itemId:
   const requested = useRef(false);
   const panelRef = useRef<HTMLDivElement>(null);
   const uid = useId();
+
+  // Asked for a tab (Get it done › Hand to Claude): show it.
+  useEffect(() => {
+    const on = (e: Event) => { const d = (e as CustomEvent<{ id: string; tab: HandoffTarget }>).detail; if (d.id === itemId) setTab(d.tab); };
+    window.addEventListener(HANDOFF_TAB, on);
+    return () => window.removeEventListener(HANDOFF_TAB, on);
+  }, [itemId]);
 
   // Draft once, the first time the panel opens (one Claude call per click, never on page load).
   useEffect(() => {

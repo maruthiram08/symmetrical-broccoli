@@ -75,8 +75,13 @@ export async function setStatus(formData: FormData): Promise<void> {
   await store.setItemStatus(item.id, p.data.status, new Date().toISOString());
   revalidatePath("/");
   const back = String(formData.get("back") ?? "");
-  if (back === "/open" || /^\/(people|series)\/[^/?#]+$/.test(back)) redirect(back);
+  if (back === "/open" || /^\/(people|series)\/[^/?#]+$/.test(back) || isPaneBack(back)) redirect(back);
   redirect(p.data.status === "open" ? "/" : `/?undo=${encodeURIComponent(item.id)}&was=${p.data.status}`);
+}
+
+/** The reading pane sends back the page it was on, with the next selection: only these pages. */
+function isPaneBack(back: string): boolean {
+  return /^\/(?:open|today|projects|people\/[^/?#]+|item\/[^/?#]+)?(?:\?[^#\s\\]*)?$/.test(back) && !back.startsWith("//");
 }
 
 export async function checkMeetingsNow(): Promise<void> {

@@ -42,7 +42,8 @@ export function StarToggle({ itemId, starred }: { itemId: string; starred: boole
   );
 }
 
-export function SnoozeMenu({ itemId, snoozedUntil }: { itemId: string; snoozedUntil?: string | null }) {
+/** `className` and `icon` restyle the trigger (the reading pane's outlined pill). */
+export function SnoozeMenu({ itemId, snoozedUntil, className = "db-act", icon }: { itemId: string; snoozedUntil?: string | null; className?: string; icon?: React.ReactNode }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [pending, start] = useTransition();
@@ -94,14 +95,14 @@ export function SnoozeMenu({ itemId, snoozedUntil }: { itemId: string; snoozedUn
       <button
         ref={trigger}
         type="button"
-        className="db-act"
+        className={className}
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={id}
         data-key-act="snooze"
         onClick={() => setOpen((o) => !o)}
       >
-        {snoozedUntil ? `Till ${short(snoozedUntil)}` : "Snooze"}
+        {icon}{snoozedUntil ? `Till ${short(snoozedUntil)}` : "Snooze"}
       </button>
       {open ? (
         <div className="db-snooze__menu" role="menu" id={id} ref={menu} aria-label="Snooze until" onKeyDown={onKeyDown} data-menu-open="true">

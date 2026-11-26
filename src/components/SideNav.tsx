@@ -6,7 +6,7 @@ import { useEffect, useState, type MouseEvent, type ReactNode } from "react";
  * The sidebar. On wide screens it is always open; on narrow ones it is a top bar with a Menu
  * button that opens the links below it. Following a link or searching closes it again.
  */
-export function SideNav({ brand, children }: { brand: ReactNode; children: ReactNode }) {
+export function SideNav({ brand, children, foot }: { brand: ReactNode; children: ReactNode; foot?: ReactNode }) {
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
@@ -29,6 +29,7 @@ export function SideNav({ brand, children }: { brand: ReactNode; children: React
       <div className="db-side__body" id="db-side-body" onClick={onClick} onSubmit={() => setOpen(false)}>
         {children}
       </div>
+      {foot}
     </nav>
   );
 }

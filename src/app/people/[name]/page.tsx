@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { BriefItem, ClosedItem, Section } from "@/components/BriefList";
-import { Mark } from "@/components/Mark";
+import { Section } from "@/components/BriefList";
+import { Bar, CrumbLine, ItemDetail } from "@/components/reading/ItemDetail";
+import { ItemList, MenuLink } from "@/components/reading/ListPane";
+import { personGroups } from "@/lib/reading/model";
 import { Shell } from "@/components/Shell";
 import { Backlinks } from "@/components/Backlinks";
 import { LocalGraph } from "@/components/graph/LocalGraph";
@@ -14,7 +16,8 @@ import { isSpeakerLabel } from "@/lib/directory/speakers";
 import { localDate } from "@/lib/brief/time";
 import { isSnoozed, starredFirst } from "@/lib/capture/items";
 import { pastDays } from "../../_lib/days";
-import { loadAll, shortDate, toClosedLine, toLine } from "../../_lib/lines";
+import { loadAll, shortDate } from "../../_lib/lines";
+import { groupIds, groupOf, readingCtx, withParams } from "../../_lib/reading";
 
 export const dynamic = "force-dynamic";
 
@@ -30,9 +33,10 @@ function nameFromSlug(slug: string): string {
 }
 
 // One person: what you owe them, what they owe you, what closed, what was decided with them, and when you met.
-export default async function Person({ params, searchParams }: { params: Promise<{ name: string }>; searchParams: Promise<{ merged?: string }> }) {
+export default async function Person({ params, searchParams }: { params: Promise<{ name: string }>; searchParams: Promise<{ merged?: string; item?: string; about?: string; undo?: string; was?: string }> }) {
   const { name } = await params;
-  const { merged } = await searchParams;
+  const sp = await searchParams;
+  const { merged } = sp;
   const user = await me();
   if (!user) redirect("/setup");
   const now = new Date();
@@ -59,19 +63,15 @@ export default async function Person({ params, searchParams }: { params: Promise
   }
   // Snoozed items wait for their day; starred ones go first.
   const today = localDate(now, user.timeZone);
-  const awake = (xs: typeof found.youOwe) => starredFirst(xs.filter((i) => !isSnoozed(i, today)));
-  const d = { ...found, youOwe: awake(found.youOwe), waitingOn: awake(found.waitingOn) };
-  // Snoozed ones still count as open, so show them in their own group rather than hiding them.
-  const snoozed = [...found.youOwe, ...found.waitingOn].filter((i) => isSnoozed(i, today))
-    .sort((a, b) => (a.snoozedUntil ?? "").localeCompare(b.snoozedUntil ?? ""));
-  if (decodeURIComponent(name) !== d.person.slug) redirect(`/people/${encodeURIComponent(d.person.slug)}`);
+  const d = found;
+  const snoozed = [...found.youOwe, ...found.waitingOn].filter((i) => isSnoozed(i, today));
+  if (decodeURIComponent(name) !== d.person.slug) redirect(`/people/${encodeURIComponent(d.person.slug)}?${new URLSearchParams(Object.entries(sp).filter((e): e is [string, string] => typeof e[1] === "string")).toString()}`);
+  const awakeFirst = (xs: typeof found.youOwe) => [...starredFirst(xs.filter((i) => !isSnoozed(i, today))), ...xs.filter((i) => isSnoozed(i, today)).sort((a, b) => (a.snoozedUntil ?? "").localeCompare(b.snoozedUntil ?? ""))];
 
   // other spellings worth showing: not just a change of case
   const aka = d.person.spellings.filter((x) => normalizeName(x) !== normalizeName(d.person.name));
-  const byId = new Map(meetings.map((m) => [m.id, m]));
-  const back = `/people/${d.person.slug}`;
+  const base = `/people/${d.person.slug}`;
   const s = d.summary;
-  const openCount = items.filter((i) => i.status === "open" && i.kind !== "decision").length;
   const me_ = d.person.personId ? people.find((p) => p.id === d.person.personId) : undefined;
   // Merge and split targets: everyone else on People.
   const targets: ManageTarget[] = listPeople(input)
@@ -93,83 +93,93 @@ export default async function Person({ params, searchParams }: { params: Promise
     s.meetingCount ? `${n(s.meetingCount, "meeting")} together` : null,
   ].filter(Boolean).join(" · ");
 
-  return (
-    <Shell days={await pastDays(user.id, "")} current="people" openCount={openCount}>
-      <p className="db-crumb"><Link className="db-link" href="/people">People</Link></p>
-      <h1 className="db-title db-person-title">
-        <span className="db-avatar db-avatar--lg" aria-hidden="true">{initials(d.person.name)}</span>
-        {d.person.name}
-      </h1>
-      <p className="db-subtitle">
-        {facts || "Nothing open."}
-        {aka.length ? <span className="db-person-aka"> · Also written {aka.join(", ")}</span> : null}
-        {me_?.email ? <span className="db-person-aka"> · {me_.email}</span> : null}
-      </p>
-      {me_?.note ? <p className="nr-note">{me_.note}</p> : null}
-      {!d.person.personId ? (
-        <p className="nr-unchecked">
-          <span className="nr-check">check</span> This name hasn’t been checked. Is it right? <Link className="db-link" href="/people/review">Check names</Link>
-        </p>
-      ) : null}
+  const ctx = readingCtx(user, meetings, now);
+  const groups = personGroups(d.person.name, { youOwe: awakeFirst(d.youOwe), waitingOn: awakeFirst(d.waitingOn), decisions: d.decisions, closed: d.closed }, ctx);
+  const href = (id: string) => withParams(base, { item: id });
+  const about = sp.about === "1" || nothing || !!merged;
+  const chosen = !about && sp.item ? items.find((i) => i.id === sp.item) : undefined;
+  const firstId = groups.find((g) => g.rows.length)?.rows[0]?.id;
+  const selected = about ? undefined : chosen ?? (firstId ? items.find((i) => i.id === firstId) : undefined);
+  const kept = d.closed.length;
 
-      {nothing ? (
-        <p className="nr-noitems">No items yet. When a meeting names {d.person.name}, what you owe each other shows up here.</p>
-      ) : <>
-      <Section title="You owe" count={d.youOwe.length ? String(d.youOwe.length) : undefined} empty={snoozed.some((i) => i.kind === "owe") ? `Nothing due now. The rest is snoozed below.` : `Nothing owed to ${d.person.name}.`}>
-        {d.youOwe.map((i) => <BriefItem key={i.id} line={toLine(i, byId, user, now)} back={back} />)}
-      </Section>
-      <Section title="Waiting on" count={d.waitingOn.length ? String(d.waitingOn.length) : undefined} empty={snoozed.some((i) => i.kind === "waiting") ? `Nothing due now. The rest is snoozed below.` : `${d.person.name} owes you nothing.`}>
-        {d.waitingOn.map((i) => <BriefItem key={i.id} line={toLine(i, byId, user, now)} back={back} />)}
-      </Section>
-      {snoozed.length ? (
-        <Section title="Snoozed" count={String(snoozed.length)}>
-          {snoozed.map((i) => <BriefItem key={i.id} line={{ ...toLine(i, byId, user, now), snoozedUntil: i.snoozedUntil ?? null }} back={back} />)}
-        </Section>
-      ) : null}
-      {d.closed.length ? (
-        <Section title="Closed recently" count={String(d.closed.length)}>
-          {d.closed.map((i) =>
-            i.closeQuote ? (
-              <ClosedItem key={i.id} line={toClosedLine(i, byId, user)} />
-            ) : (
-              <div key={i.id} className="db-item db-item--done">
-                <span className="db-item__icon"><Mark kind="done" /></span>
-                <span className="db-item__text">{i.text}</span>
-                <span className="db-item__side" />
-                <span className="db-item__evidence">You marked it done{i.closedAt ? `, ${shortDate(i.closedAt, user.timeZone)}` : ""}.</span>
-              </div>
-            ),
-          )}
-        </Section>
-      ) : null}
-      <Section title="Decisions" count={d.decisions.length ? String(d.decisions.length) : undefined} empty="No decisions from meetings together.">
-        {d.decisions.map((i) => <BriefItem key={i.id} line={toLine(i, byId, user, now)} back={back} />)}
-      </Section>
-      <Section title="Meetings" count={d.meetings.length ? String(d.meetings.length) : undefined} empty="No meetings found.">
-        {d.meetings.length ? <ul className="db-meetings">
-          {d.meetings.map((m) => (
-            <li key={m.id} className="db-meetings__row">
-              <span className="db-meetings__date">{shortDate(m.startedAt, user.timeZone)}</span>
-              <span className="db-meetings__title">{m.title}</span>
-              <span className="db-meetings__time">{new Intl.DateTimeFormat("en-US", { timeZone: user.timeZone, hour: "numeric", minute: "2-digit" }).format(new Date(m.startedAt))}</span>
-            </li>
-          ))}
-        </ul> : null}
-      </Section>
-      </>}
-      <PersonManage
-        key={`${d.person.slug}:${merged ?? ""}`}
-        self={d.person.personId ? { personId: d.person.personId } : { name: d.person.name, spellings: d.person.spellings }}
-        name={d.person.name}
-        personId={d.person.personId}
-        email={me_?.email ?? null}
-        note={me_?.note ?? null}
-        items={theirItems.map((i) => ({ id: i.id, text: i.text, kind: i.kind, status: i.status }))}
-        targets={targets}
-        undo={undo ? { changeId: undo.id, label: undo.label } : null}
-      />
-      <Backlinks person={d.person} people={people} />
-      <LocalGraph user={user} center={`person:${d.person.slug}`} />
-    </Shell>
+  const profile = (
+    <div className="rp-wrap">
+      <Bar className="rp-bar--det"><CrumbLine crumb={{ page: "People", pageHref: "/people", group: d.person.name }} /></Bar>
+      <div className="rp-dbody rp-dbody--one">
+        <div className="rp-main rp-legacy">
+          <h1 className="db-title db-person-title">
+            <span className="db-avatar db-avatar--lg" aria-hidden="true">{initials(d.person.name)}</span>
+            {d.person.name}
+          </h1>
+          <p className="db-subtitle">
+            {facts || "Nothing open."}
+            {aka.length ? <span className="db-person-aka"> · Also written {aka.join(", ")}</span> : null}
+            {me_?.email ? <span className="db-person-aka"> · {me_.email}</span> : null}
+          </p>
+          {me_?.note ? <p className="nr-note">{me_.note}</p> : null}
+          {!d.person.personId ? (
+            <p className="nr-unchecked">
+              <span className="nr-check">check</span> This name hasn’t been checked. Is it right? <Link className="db-link" href="/people/review">Check names</Link>
+            </p>
+          ) : null}
+          {nothing ? <p className="nr-noitems">No items yet. When a meeting names {d.person.name}, what you owe each other shows up here.</p> : null}
+          <Section title="Meetings" count={d.meetings.length ? String(d.meetings.length) : undefined} empty="No meetings found.">
+            {d.meetings.length ? <ul className="db-meetings">
+              {d.meetings.map((m) => (
+                <li key={m.id} className="db-meetings__row">
+                  <span className="db-meetings__date">{shortDate(m.startedAt, user.timeZone)}</span>
+                  <span className="db-meetings__title">{m.title}</span>
+                  <span className="db-meetings__time">{new Intl.DateTimeFormat("en-US", { timeZone: user.timeZone, hour: "numeric", minute: "2-digit" }).format(new Date(m.startedAt))}</span>
+                </li>
+              ))}
+            </ul> : null}
+          </Section>
+          <PersonManage
+            key={`${d.person.slug}:${merged ?? ""}`}
+            self={d.person.personId ? { personId: d.person.personId } : { name: d.person.name, spellings: d.person.spellings }}
+            name={d.person.name}
+            personId={d.person.personId}
+            email={me_?.email ?? null}
+            note={me_?.note ?? null}
+            items={theirItems.map((i) => ({ id: i.id, text: i.text, kind: i.kind, status: i.status }))}
+            targets={targets}
+            undo={undo ? { changeId: undo.id, label: undo.label } : null}
+          />
+          <Backlinks person={d.person} people={people} />
+          <LocalGraph user={user} center={`person:${d.person.slug}`} />
+        </div>
+      </div>
+    </div>
+  );
+
+  return (
+    <Shell
+      days={await pastDays(user.id, "")}
+      current="people"
+      reading={{ groups: groupIds(groups), param: "item", selected: selected?.id ?? null, auto: !chosen, clear: ["about"] }}
+      list={
+        <ItemList
+          title={d.person.name}
+          count={`${s.youOwe + s.theyOwe} open · ${kept} kept`}
+          add={`${d.person.name.split(/\s+/)[0]} `}
+          options={<>
+            <MenuLink href={withParams(base, { about: "1" })} on={about}>Profile, meetings and names</MenuLink>
+            <MenuLink href="/people">Everyone</MenuLink>
+          </>}
+          groups={groups}
+          hrefBase={base}
+          undo={{ id: sp.undo, was: sp.was, back: withParams(base, { item: sp.item }) }}
+          top={<Link className="rp-ptop" href={withParams(base, { about: "1" })} aria-current={about ? "page" : undefined}>
+            <span className="rp-pcard__av" aria-hidden="true">{initials(d.person.name)}</span>
+            <span><b>{facts || "Nothing open."}</b><span>Profile, meetings, merge and split</span></span>
+          </Link>}
+        />
+      }
+      detail={selected ? (
+        <ItemDetail item={selected} items={items} meetings={meetings} user={user} now={now}
+          crumb={{ page: d.person.name, pageHref: withParams(base, { about: "1" }), group: groupOf(groups, selected.id) }}
+          inPane selfHref={href(selected.id)} itemHref={href} />
+      ) : profile}
+    />
   );
 }

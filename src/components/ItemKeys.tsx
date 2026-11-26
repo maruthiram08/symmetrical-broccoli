@@ -48,6 +48,7 @@ export function ItemKeys() {
     const onKey = (e: KeyboardEvent) => {
       if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey || typing(e.target)) return;
       if (document.querySelector('[aria-modal="true"]')) return;
+      if (document.querySelector("[data-rp-keys]")) return; // the reading pane has its own keys
       const list = rows();
       if (!list.length) return;
       const current = paint();
