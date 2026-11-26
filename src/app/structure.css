@@ -219,7 +219,7 @@ a.st-list__row:hover { background: var(--surface-100); }
 @media (max-width: 640px) { .pf-proj__body { padding-left: 0; } }
 
 /* Bulk move and Remove project (Projects page). */
-.pf-bulk__bar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 4px 0 8px; }
+.pf-bulk__bar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 4px 0 8px; padding: 0 var(--space-4); }
 .pf-bulk__all { display: inline-flex; align-items: center; gap: 6px; font: 400 13px/18px var(--font-sans); color: var(--ink-muted); }
 .pf-bulk__to { width: auto; min-width: 160px; }
 .pf-bulk__row { display: flex; align-items: flex-start; gap: 10px; cursor: pointer; }
@@ -227,3 +227,7 @@ a.st-list__row:hover { background: var(--surface-100); }
 .pf-bulk__row > span:nth-child(2) { flex: 1; }
 .pf-remove { display: inline-flex; align-items: center; gap: 8px; margin-left: auto; }
 .pf-made { display: inline-flex; align-items: center; gap: 8px; }
+.pf-suggest-wrap { list-style: none; }
+.pf-preview { margin: 4px var(--space-4) 12px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 10px; }
+.pf-preview__list { margin: 8px 0; padding-left: 18px; font: 400 13px/20px var(--font-sans); }
+.pf-preview__acts { display: flex; gap: 8px; margin: 8px 0 0; }

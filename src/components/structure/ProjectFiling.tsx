@@ -1,10 +1,12 @@
 "use client";
 
-// The Projects page's buttons: make a project from a topic your meetings share, and file again.
+// The Projects page's buttons: make a project from a topic your meetings share (after a preview
+// of what it would take), and file again.
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { createProjectFromTopicAction, refileProjectsAction, removeProjectAction } from "@/app/structure-actions";
+import { createProjectFromTopicAction, previewProjectAction, refileProjectsAction, removeProjectAction } from "@/app/structure-actions";
+import type { ProjectPreview } from "@/server/structure/autofile";
 
 export function SuggestedProjects({ topics }: { topics: Array<{ key: string; label: string; meetings: number; items: number }> }) {
   const router = useRouter();
@@ -12,9 +14,19 @@ export function SuggestedProjects({ topics }: { topics: Array<{ key: string; lab
   const [made, setMade] = useState<Record<string, { slug: string; filed: number; created: boolean }>>({});
   const [undone, setUndone] = useState<Record<string, number>>({});
   const [error, setError] = useState<string | null>(null);
+  const [preview, setPreview] = useState<{ key: string; p: ProjectPreview } | null>(null);
+  const label = (key: string) => topics.find((t) => t.key === key)?.label ?? key;
+  // "Make project" first shows what it would take; you make it from there, or don't.
+  const look = (key: string) => start(async () => {
+    setError(null);
+    const r = await previewProjectAction(label(key));
+    if (!r.ok) { setError(r.error); return; }
+    setPreview({ key, p: { items: r.items, total: r.total, moved: r.moved } });
+  });
   const make = (key: string) => start(async () => {
     setError(null);
-    const r = await createProjectFromTopicAction(topics.find((t) => t.key === key)?.label ?? key);
+    setPreview(null);
+    const r = await createProjectFromTopicAction(label(key));
     if (!r.ok) { setError(r.error); return; }
     setMade((m) => ({ ...m, [key]: { slug: r.slug, filed: r.filed, created: r.created } }));
     router.refresh();
@@ -34,7 +46,8 @@ export function SuggestedProjects({ topics }: { topics: Array<{ key: string; lab
     <>
       <ul className="st-list">
         {topics.map((t) => (
-          <li key={t.key} className="st-list__row pf-suggest">
+          <li key={t.key} className="pf-suggest-wrap">
+          <div className="st-list__row pf-suggest">
             <span>{t.label}</span>
             <span className="st-list__meta">{t.meetings} meetings · {t.items} items</span>
             {made[t.key] ? (
@@ -45,8 +58,27 @@ export function SuggestedProjects({ topics }: { topics: Array<{ key: string; lab
             ) : undone[t.key] !== undefined ? (
               <span className="st-list__meta">Undone · {undone[t.key]} back in Needs a project</span>
             ) : (
-              <button type="button" className="db-act" disabled={pending} onClick={() => make(t.key)}>Make project</button>
+              preview?.key === t.key ? null : <button type="button" className="db-act" disabled={pending} onClick={() => look(t.key)}>Make project…</button>
             )}
+          </div>
+          {preview?.key === t.key ? (
+            <div className="pf-preview" role="region" aria-label={`What ${t.label} would take`}>
+              <p className="st-list__meta">
+                {preview.p.total
+                  ? <>It would take {preview.p.total} item{preview.p.total === 1 ? "" : "s"}{preview.p.moved ? `, ${preview.p.moved} of them out of another project` : ""}.{preview.p.items.length ? ` ${preview.p.items.length < preview.p.total ? `The newest ${preview.p.items.length} still open` : "Here they are"}:` : " None of them are still open."}</>
+                  : <>Nothing would be filed into it yet. Add keywords to its note after making it.</>}
+              </p>
+              {preview.p.items.length ? (
+                <ul className="pf-preview__list">
+                  {preview.p.items.map((i) => <li key={i.id}><span>{i.text}</span>{i.why ? <span className="st-list__meta"> · {i.why}{i.from ? `, now in ${i.from}` : ""}</span> : null}</li>)}
+                </ul>
+              ) : null}
+              <p className="pf-preview__acts">
+                <button type="button" className="db-act" disabled={pending} onClick={() => make(t.key)}>{preview.p.total ? `Make it and file ${preview.p.total}` : "Make it"}</button>
+                <button type="button" className="db-act" disabled={pending} onClick={() => setPreview(null)}>Cancel</button>
+              </p>
+            </div>
+          ) : null}
           </li>
         ))}
       </ul>

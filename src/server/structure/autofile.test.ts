@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { DEFAULT_TYPES } from "@/lib/structure/note-types";
 import { FileStore } from "@/server/local/file-store";
-import { autoFileProjects, naturalLabel, readExamples, recordFiling, recordFilings, removeProject, suggestProjects } from "./autofile";
+import { autoFileProjects, naturalLabel, previewProject, readExamples, recordFiling, recordFilings, removeProject, suggestProjects } from "./autofile";
 import { createTypedNote, projectRows, setNoteProperties } from "./notes";
 
 const AT = "2026-11-26T10:00:00.000Z";
@@ -159,5 +159,20 @@ describe("moving and removing projects", () => {
     await removeProject(store, u.id, "chart-alerts", { deleteNote: true });
     expect(projectRows().some((p) => p.slug === "chart-alerts")).toBe(false);
     expect((await byText(store, u.id)).get("Share the chart alerts requirement with Jay")?.project ?? null).toBeNull();
+  });
+});
+
+describe("preview before making a project", () => {
+  it("shows what a project would take, without making it or filing anything", async () => {
+    const { store, u, add } = await setup();
+    createTypedNote(project, "Corporate actions", "2026-11-26", dir);
+    await add("Filler", filler.map((f) => f.text));
+    await add("Alerts", ["Share the chart alerts requirement with Jay", "Split the chart alerts scope into phases", "Book the team lunch"]);
+    await autoFileProjects(store, u.id);
+    const p = await previewProject(store, u.id, "Chart alerts");
+    expect(p.total).toBe(2);
+    expect(p.items.map((i) => i.text).sort()).toEqual(["Share the chart alerts requirement with Jay", "Split the chart alerts scope into phases"]);
+    expect(projectRows().some((r) => r.slug === "chart-alerts")).toBe(false);
+    for (const i of (await byText(store, u.id)).values()) expect(i.project ?? null).toBeNull();
   });
 });

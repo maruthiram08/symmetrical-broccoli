@@ -57,6 +57,16 @@ describe("judge", () => {
     expect(judge({ id: "10", text: "Put the earnings tag ticket in the QA sheet" }, m1).project).toBe("qa");
   });
 
+  it("a one-word project name files on its own only when the word is rare", () => {
+    const one: ProjectInfo[] = [{ slug: "chart", title: "Chart", keywords: ["chart"] }, { slug: "sandisk", title: "Sandisk", keywords: [] }];
+    // "chart" in a fifth of everything: too common to file on the word alone.
+    const common = [...corpus, ...Array.from({ length: 12 }, (_, k) => `Look at chart number ${k}`)];
+    const m1 = buildModel(one, [], common);
+    expect(judge({ id: "c1", text: "Keep the chart timeframe when switching contracts" }, m1).project).toBeNull();
+    // A rare word ("Sandisk", in one item) still files on its own.
+    expect(judge({ id: "c2", text: "Create a ticket for the Sandisk stock split case" }, m1).project).toBe("sandisk");
+  });
+
   it("files nothing without projects", () => {
     expect(judge({ id: "1", text: "stock split" }, buildModel([], [], corpus)).project).toBeNull();
   });

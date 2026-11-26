@@ -11,7 +11,7 @@ import { flatTags, parseTagList, tagTree } from "@/lib/structure/tags";
 import { cleanView, type SavedView, type ViewSource } from "@/lib/structure/views";
 import { getFileStore, getStore, me } from "@/server/local/app";
 import { isHosted } from "@/server/mode";
-import { autoFileProjects, recordFiling, recordFilings, removeProject } from "@/server/structure/autofile";
+import { autoFileProjects, previewProject, recordFiling, recordFilings, removeProject, type ProjectPreview } from "@/server/structure/autofile";
 import { readPage, validSlug } from "@/server/local/pages";
 import { loadNoteTypes, saveNoteTypes } from "@/server/structure/note-types";
 import { createTypedNote, noteRows, projectRows, resolveProject, setNoteProperties } from "@/server/structure/notes";
@@ -101,6 +101,15 @@ export async function confirmItemProjectAction(id: string): Promise<{ ok: true }
   const found = await myItem(id);
   if (!found || !found.item.project) return { ok: false, error: "That item is gone." };
   return setItemProjectAction(id, found.item.project).then((r) => (r.ok ? { ok: true as const } : r));
+}
+
+/** What "Make project" would file, before you make it. */
+export async function previewProjectAction(topic: string): Promise<({ ok: true } & ProjectPreview) | Fail> {
+  const user = await me();
+  if (!user || isHosted()) return { ok: false, error: "Projects live on your Mac." };
+  const name = typeof topic === "string" ? topic.trim().slice(0, 80) : "";
+  if (!name) return { ok: false, error: "Give the project a name." };
+  return { ok: true, ...(await previewProject(getFileStore(), user.id, name)) };
 }
 
 /** Make a project from a topic your meetings share, seeded with it as a keyword, and file into it. */

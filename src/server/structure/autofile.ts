@@ -44,25 +44,63 @@ function allExamples(items: Item[], meetings: Map<string, Meeting>): FilingExamp
 
 export interface FilingResult { filed: number; unfiled: number; changed: number }
 
+/** Where each item you haven't filed yourself would go, given these projects. Pure: writes nothing. */
+function planFiling(projects: ProjectInfo[], items: Item[], meetings: Map<string, Meeting>) {
+  const live = items.filter((i) => i.status !== "wrong");
+  const model = buildModel(projects, allExamples(live, meetings), live.map((i) => i.text));
+  return live.filter((i) => !filedByYou(i)).map((i) => ({
+    item: i,
+    verdict: projects.length ? judge({ id: i.id, text: i.text, title: meetings.get(i.meetingId)?.title, person: i.personRaw ?? i.person }, model) : { project: null, why: null },
+  }));
+}
+
 /** File (or re-file) every item that you haven't filed yourself. */
 export async function autoFileProjects(store: FilingStore, userId: string): Promise<FilingResult> {
   const projects = filingProjects();
   const [items, meetingList] = await Promise.all([store.listItems(userId), store.listMeetingsBetween(userId, "0000", "9999")]);
   const meetings = new Map(meetingList.map((m) => [m.id, m]));
-  const live = items.filter((i) => i.status !== "wrong");
-  const model = buildModel(projects, allExamples(live, meetings), live.map((i) => i.text));
   const changes: Parameters<FilingStore["fileItems"]>[0] = [];
   let filed = 0, unfiled = 0;
-  for (const i of live) {
-    // Filed by you, or taken out of a project by you (projectBy "you", no project): leave it.
-    if (filedByYou(i)) continue;
-    const v = projects.length ? judge({ id: i.id, text: i.text, title: meetings.get(i.meetingId)?.title, person: i.personRaw ?? i.person }, model) : { project: null, why: null };
+  // Filed by you, or taken out of a project by you (projectBy "you", no project): planFiling leaves it.
+  for (const { item: i, verdict: v } of planFiling(projects, items, meetings)) {
     if (v.project) filed++; else if (i.status === "open") unfiled++;
     const want = { project: v.project, projectBy: v.project ? ("auto" as const) : null, projectWhy: v.why };
     if ((i.project ?? null) !== want.project || (i.projectBy ?? null) !== want.projectBy || (i.projectWhy ?? null) !== want.projectWhy) changes.push({ id: i.id, ...want });
   }
   const changed = changes.length ? await store.fileItems(changes) : 0;
   return { filed, unfiled, changed };
+}
+
+export interface ProjectPreview {
+  /** Open items it would take, newest first (at most `max`). */
+  items: Array<{ id: string; text: string; why: string | null; from: string | null }>;
+  /** All items it would take, open or not. */
+  total: number;
+  /** Of those, how many would leave another project. */
+  moved: number;
+}
+
+/**
+ * What making a project named `name` would file into it, without making it: the same scorer, run
+ * as if the project existed with its name as a keyword. Shown before "Make project".
+ */
+export async function previewProject(store: FilingStore, userId: string, name: string, max = 15): Promise<ProjectPreview> {
+  const title = name.trim();
+  const slug = noteSlug(title);
+  const existing = filingProjects();
+  const had = existing.find((p) => p.slug === slug);
+  const projects = had
+    ? existing.map((p) => (p.slug === slug ? { ...p, keywords: [...new Set([...p.keywords, title.toLowerCase()])] } : p))
+    : [...existing, { slug, title, keywords: [title.toLowerCase()] }];
+  const [items, meetingList] = await Promise.all([store.listItems(userId), store.listMeetingsBetween(userId, "0000", "9999")]);
+  const meetings = new Map(meetingList.map((m) => [m.id, m]));
+  const into = planFiling(projects, items, meetings).filter((x) => x.verdict.project === slug && x.item.project !== slug);
+  const open = into.filter((x) => x.item.status === "open").sort((a, b) => b.item.createdAt.localeCompare(a.item.createdAt));
+  return {
+    items: open.slice(0, max).map((x) => ({ id: x.item.id, text: x.item.text, why: x.verdict.why, from: x.item.project ? existing.find((p) => p.slug === x.item.project)?.title ?? x.item.project : null })),
+    total: into.length,
+    moved: into.filter((x) => x.item.project).length,
+  };
 }
 
 /**
