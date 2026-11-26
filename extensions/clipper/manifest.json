@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "Daily brief clipper",
+  "short_name": "Clip to Daily brief",
+  "version": "0.1.0",
+  "description": "Clip the selection or the readable article, as Markdown, into your Daily brief notes on this computer.",
+  "action": { "default_title": "Clip to Daily brief", "default_popup": "popup.html", "default_icon": { "32": "icons/icon-32.png", "128": "icons/icon-128.png" } },
+  "icons": { "32": "icons/icon-32.png", "128": "icons/icon-128.png" },
+  "options_ui": { "page": "options.html", "open_in_tab": true },
+  "permissions": ["activeTab", "scripting", "storage"],
+  "host_permissions": ["http://localhost/*", "http://127.0.0.1/*"],
+  "browser_specific_settings": { "gecko": { "id": "clipper@daily-brief.local", "strict_min_version": "121.0" } }
+}

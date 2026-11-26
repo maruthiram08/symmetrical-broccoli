@@ -4,6 +4,7 @@ import type { User } from "@/lib/types";
 import { getStore } from "@/server/local/app";
 import { RECOVERED_FROM_MEMORY } from "@/server/local/file-store";
 import { alertsFor, type Alert } from "@/server/local/health";
+import { resolveTask } from "@/server/ai-config";
 
 /** The problems only the user can fix, on every page, each with what to do and a button. */
 export async function loadAlerts(user: User): Promise<Alert[]> {
@@ -29,9 +30,24 @@ export function Alerts({ alerts, user }: { alerts: Alert[]; user: User }) {
       <button className="db-act" type="submit">Retry</button>
     </form>
   );
+  // Extraction on another provider (Settings › AI): its key or credit, not Anthropic's.
+  const reader = resolveTask("extraction");
   return (
     <>
       {alerts.map((a) => {
+        if ((a.kind === "anthropic_auth" || a.kind === "anthropic_credit") && reader.provider !== "anthropic") {
+          return (
+            <div key={a.kind} className="db-banner" role="alert">
+              <span>
+                {a.kind === "anthropic_auth"
+                  ? `${reader.label} didn't accept your key, so meetings aren't being read. Fix it in Settings › AI, then press Retry.`
+                  : `Your ${reader.label} account is out of credit, so meetings aren't being read. Add credit, then press Retry.`}{" "}
+                <a href="/setup#ai">Settings › AI</a>
+              </span>
+              {retry}
+            </div>
+          );
+        }
         switch (a.kind) {
           case "recovered":
             return (

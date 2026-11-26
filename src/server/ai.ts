@@ -2,9 +2,13 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { env } from "@/lib/env";
 import { REQUEST_TIMEOUT_MS } from "@/lib/extract/extract";
-import { estimateCost, type AskInput } from "@/lib/ask/ask";
-import { fitSources } from "@/lib/ask/prompt";
-import { MAX_QUESTION_CHARS, retrieve, type Source } from "@/lib/ask/retrieve";
+import { estimateCost, type AskInput, type AskTurnContext } from "@/lib/ask/ask";
+import { MAX_QUESTION_CHARS, type Source } from "@/lib/ask/retrieve";
+import type { ProviderId } from "@/lib/ai/providers";
+import { AnthropicCallError } from "@/lib/extract/errors";
+import type { AnthropicLike } from "@/lib/extract/extract";
+import { clientForTask, ensurePrices, noteProblem, resolveTask } from "@/server/ai-config";
+import { retrieveLocal } from "@/server/ask-index";
 import type { Item, Meeting, User } from "@/lib/types";
 import { getAiStore, type Contradiction } from "@/server/local/ai-store";
 import { runAiJobs, type AiDeps } from "@/server/local/ai-jobs";
@@ -24,9 +28,42 @@ export function aiDeps(): AiDeps {
   return { store: getStore(), ai: getAiStore(), client: aiClient(), model: env.extractionModel, now: () => new Date() };
 }
 
+/**
+ * Like aiDeps, with the provider picked for Nudges in Settings › AI (nudges and the changed-decision
+ * check). Anthropic stays exactly as before. Another provider's key or credit problem is noted for
+ * Settings › AI instead of the app banner, and the nudge falls back to the template.
+ */
+export async function aiDepsForJobs(): Promise<AiDeps> {
+  const base = aiDeps();
+  const t = resolveTask("nudges");
+  if (t.provider === "anthropic") return t.model === base.model ? base : { ...base, model: t.model };
+  const r = await clientForTask("nudges");
+  if (!r.ok) return { ...base, client: null, model: t.qualified };
+  return { ...base, client: quiet(r.client, t.provider), model: t.qualified };
+}
+
+/** Turns auth/credit failures into bad_request (after noting them), so jobs don't raise the Anthropic banner. */
+function quiet(client: AnthropicLike, provider: ProviderId): AnthropicLike {
+  return {
+    messages: {
+      async create(body, options) {
+        try {
+          return await client.messages.create(body, options);
+        } catch (e) {
+          if (e instanceof AnthropicCallError && (e.kind === "auth" || e.kind === "credit")) {
+            noteProblem(provider, e.kind);
+            throw new AnthropicCallError("bad_request", e.status);
+          }
+          throw e;
+        }
+      },
+    },
+  };
+}
+
 /** Called by the scheduler after its jobs. Never throws. */
 export async function afterJobs(opts: { nudges?: boolean } = {}): Promise<void> {
-  try { await runAiJobs(aiDeps(), opts); } catch (e) { console.error("[ai]", e instanceof Error ? e.name : "Error"); }
+  try { await runAiJobs(await aiDepsForJobs(), opts); } catch (e) { console.error("[ai]", e instanceof Error ? e.name : "Error"); }
 }
 
 // ---------- Ask ----------
@@ -35,17 +72,26 @@ export interface PreparedAsk {
   input: AskInput;
   sources: Source[];
   model: string;
+  provider: ProviderId;
+  providerLabel: string;
   estimate: { inputTokens: number; costInr: number | null };
+  /** How local search found the passages. */
+  how: string;
 }
 
-export async function prepareAsk(user: User, question: string, now = new Date()): Promise<PreparedAsk> {
-  const store = getStore();
+/**
+ * Sources for a question, found on this computer (src/server/ask-index.ts), plus the thread's earlier
+ * turns as history when it is a follow-up. Only these go to the model picked for Ask.
+ */
+export async function prepareAsk(user: User, question: string, now = new Date(), opts: { history?: AskTurnContext[]; quote?: string | null } = {}): Promise<PreparedAsk> {
+  ensurePrices();
   const q = question.slice(0, MAX_QUESTION_CHARS).trim();
-  const [items, meetings] = await Promise.all([store.listItems(user.id), store.listMeetingsBetween(user.id, "0000", "9999")]);
-  const sources = fitSources(retrieve(q, items, meetings, now), user.timeZone).map((s, k) => ({ ...s, n: k + 1 }));
-  const input: AskInput = { question: q, sources, userName: user.name, timeZone: user.timeZone, now };
-  const model = env.extractionModel;
-  return { input, sources, model, estimate: estimateCost(input, model) };
+  const last = opts.history?.at(-1)?.question;
+  const r = await retrieveLocal(user, q, { extra: [opts.quote ?? "", last ?? ""].join(" ").trim(), now });
+  const sent = opts.quote ? `About this quote: "${opts.quote}"\n${q}` : q;
+  const input: AskInput = { question: sent, sources: r.sources, userName: user.name, timeZone: user.timeZone, now, ...(opts.history?.length ? { history: opts.history } : {}) };
+  const t = resolveTask("ask");
+  return { input, sources: r.sources, model: t.qualified, provider: t.provider, providerLabel: t.label, estimate: estimateCost(input, t.qualified), how: r.how };
 }
 
 // ---------- contradictions ----------

@@ -30,7 +30,9 @@ export function extractionPrefs(path = prefsPath()): ExtractionPrefs {
 }
 
 export function saveExtractionPrefs(p: ExtractionPrefs, path = prefsPath()): void {
-  const all = readJson<Prefs>(path, {});
+  const all = readJson<Prefs & { ai?: { tasks?: Record<string, unknown> } }>(path, {});
+  // This older "Reading model" choice wins over an Extraction pick in Settings › AI.
+  if (all.ai?.tasks) delete all.ai.tasks.extraction;
   writeJson(path, { ...all, extraction: p });
 }
 

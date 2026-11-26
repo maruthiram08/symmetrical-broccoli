@@ -20,17 +20,18 @@ import { SyncSettings } from "@/components/SyncSettings";
 import { IntegrationsSettings } from "@/components/integrations/IntegrationsSettings";
 import { SourcesSection } from "@/components/SourcesSection";
 import { sourceStatuses } from "@/server/recorders/status";
+import { AiSettings } from "@/components/ai/AiSettings";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Setup" };
 
-export default async function Setup({ searchParams }: { searchParams: Promise<{ error?: string; pull?: string; shared?: string; upload?: string; source?: string; which?: string; integ?: string; ch?: string; saved?: string; test?: string; err?: string; removed?: string; sync?: string; git?: string; model?: string }> }) {
+export default async function Setup({ searchParams }: { searchParams: Promise<{ error?: string; pull?: string; shared?: string; upload?: string; source?: string; which?: string; integ?: string; ch?: string; saved?: string; test?: string; err?: string; removed?: string; sync?: string; git?: string; model?: string; ai?: string; p?: string }> }) {
   const user = await me();
   const conn = user ? await getStore().getConnection(user.id) : null;
   // First run happens on /welcome; Settings is for changing things afterwards.
   if (!user || !conn) redirect("/welcome");
   const connected = conn?.status === "active";
-  const { error, pull, shared, upload, source, which, integ, sync, git, model, ...flash } = await searchParams;
+  const { error, pull, shared, upload, source, which, integ, sync, git, model, ai, p: aiProvider, ...flash } = await searchParams;
   const remote = isRemote(await headers());
   const pulling = pullState()?.running ?? false;
   const tz = user?.timeZone ?? "Asia/Kolkata";
@@ -165,6 +166,7 @@ export default async function Setup({ searchParams }: { searchParams: Promise<{ 
       <SyncSettings syncError={sync} gitError={git} />
       <IntegrationsSettings flash={integ} timeZone={tz} />
       <PlatformSettings remote={remote} timeZone={tz} modelError={model === "bad"} />
+      {isHosted() ? null : <AiSettings remote={remote} flash={{ ai, p: aiProvider }} />}
       {health ? (
         <section className="db-stack db-subsection" aria-labelledby="health">
           <h2 className="db-section__title" id="health">Health</h2>

@@ -108,7 +108,7 @@ export async function IntegrationsSettings({ flash, timeZone }: { flash?: string
               id="origins"
               name="origins"
               label="Also allow these browser origins"
-              hint="Optional. Pages on this Mac (localhost) are always allowed; pages anywhere else are refused unless listed here."
+              hint="Optional. Pages on this Mac (localhost) are always allowed; pages anywhere else are refused unless listed here. For the web clipper, paste the extension origin its options page shows (chrome-extension://… or moz-extension://…)."
               placeholder="https://my-dashboard.example"
               defaultValue={st.api.allowedOrigins.join(" ")}
             />

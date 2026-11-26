@@ -53,8 +53,11 @@ describe("POST /api/ask", () => {
     expect(r.headers.get("Content-Type")).toContain("ndjson");
     const out = await lines(r);
     expect(out[0]).toMatchObject({ type: "sources", model: "claude-sonnet-5-5" });
-    const sources = out[0].sources as Array<{ n: number; text: string; href: string; quote: string }>;
-    expect(sources.length).toBe(3);
+    const sources = out[0].sources as Array<{ n: number; text: string; href: string; quote: string; type?: string; title?: string }>;
+    // Local search: the three items, and the two meetings' summaries as passages.
+    expect(sources.filter((s) => !s.type).length).toBe(3);
+    expect(sources.filter((s) => s.type === "meeting").map((s) => s.title).sort()).toEqual(["Banner review", "Standup"]);
+    expect(out[0].threadId).toEqual(expect.any(String));
     expect(sources.find((s) => s.text.startsWith("Send Tarun"))!.href).toBe("/people/tarun");
     expect(out.filter((l) => l.type === "text").map((l) => l.text).join("")).toBe(sdk.chunks.join(""));
     expect(out.at(-1)).toMatchObject({ type: "done", noAnswer: false });

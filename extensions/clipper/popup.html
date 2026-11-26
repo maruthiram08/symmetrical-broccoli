@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Clip to Daily brief</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <main class="clip">
+    <h1>Clip to Daily brief</h1>
+    <fieldset>
+      <legend>What</legend>
+      <label><input type="radio" name="mode" value="auto" checked> Selection, or the article if nothing is selected</label>
+      <label><input type="radio" name="mode" value="article"> The readable article</label>
+    </fieldset>
+    <fieldset>
+      <legend>Where</legend>
+      <label><input type="radio" name="target" value="inbox" checked> Inbox note</label>
+      <label><input type="radio" name="target" value="new"> A new note</label>
+    </fieldset>
+    <label class="field">Title <input id="title" maxlength="200" placeholder="The page title"></label>
+    <button id="clip" type="button">Clip</button>
+    <p id="status" role="status"></p>
+    <p class="foot"><a href="#" id="options">Options</a></p>
+  </main>
+  <script src="lib/api.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

@@ -15,7 +15,7 @@ import type { AppStore } from "@/server/app-store";
 import { isHosted } from "@/server/mode";
 import { hostedMe, hostedSaveMe, hostedWisprAuthContext, sessionDeps, sessionStore } from "@/server/hosted/app";
 import { extractWithPrefs, extractionCostInr } from "./extract-local";
-import { extractionModelName } from "./prefs";
+import { resolveTask } from "@/server/ai-config";
 import { afterPublish, renderDailyFor, renderDecisionsFor, renderWeekFor } from "./outputs";
 import { currentWorkspace, homeDataDir } from "./workspaces";
 import { publishChannels } from "@/server/channels/local";
@@ -91,7 +91,7 @@ export function buildDeps(): Deps {
     // Claude by default; Settings can switch reading to a local Ollama model.
     extract: (input) => extractWithPrefs(input),
     costInr: extractionCostInr,
-    model: extractionModelName(),
+    model: resolveTask("extraction").qualified,
     buildBrief: async (store, user, at) => withTomorrow(store, user, at, await buildBrief(store, user, at)),
     renderMarkdown: (model) => renderDailyFor(ws, store, model),
     renderWeek: (user, week) => renderWeekFor(ws, store, user, week),

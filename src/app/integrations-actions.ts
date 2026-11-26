@@ -85,7 +85,10 @@ export async function saveApiOriginsAction(fd: FormData): Promise<void> {
   const origins = str(fd, "origins", 2000).split(/[\s,]+/).filter(Boolean).flatMap((o) => {
     try {
       const u = new URL(o);
-      return u.protocol === "https:" || u.protocol === "http:" ? [u.origin] : [];
+      if (u.protocol === "https:" || u.protocol === "http:") return [u.origin];
+      // The web clipper (extensions/clipper): its extension origin, as the clipper's options page shows it.
+      if ((u.protocol === "chrome-extension:" || u.protocol === "moz-extension:") && /^[a-z0-9-]{8,64}$/i.test(u.host)) return [`${u.protocol}//${u.host}`];
+      return [];
     } catch {
       return [];
     }

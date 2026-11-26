@@ -35,9 +35,11 @@ export function kindHints(q: string): { kinds: ItemKind[]; overdue: boolean } {
   return { kinds: [...kinds], overdue };
 }
 
-export interface Source {
+/** An item (owe / waiting / decision) cited by Ask. */
+export interface ItemSource {
   /** 1-based, as cited: [1]. */
   n: number;
+  type?: "item";
   itemId: string;
   kind: ItemKind;
   status: Item["status"];
@@ -49,14 +51,33 @@ export interface Source {
   meetingTitle: string;
   /** Meeting start, ISO. */
   at: string;
+  /** Where the citation links (set by the server). */
+  href?: string;
 }
+
+/** A passage from local search: a meeting summary, a transcript chunk or a note. */
+export interface PassageSource {
+  n: number;
+  type: "meeting" | "transcript" | "note";
+  /** The local index's document id. */
+  docId: string;
+  title: string;
+  /** The passage itself, sent as context and shown as the quote. */
+  text: string;
+  at: string | null;
+  href: string;
+  meetingId?: string;
+}
+
+export type Source = ItemSource | PassageSource;
+export const isItemSource = (s: Source): s is ItemSource => s.type === undefined || s.type === "item";
 
 /**
  * Up to MAX_SOURCES items, best match first: search hits for the content words, then (when the
  * question asks about owe / waiting / decisions / overdue) the most recent such items. Items marked
  * wrong never count. Returns [] when nothing relates, so the caller can answer without a model call.
  */
-export function retrieve(question: string, items: Item[], meetings: Meeting[], now: Date, limit = MAX_SOURCES): Source[] {
+export function retrieve(question: string, items: Item[], meetings: Meeting[], now: Date, limit = MAX_SOURCES): ItemSource[] {
   const byId = new Map(meetings.map((m) => [m.id, m]));
   const itemById = new Map(items.map((i) => [i.id, i]));
   const picked: Item[] = [];

@@ -154,8 +154,8 @@ export function PlatformSettings({ remote, timeZone, modelError }: { remote: boo
           </div>
           <div className="db-plat__warn">
             <strong>Expect lower quality.</strong> Local models miss more promises, close fewer items and handle Hinglish worse than
-            Claude. Quotes that aren&apos;t in the transcript are still dropped. Ask, nudges and changed-decision checks keep using
-            Claude when a key is set.
+            Claude. Quotes that aren&apos;t in the transcript are still dropped. More providers, and a model for each job (Ask, writing
+            assist, nudges): <a href="#ai">Settings › AI</a>.
           </div>
           <div className="db-row">
             <Button type="submit">Save</Button>

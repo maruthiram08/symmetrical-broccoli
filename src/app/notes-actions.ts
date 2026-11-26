@@ -9,8 +9,8 @@ import type { LinkTarget } from "@/lib/editor/commands";
 import { ASSIST_MAX_CHARS, ASSIST_MODES, estimateAssist, runAssist, type AssistResult } from "@/lib/editor/assist";
 import { itemLine, parseItemCommand } from "@/lib/editor/slash";
 import { formatInr } from "@/lib/ai/common";
-import { env } from "@/lib/env";
 import { aiClient } from "@/server/ai";
+import { clientForTask, ensurePrices, messageFor, noteProblem, resolveTask } from "@/server/ai-config";
 import { getStore, me } from "@/server/local/app";
 import { createPage, deletePage, listPages, savePage, validSlug, type SaveResult } from "@/server/local/pages";
 import { captureContextAction } from "./capture-actions";
@@ -120,7 +120,8 @@ const AssistBody = z.object({ mode: z.enum(ASSIST_MODES), text: z.string().min(1
 export async function assistEstimateAction(mode: string, text: string): Promise<{ costLabel: string | null }> {
   const p = AssistBody.safeParse({ mode, text });
   if (!p.success) return { costLabel: null };
-  const e = estimateAssist(p.data.mode, p.data.text, env.extractionModel);
+  ensurePrices();
+  const e = estimateAssist(p.data.mode, p.data.text, resolveTask("assist").qualified);
   return { costLabel: formatInr(e.costInr) };
 }
 
@@ -131,17 +132,24 @@ export async function assistAction(mode: string, text: string): Promise<AssistRe
   if (!user) return { ok: false, error: "Set up Daily brief first." };
   const status = await assistStatusFor();
   if (!status.enabled) return { ok: false, error: status.reason };
-  const client = aiClient();
-  if (!client) return { ok: false, error: "Add ANTHROPIC_API_KEY to use writing assist." };
-  const model = env.extractionModel;
-  const r = await runAssist(p.data.mode, p.data.text, { client, model });
+  // The provider picked for Writing assist in Settings › AI (Anthropic unless you changed it).
+  const t = resolveTask("assist");
+  const anthropic = t.provider === "anthropic";
+  const got = anthropic ? null : await clientForTask("assist");
+  const client = anthropic ? aiClient() : got?.ok ? got.client : null;
+  if (!client) return { ok: false, error: anthropic ? "Add ANTHROPIC_API_KEY to use writing assist." : got && !got.ok ? got.error : "Pick a model in Settings › AI." };
+  const model = t.qualified;
+  ensurePrices();
+  const r0 = await runAssist(p.data.mode, p.data.text, { client, model });
+  const r = !anthropic && !r0.ok && r0.failure ? { ...r0, error: messageFor(t.provider, r0.failure) } : r0;
   const store = getStore();
-  if (!r.ok && (r.failure === "auth" || r.failure === "credit")) {
+  if (!anthropic && !r.ok && (r.failure === "auth" || r.failure === "credit")) noteProblem(t.provider, r.failure);
+  else if (!r.ok && (r.failure === "auth" || r.failure === "credit")) {
     // The same banner extraction and Ask raise.
     await store.setHealth({ anthropicProblem: { kind: r.failure, at: new Date().toISOString() } });
     revalidatePath("/", "layout");
   }
-  if (r.ok && (await store.getHealth()).anthropicProblem) await store.setHealth({ anthropicProblem: null });
+  if (anthropic && r.ok && (await store.getHealth()).anthropicProblem) await store.setHealth({ anthropicProblem: null });
   if (r.usage) {
     await store.logEvent({
       userId: user.id, type: "assist", payload: { model, mode: p.data.mode, ok: r.ok, chars: p.data.text.length },

@@ -17,8 +17,19 @@ export const PRICES_USD_PER_MTOK: Record<string, { input: number; output: number
 /** PLACEHOLDER: rupees per US dollar. Update to the current rate. */
 export const USD_TO_INR = 88;
 
+/**
+ * Prices for other providers' models ("openai:<model>", "ollama:<model>"...), filled by the server
+ * from Settings › AI (prices you entered, OpenRouter's list). Estimates only.
+ */
+type PriceLookup = (model: string) => { input: number; output: number } | null;
+let extraPrices: PriceLookup = (model) => (model.startsWith("ollama:") || model.startsWith("claude-plan:") ? { input: 0, output: 0 } : null);
+export function setExtraPrices(f: PriceLookup): void {
+  extraPrices = f;
+}
+export const priceOf = (model: string) => PRICES_USD_PER_MTOK[model] ?? extraPrices(model);
+
 export function costUsd(model: string, usage: ExtractionResult["usage"]): number {
-  const price = PRICES_USD_PER_MTOK[model];
+  const price = priceOf(model);
   if (!price) throw new Error(`No price for model "${model}". Add it to PRICES_USD_PER_MTOK in src/lib/extract/cost.ts.`);
   return (usage.inputTokens * price.input + usage.outputTokens * price.output) / 1_000_000;
 }

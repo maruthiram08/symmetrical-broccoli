@@ -10,7 +10,9 @@ export const KEYCHAIN_SERVICE = "app.dailybrief";
 /** CHANNEL_* names hold delivery secrets (src/server/channels/secrets.ts), base64url-encoded. */
 export type SecretName = "ANTHROPIC_API_KEY" | "TOKEN_ENCRYPTION_KEY" | `CHANNEL_${string}` | IntegrationSecret;
 /** Integration tokens and the local API / webhook secrets (src/server/integrations/vault.ts). */
-export type IntegrationSecret = "JIRA_API_TOKEN" | "LINEAR_API_KEY" | "NOTION_TOKEN" | "TODOIST_TOKEN" | "LOCAL_API_TOKEN" | "WEBHOOK_SECRET";
+export type IntegrationSecret = "JIRA_API_TOKEN" | "LINEAR_API_KEY" | "NOTION_TOKEN" | "TODOIST_TOKEN" | "LOCAL_API_TOKEN" | "WEBHOOK_SECRET" | AiSecret;
+/** API keys for the AI providers other than Anthropic (src/server/ai-config.ts). */
+export type AiSecret = "OPENAI_API_KEY" | "GEMINI_API_KEY" | "OPENROUTER_API_KEY" | "GROQ_API_KEY" | "DEEPSEEK_API_KEY" | "MISTRAL_API_KEY" | "XAI_API_KEY" | "COMPATIBLE_API_KEY";
 
 /** API keys and base64 keys only. Anything else is refused rather than quoted. */
 const SAFE_VALUE = /^[A-Za-z0-9+/=_.-]{8,512}$/;
