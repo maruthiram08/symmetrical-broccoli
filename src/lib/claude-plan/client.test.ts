@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { EventEmitter } from "node:events";
-import { buildArgs, claudePlanClient, cleanChildEnv, type Env, findClaudeBinary, runClaudePlan, type SpawnLike } from "./client";
+import { buildArgs, claudePlanClient, cleanChildEnv, cliModel, type Env, findClaudeBinary, runClaudePlan, type SpawnLike } from "./client";
 import { classifyAnthropicError } from "../extract/errors";
+import { extractMeeting } from "../extract/extract";
+import { qualifiedModel } from "../ai/providers";
 
 function fakeSpawn(stdout: string, code = 0, seen: { args?: string[]; env?: Env; stdin?: string } = {}): SpawnLike {
   return ((_cmd: string, args: string[], opts: { env: Env }) => {
@@ -100,5 +102,25 @@ describe("claude plan client", () => {
     expect((await p).name).toBe("AbortError");
     await new Promise((r) => setTimeout(r, 40));
     expect(sigs).toEqual(["SIGTERM"]);
+  });
+
+  it("strips the claude-plan: prefix before passing --model", () => {
+    expect(cliModel("claude-plan:sonnet")).toBe("sonnet");
+    expect(cliModel("claude-plan:opus")).toBe("opus");
+    expect(cliModel("haiku")).toBe("haiku");
+    expect(cliModel("claude-plan:")).toBe("sonnet");
+  });
+
+  it("runs a real extraction through the plan client with the qualified model name", async () => {
+    const seen: { args?: string[]; env?: Env; stdin?: string } = {};
+    const client = claudePlanClient({ bin: "/x/claude", spawn: fakeSpawn(ok({ result: "{}", structured_output: { newItems: [], closes: [] } }), 0, seen) });
+    const r = await extractMeeting(
+      { transcript: "Maruthi: I'll send it.", user: { name: "Maruthi", aliases: [], timeZone: "Asia/Kolkata" },
+        meeting: { title: "T", startedAt: "2026-11-25T08:00:00.000Z", participants: [] }, openItems: [] },
+      { client, model: qualifiedModel("claude-plan", "sonnet"), retry: { sleep: async () => {} } },
+    );
+    expect(seen.args![seen.args!.indexOf("--model") + 1]).toBe("sonnet");
+    expect(seen.args).toContain("--json-schema");
+    expect(r.newItems).toEqual([]);
   });
 });

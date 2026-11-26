@@ -76,8 +76,9 @@ export function promptOf(messages: Params["messages"]): string {
 }
 
 /** CLI model aliases. A full id (claude-sonnet-5-5) is passed as is. */
+/** The app passes qualified names ("claude-plan:sonnet"); the CLI wants the bare alias. */
 export function cliModel(model: string): string {
-  return model.trim() || "sonnet";
+  return model.trim().replace(/^claude-plan:/, "").trim() || "sonnet";
 }
 
 export function buildArgs(body: Params): { args: string[]; tool: Anthropic.Tool | null } {
