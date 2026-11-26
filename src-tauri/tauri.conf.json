@@ -27,7 +27,8 @@
       "icons/icon.png"
     ],
     "resources": {
-      "../build/app-server/": "server/"
+      "../build/app-server/": "server/",
+      "../build/node-runtime/": "node-runtime/"
     },
     "macOS": {
       "minimumSystemVersion": "12.0",

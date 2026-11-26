@@ -71,7 +71,7 @@ The API key is yours (claude-sonnet-5-5).
 - **Speaker labels:** a promise can be credited to the wrong person when Wispr's speaker labels are wrong.
 - **Decisions:** the least stable thing the extraction reads.
 - **Unsigned app:** on another Mac, right-click and choose Open the first time. The installer disk is in `src-tauri/target/.../bundle/dmg/`.
-- **Node dependency:** the app needs Homebrew Node (18.18 or later).
+- **Node:** the app carries its own Node 22 runtime (`scripts/node-runtime.mjs`, pinned and SHA-256 checked) and only falls back to a system Node (18.18+) when a build has none. Building still needs Node.
 
 ## If it scales later
 

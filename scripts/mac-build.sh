@@ -2,7 +2,11 @@
 # Builds Daily Brief.app (and a .dmg) for Apple Silicon:
 #   1. next build with output: "standalone"
 #   2. copies the standalone server, .next/static and public/ into build/app-server
-#   3. tauri build --target aarch64-apple-darwin (bundles build/app-server as Resources/server)
+#   3. downloads the pinned Node runtime (SHA-256 checked, cached in src-tauri/target/node-cache)
+#      into build/node-runtime (scripts/node-runtime.mjs)
+#   4. tauri build --target aarch64-apple-darwin --bundles app (bundles build/app-server as
+#      Resources/server and build/node-runtime as Resources/node-runtime)
+#   5. scripts/make-dmg.sh: the .dmg with hdiutil, retried. A failed .dmg never fails the build.
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$DIR"
@@ -36,18 +40,30 @@ mkdir -p "$STAGE/.next" && cp -R .next/static "$STAGE/.next/static"
 find "$STAGE" -maxdepth 1 -name '.env*' -exec rm -f {} +
 [[ -f "$STAGE/server.js" ]] || { echo "No server.js in the standalone build." >&2; exit 1; }
 
-echo "==> tauri build ($TARGET)"
-npx tauri build --target "$TARGET" --bundles app,dmg || {
-  echo "The .dmg step failed (it scripts Finder); building the .app only." >&2
-  npx tauri build --target "$TARGET" --bundles app
-}
+echo "==> bundled Node runtime"
+# Picks up HTTPS_PROXY if you have one set (Node 22.21+).
+NODE_USE_ENV_PROXY=1 node scripts/node-runtime.mjs --target "$TARGET"
+[[ -x build/node-runtime/node ]] || { echo "No node in build/node-runtime." >&2; exit 1; }
+
+echo "==> tauri build ($TARGET, .app)"
+# The .dmg is made below with plain hdiutil: tauri's bundle_dmg fails with "Resource busy" too often.
+npx tauri build --target "$TARGET" --bundles app
 
 BUNDLE="src-tauri/target/$TARGET/release/bundle"
 APP="$BUNDLE/macos/Daily Brief.app"
+[[ -d "$APP" ]] || { echo "No app at $APP." >&2; exit 1; }
+VERSION=$(node -p 'require("./src-tauri/tauri.conf.json").version')
+DMG="$BUNDLE/dmg/Daily Brief_${VERSION}_aarch64.dmg"
+
+echo "==> dmg"
+if ! bash scripts/make-dmg.sh "$APP" "$DMG"; then
+  echo "The .dmg step failed; the .app is fine and is all you need." >&2
+  DMG=
+fi
 
 echo
-echo "App: $DIR/$APP"
-for f in "$BUNDLE"/dmg/*.dmg(N); do echo "DMG: $DIR/$f"; done
+echo "App: $DIR/$APP ($(du -sh "$APP" | cut -f1))"
+[[ -n "$DMG" && -f "$DMG" ]] && echo "DMG: $DIR/$DMG ($(du -sh "$DMG" | cut -f1))"
 echo
 echo "Install:  rm -rf \"/Applications/Daily Brief.app\" && cp -R \"$DIR/$APP\" /Applications/"
 echo "Secrets:  npm run keychain:import   (copies ANTHROPIC_API_KEY from .env.local into the Keychain)"

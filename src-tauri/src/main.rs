@@ -1,7 +1,9 @@
 // Daily brief for macOS, Windows and Linux: a small shell around the local Next.js server.
 //
 // On start it reuses a Daily brief server already on 127.0.0.1:4242 (say, the old launchd agent
-// or `npm start`). Otherwise it starts the bundled Next standalone server with the system Node.
+// or `npm start`). Otherwise it starts the bundled Next standalone server with the Node runtime
+// bundled in the app (Resources/node-runtime, see scripts/node-runtime.mjs), or the system Node
+// when the build has none.
 // The window shows a starting page until /api/health answers. A watchdog keeps checking: if the
 // server goes away (ours crashed, or the reused one was stopped), it starts ours again.
 // Closing the window hides it to the menu bar (the tray on Windows and Linux), whose title shows
@@ -103,11 +105,44 @@ fn wait_healthy(limit: Duration, alive: impl Fn() -> bool) -> bool {
 
 // ---------- finding Node and starting the server ----------
 
-fn node_version(node: &Path) -> Option<(u32, u32)> {
-    let out = Command::new(node).arg("-v").output().ok()?;
-    let v = String::from_utf8_lossy(&out.stdout);
+/// "v22.23.5" → (22, 23).
+fn parse_node_version(v: &str) -> Option<(u32, u32)> {
     let mut it = v.trim().trim_start_matches('v').split('.');
     Some((it.next()?.parse().ok()?, it.next()?.parse().ok()?))
+}
+
+/// Next 15 needs Node 18.18 or later.
+fn node_version_ok(v: Option<(u32, u32)>) -> bool {
+    matches!(v, Some((major, minor)) if major > 18 || (major == 18 && minor >= 18))
+}
+
+fn node_version(node: &Path) -> Option<(u32, u32)> {
+    let mut cmd = Command::new(node);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    let out = cmd
+        .arg("-v")
+        .stdin(Stdio::null())
+        .stderr(Stdio::null())
+        .output()
+        .ok()?;
+    parse_node_version(&String::from_utf8_lossy(&out.stdout))
+}
+
+/// Where the build puts the bundled Node runtime, relative to the app's resources.
+fn bundled_node_path(resource_dir: &Path) -> PathBuf {
+    resource_dir
+        .join("node-runtime")
+        .join(if cfg!(windows) { "node.exe" } else { "node" })
+}
+
+/// The Node runtime bundled in the app, when the build put one there and it runs.
+fn bundled_node(app: &AppHandle) -> Option<PathBuf> {
+    let p = bundled_node_path(&app.path().resource_dir().ok()?);
+    (p.is_file() && node_version_ok(node_version(&p))).then_some(p)
 }
 
 fn home() -> PathBuf {
@@ -185,20 +220,20 @@ fn find_node() -> Option<PathBuf> {
     if let Some(p) = node_from_shell() {
         candidates.push(p);
     }
-    // Next 15 needs Node 18.18 or later.
-    candidates.into_iter().filter(|p| p.is_file()).find(|p| {
-        matches!(node_version(p), Some((major, minor)) if major > 18 || (major == 18 && minor >= 18))
-    })
+    candidates
+        .into_iter()
+        .filter(|p| p.is_file())
+        .find(|p| node_version_ok(node_version(p)))
 }
 
 /// How to get Node, for the error page.
 fn node_hint() -> &'static str {
     if cfg!(target_os = "macos") {
-        "No Node.js 18.18 or later was found in /opt/homebrew/bin, /usr/local/bin or your shell's PATH. Install it (brew install node), then open the app again."
+        "This copy of the app has no Node.js inside, and no Node.js 18.18 or later was found in /opt/homebrew/bin, /usr/local/bin or your shell's PATH. Install it (brew install node), then open the app again."
     } else if cfg!(windows) {
-        "No Node.js 18.18 or later was found in Program Files or your PATH. Install the LTS from nodejs.org (or winget install OpenJS.NodeJS.LTS), then open the app again."
+        "This copy of the app has no Node.js inside, and no Node.js 18.18 or later was found in Program Files or your PATH. Install the LTS from nodejs.org (or winget install OpenJS.NodeJS.LTS), then open the app again."
     } else {
-        "No Node.js 18.18 or later was found in /usr/bin, /usr/local/bin or your shell's PATH. Install it (your package manager, nvm, or nodejs.org), then open the app again."
+        "This copy of the app has no Node.js inside, and no Node.js 18.18 or later was found in /usr/bin, /usr/local/bin or your shell's PATH. Install it (your package manager, nvm, or nodejs.org), then open the app again."
     }
 }
 
@@ -294,7 +329,7 @@ fn ensure_server(app: &AppHandle) -> Result<(), (String, String)> {
         }
         Port::Free => {}
     }
-    let node = find_node().ok_or_else(|| {
+    let node = bundled_node(app).or_else(find_node).ok_or_else(|| {
         (
             "Daily brief needs Node.js".to_string(),
             node_hint().to_string(),
@@ -763,6 +798,25 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reads_node_versions() {
+        assert_eq!(parse_node_version("v22.23.5\n"), Some((22, 23)));
+        assert_eq!(parse_node_version("18.17.0"), Some((18, 17)));
+        assert_eq!(parse_node_version("not node"), None);
+        assert!(node_version_ok(Some((22, 0))));
+        assert!(node_version_ok(Some((18, 18))));
+        assert!(!node_version_ok(Some((18, 17))));
+        assert!(!node_version_ok(None));
+    }
+
+    #[test]
+    fn bundled_node_lives_in_the_resources() {
+        let p = bundled_node_path(Path::new("res"));
+        assert!(p.starts_with(Path::new("res").join("node-runtime")));
+        let name = p.file_name().unwrap().to_str().unwrap();
+        assert_eq!(name, if cfg!(windows) { "node.exe" } else { "node" });
+    }
 
     #[test]
     fn reads_the_count_from_a_plain_or_chunked_response() {
