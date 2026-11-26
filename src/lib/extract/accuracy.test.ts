@@ -53,16 +53,6 @@ describe("prompt", () => {
     expect(SYSTEM_PROMPT).toMatch(/If you are not sure the agreement was explicit, leave it out/);
     expect(SYSTEM_PROMPT).toMatch(/one fixed shape/);
     expect(SYSTEM_PROMPT).toContain("Decisions already recorded");
-    expect(SYSTEM_PROMPT).toMatch(/a deadline, scope or design for the team's work stated as settled/);
-  });
-
-  it("treats closing as its own pass, independent of the attribution and decision rules", () => {
-    expect(SYSTEM_PROMPT).toContain("Closing the user's open items (a separate pass)");
-    expect(SYSTEM_PROMPT).toMatch(/Go through them one by one, by id/);
-    expect(SYSTEM_PROMPT).toMatch(/do not apply here/);
-    expect(SYSTEM_PROMPT).toMatch(/counts whatever label it carries/);
-    // the closing section stays last, after the new-item rules
-    expect(SYSTEM_PROMPT.indexOf("Closing the user's open items")).toBeGreaterThan(SYSTEM_PROMPT.indexOf("Decisions already recorded"));
   });
 
   it("the Ollama prompt keeps the new rules", () => {

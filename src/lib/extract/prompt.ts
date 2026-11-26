@@ -30,8 +30,7 @@ Kinds of item
 - decision: a choice the meeting settled. person = null. Record a decision only when the transcript has an explicit agreement signal, one of:
   - a proposal or question that another person accepts in words ("ok, let's do that", "agreed", "haan, karna padega", "theek hai, chalega", "should be fine to keep one version", "yes, same as last time");
   - a question answered definitively by the person who owns it ("Is this only for web?" "No, mobile will use the same flow.");
-  - a choice stated as settled ("let's go with the blue banner, final", "so that's decided", "we're not shipping it this week") that nobody pushes back on;
-  - a deadline, scope or design for the team's work stated as settled by the person who owns it, with no pushback ("we ship the checkout frontend by the 15th", "this release covers web only", "the empty state will be the same component for every list"). One settled target or scope counts even when it comes up during a walk-through. A date for one named person's own task is an owe or waiting item instead.
+  - a choice stated as settled ("let's go with the blue banner, final", "so that's decided", "we're not shipping it this week") that nobody pushes back on.
 - Not decisions: a proposal nobody answers, an option still being weighed, "I think we should", "let's discuss it later", a question left open, and one person's own task (that is an owe or waiting item). If you are not sure the agreement was explicit, leave it out.
 - A decision is a choice the meeting made, not a description of a plan someone presents. When a person walks through a spec or a list of stories ("we will rename X", "we'll show Y in search"), do not turn each line into a decision; record a decision only where the meeting settles a question or agrees to a choice. Record one decision per choice: do not split one choice into several items, and do not repeat it as both a decision and a promise.
 - For a decision, the quote is the span with the agreement or the settling words (with the proposal too when both fit).
@@ -54,9 +53,8 @@ How to write each item
 - quote: copied VERBATIM from the transcript: the same words, in the same language and script, no translation, no paraphrase, no added or fixed words, no ellipses joining separate parts. Pick the shortest span that shows the commitment or decision, at most ${QUOTE_MAX} characters.
 - dueAt: if a deadline is stated or clearly implied, resolve it against the meeting start time given in the request ("in half an hour" at 13:51 local means 14:21 local; "aaj" or "by EOD" means 18:00 local that day; "tomorrow first half" or "tomorrow morning" means 10:00 local the next day; "kal" said about a future task means tomorrow; a weekday means the next such day). Return it as an ISO 8601 UTC timestamp ending in "Z", converting from the user's time zone. Use null when no deadline is given. Do not invent one.
 
-Closing the user's open items (a separate pass)
-- Do this as its own pass, after the new items. The request lists the user's open items from earlier meetings, each with an id. Go through them one by one, by id, and look through the whole transcript for evidence about each.
-- The rules above for attributing promises and for decisions do not apply here, and being careful about new items is no reason to skip a close. Who says it doesn't matter either: a line saying the thing is done counts whatever label it carries, and the evidence can come from anyone in the meeting.
+Closing the user's open items
+- The request lists the user's open items from earlier meetings, each with an id. Check every one against this transcript.
 - Transcription spells the same name differently across meetings and even within one ("Rakesh", "Raakesh", "Rakes"; "Nitin", "Nithin"). Match people in open items by sound and role, not exact spelling.
 - Close an item when THIS transcript shows it is done or no longer needed. Good evidence:
   - the person responsible says it is done, in any language: "sent it", "maine share kar diya", "add kar diya", "ho gaya", "fixed that yesterday", "already merged";
