@@ -8,7 +8,7 @@ export const FONTS = {
   system: { label: "System", stack: '-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif' },
   helvetica: { label: "Helvetica", stack: '"Helvetica Neue", Helvetica, Arial, sans-serif' },
   serif: { label: "Serif (Georgia)", stack: 'Charter, "Iowan Old Style", Georgia, "Times New Roman", serif' },
-  mono: { label: "Geist Mono", stack: 'var(--font-geist-mono), ui-monospace, "SF Mono", Menlo, monospace' },
+  mono: { label: "Geist Mono (code style)", stack: 'var(--font-geist-mono), ui-monospace, "SF Mono", Menlo, monospace' },
 } as const;
 export type FontId = keyof typeof FONTS;
 
