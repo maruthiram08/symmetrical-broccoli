@@ -1,4 +1,3 @@
-import type { OAuthClientInformationMixed } from "@modelcontextprotocol/sdk/shared/auth.js";
 import type { ManualInput } from "@/lib/capture/items";
 import type { CalendarCache, Health, Item, LastLook, UpcomingCache, User } from "@/lib/types";
 import type { Store } from "@/server/store";

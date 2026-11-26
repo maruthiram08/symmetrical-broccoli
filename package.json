@@ -18,7 +18,9 @@
     "mac:build": "zsh scripts/mac-build.sh",
     "tauri": "tauri",
     "mcp": "tsx src/mcp/server.ts",
-    "mcp:install": "zsh scripts/install-mcp.sh"
+    "mcp:install": "zsh scripts/install-mcp.sh",
+    "hosted:check": "tsx scripts/hosted-check.ts",
+    "hosted:migrate": "tsx scripts/hosted-migrate.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.71.0",

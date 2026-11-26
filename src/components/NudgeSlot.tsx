@@ -2,14 +2,14 @@
 // "Waiting on" item that is 3+ days overdue. Never drafts on page load.
 import { cache } from "react";
 import type { BriefLine } from "@/lib/types";
-import { getAiStore } from "@/server/local/ai-store";
+import { currentAi } from "@/server/ai-state";
 import { NudgeCard } from "./NudgeCard";
 
-const nudges = cache(() => new Map(getAiStore().nudges().map((n) => [n.itemId, n])));
+const nudges = cache(async () => new Map((await currentAi()).ai.nudges().map((n) => [n.itemId, n])));
 
-export function NudgeSlot({ line }: { line: BriefLine }) {
+export async function NudgeSlot({ line }: { line: BriefLine }) {
   if (line.kind !== "waiting" || line.lateMinutes === null) return null;
-  const n = nudges().get(line.itemId);
+  const n = (await nudges()).get(line.itemId);
   if (!n) return null;
   return <NudgeCard itemId={line.itemId} person={line.person} text={n.text} />;
 }

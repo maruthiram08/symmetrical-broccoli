@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { SearchIcon } from "./SearchIcon";
 import { Progress } from "./Progress";
 import { SideNav } from "./SideNav";
+import { HostedLinks } from "./HostedLinks";
 
 /** Sidebar and reading column. `days` are past daily notes, newest first. */
 export function Shell({ days, current, children, footer, openCount, query }: { days: Array<{ date: string; label: string }>; current: string; children: ReactNode; footer?: ReactNode; openCount?: number; query?: string }) {
@@ -29,6 +30,7 @@ export function Shell({ days, current, children, footer, openCount, query }: { d
         ))}
         <div className="db-side__foot">
           <Link className="db-nav" href="/setup">Settings</Link>
+          <HostedLinks />
           {footer}
         </div>
       </SideNav>

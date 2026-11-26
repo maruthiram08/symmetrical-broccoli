@@ -5,6 +5,7 @@ import { Page } from "@/components/Page";
 import { TimeZoneSelect } from "@/components/TimeZoneSelect";
 import { getStore, me } from "@/server/local/app";
 import { redirect } from "next/navigation";
+import { isHosted } from "@/server/mode";
 import { SubmitOnChange } from "@/components/SubmitOnChange";
 import { pullMeetingsSince, rereadAllMeetings, saveIncludeShared, saveSetup } from "../actions";
 import { pullState, schedulerStatus } from "@/server/local/scheduler";
@@ -41,7 +42,7 @@ export default async function Setup({ searchParams }: { searchParams: Promise<{ 
   };
   return (
     <Page title="Set up your brief">
-      <p className="db-lead">{connected ? "Change your details. Your meetings stay connected." : "A few things, then connect your meetings. Everything stays on this Mac."}</p>
+      <p className="db-lead">{connected ? "Change your details. Your meetings stay connected." : (isHosted() ? "A few things, then connect your meetings. Your brief arrives by email." : "A few things, then connect your meetings. Everything stays on this Mac.")}</p>
       <form action={saveSetup} className="db-stack">
         <Field id="name" name="name" label="Your name" hint="So we know which promises are yours." defaultValue={user?.name ?? ""} autoComplete="name" required />
         <Field id="aliases" name="aliases" label="Other names people call you" hint="Comma separated, like Maru, MR. Optional." defaultValue={user?.aliases.join(", ") ?? ""} />
@@ -163,9 +164,15 @@ export default async function Setup({ searchParams }: { searchParams: Promise<{ 
                 ? `${health.errors24h} (${health.errorsByJob.map(([j, n]) => `${j} ${n}`).join(" · ")}), last at ${at(health.lastErrorAt)}`
                 : "None"}
             </dd>
-            <dt>Data file</dt><dd className="db-mono">{health.dataBytes === null ? "Not written yet" : formatBytes(health.dataBytes)}</dd>
-            <dt>Background jobs</dt>
-            <dd>{!jobs.running ? "Not started" : jobs.owner ? "Running here" : `Run by another Daily brief (pid ${jobs.holderPid ?? "?"})`}</dd>
+            {isHosted() ? (
+              <><dt>Data</dt><dd>Supabase</dd><dt>Background jobs</dt><dd>Vercel Cron, every 30 minutes</dd></>
+            ) : (
+              <>
+                <dt>Data file</dt><dd className="db-mono">{health.dataBytes === null ? "Not written yet" : formatBytes(health.dataBytes)}</dd>
+                <dt>Background jobs</dt>
+                <dd>{!jobs.running ? "Not started" : jobs.owner ? "Running here" : `Run by another Daily brief (pid ${jobs.holderPid ?? "?"})`}</dd>
+              </>
+            )}
             <dt>Version</dt><dd className="db-mono">{health.version}</dd>
           </dl>
         </section>

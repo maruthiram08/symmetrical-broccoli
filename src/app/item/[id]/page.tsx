@@ -5,6 +5,7 @@ import { Section } from "@/components/BriefList";
 import { Mark } from "@/components/Mark";
 import { PersonPeek } from "@/components/PersonPeek";
 import { Shell } from "@/components/Shell";
+import { ShareToTeam } from "@/components/ShareToTeam";
 import { formatTime } from "@/lib/brief/time";
 import { personSlug } from "@/lib/people";
 import type { Item, Meeting } from "@/lib/types";
@@ -55,6 +56,7 @@ export default async function ItemPage({ params }: { params: Promise<{ id: strin
         {item.person ? <span>{slug ? <PersonPeek slug={slug}>{item.person}</PersonPeek> : item.person}</span> : null}
         <span className={`w3-status${late ? " w3-status--late" : ""}`}>{status}</span>
       </p>
+      <ShareToTeam itemId={item.id} />
 
       <Section title="Timeline">
         <ol className="w3-tl" aria-label="What happened to this item">

@@ -10,6 +10,10 @@ import { dataDir } from "./paths";
 import { notifyPrep } from "./prep";
 import { notifyFreshMeetings } from "./fresh";
 import { afterJobs } from "@/server/ai";
+import { isHosted } from "@/server/mode";
+
+/** Hosted mode runs page-started work on Vercel (after the response, under the user's lock). */
+const hosted = () => import("@/server/hosted/runtime");
 
 export const TICK_MS = 5 * 60_000;
 export const POLL_EVERY_MS = 30 * 60_000;
@@ -160,6 +164,7 @@ export function schedulerStatus(): { running: boolean; owner: boolean; holderPid
 
 /** For the "Check now" button. */
 export async function checkNow(): Promise<void> {
+  if (isHosted()) { await (await hosted()).hostedCheckNow(); return; }
   await runExclusive(async () => {
     const deps = buildDeps();
     await pollAll(deps, { waitForFirstRead: true });
@@ -180,6 +185,7 @@ export function pullState(): PullState | null {
  * is safe. Starts in the background and returns at once; progress is in pullState().
  */
 export function startPullSince(userId: string, date: string, sinceIso: string): boolean {
+  if (isHosted()) { void hosted().then((h) => h.hostedPullSince(sinceIso)); return true; }
   if (g.__dbPull?.running) return false;
   const state: PullState = { mode: "pull", date, startedAt: new Date().toISOString(), running: true, found: null, processed: 0, failed: 0, error: null };
   g.__dbPull = state;
@@ -216,6 +222,7 @@ export function startPullSince(userId: string, date: string, sinceIso: string): 
  * Needed after older meetings were pulled in after newer ones. Runs in the background.
  */
 export function startRebuild(userId: string): boolean {
+  if (isHosted()) { void hosted().then((h) => h.hostedRebuild()); return true; }
   if (g.__dbPull?.running) return false;
   const state: PullState = { mode: "rebuild", date: "", startedAt: new Date().toISOString(), running: true, found: null, processed: 0, failed: 0, error: null };
   g.__dbPull = state;
@@ -246,6 +253,7 @@ export async function retryReading(userId: string): Promise<number> {
   const store = getStore();
   const n = await store.resetMeetingFailures(userId);
   await store.setHealth({ anthropicProblem: null });
+  if (isHosted()) { await (await hosted()).hostedRetry(); return n; }
   void runExclusive(async () => {
     const deps = buildDeps();
     try {
