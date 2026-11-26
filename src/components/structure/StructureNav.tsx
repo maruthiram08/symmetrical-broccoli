@@ -7,6 +7,7 @@ export async function StructureNav({ current }: { current: string }) {
   const views = user ? await getStore().listViews(user.id).catch(() => []) : [];
   return (
     <>
+      <Link className="db-nav" href="/projects" aria-current={current === "projects" ? "page" : undefined}>Projects</Link>
       <Link className="db-nav" href="/tags" aria-current={current === "tags" ? "page" : undefined}>Tags</Link>
       <Link className="db-nav" href="/views" aria-current={current === "views" ? "page" : undefined}>Views</Link>
       {views.map((v) => (

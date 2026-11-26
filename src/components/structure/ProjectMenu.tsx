@@ -1,14 +1,15 @@
 "use client";
 
 // "Project" in an item's actions (under "…" on a phone): put the item in a project, make a new
-// project, or take it out of one.
+// project, or take it out of one. An automatic filing says why, with "Looks right" to keep it;
+// picking another project or "No project" corrects it, and the app learns from either.
 import { useRouter } from "next/navigation";
 import { useEffect, useId, useRef, useState, useTransition } from "react";
-import { projectsAction, setItemProjectAction } from "@/app/structure-actions";
+import { confirmItemProjectAction, projectsAction, setItemProjectAction } from "@/app/structure-actions";
 import { projectLabel } from "@/lib/structure/views";
 
 
-export function ProjectMenu({ itemId, project }: { itemId: string; project: string | null }) {
+export function ProjectMenu({ itemId, project, auto }: { itemId: string; project: string | null; auto?: string }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [list, setList] = useState<Array<{ slug: string; title: string }> | null>(null);
@@ -37,13 +38,29 @@ export function ProjectMenu({ itemId, project }: { itemId: string; project: stri
     });
   };
 
+  const confirm = () => {
+    setError(null);
+    start(async () => {
+      const r = await confirmItemProjectAction(itemId);
+      if (!r.ok) { setError(r.error); return; }
+      setOpen(false);
+      router.refresh();
+    });
+  };
+
   return (
     <span className="db-snooze st-projmenu" ref={wrap}>
       <button type="button" className="db-act" aria-haspopup="menu" aria-expanded={open} aria-controls={id} onClick={() => setOpen((o) => !o)}>
-        {project ? `+${projectLabel(project)}` : "Project"}
+        {project ? `+${projectLabel(project)}${auto ? " (auto)" : ""}` : "Project"}
       </button>
       {open ? (
         <div className="db-snooze__menu st-projmenu__menu" role="menu" id={id} aria-label="Project" data-menu-open="true" onKeyDown={(e) => { e.stopPropagation(); if (e.key === "Escape") setOpen(false); }}>
+          {project && auto ? (
+            <div className="st-projmenu__auto">
+              <span>Filed automatically, {auto}.</span>
+              <button type="button" className="db-act" disabled={pending} onClick={confirm}>Looks right</button>
+            </div>
+          ) : null}
           {list === null ? <span className="db-snooze__loading">…</span> : list.map((p) => (
             <button key={p.slug} type="button" role="menuitemradio" aria-checked={p.slug === project} disabled={pending} onClick={() => pick(p.slug)}>
               {p.title}{p.slug === project ? <span>✓</span> : null}

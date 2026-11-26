@@ -8,6 +8,7 @@ import type { Deps } from "@/server/jobs/types";
 import { McpWisprClient } from "@/server/wispr/client";
 import type { WisprAuthContext } from "@/server/wispr/oauth";
 import { FileStore } from "./file-store";
+import { autoFileProjects } from "@/server/structure/autofile";
 import { appUrl, dataDir, notesDir } from "./paths";
 import { publishLocal } from "./publish";
 import { withTomorrow } from "./calendar";
@@ -46,6 +47,9 @@ export function getFileStore(): FileStore {
   if (!s) {
     ensureLocalKey();
     all.set(path, (s = new FileStore(path)));
+    // New items from a meeting go into their projects (src/server/structure/autofile.ts).
+    const store = s;
+    s.afterCommit = (userId: string) => autoFileProjects(store, userId);
   }
   return s;
 }
