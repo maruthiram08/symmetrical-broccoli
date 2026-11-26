@@ -39,6 +39,19 @@ When something needs you, every page says so with a button: Wispr Flow signed yo
 
 To start over, quit the app and delete `.daily-brief/`.
 
+## Delivery: email, Slack, Telegram, WhatsApp
+
+The brief is always written to `~/Daily Brief` with a Mac notification. **Settings › Delivery** can also send it where you already are. Every channel is off until you turn it on, and each one chooses what it gets: the **Daily brief**, the **Evening wrap** (the day's promises made, kept and late), and the **Friday recap**. They go out at your brief time, after the note is written. Each channel works on its own: if Slack fails, email still goes, the brief is still marked sent, and **Settings › Health › Delivery** shows the failure (the error is logged with tokens removed). Nothing is sent twice for the same day. **Send test** saves the form and sends today's brief (or wrap, or recap) marked "Test".
+
+Tokens and passwords go to the Keychain (service `app.dailybrief`, accounts `CHANNEL_*`), never to `channels.json` (`.daily-brief/channels.json` holds only the non-secret settings). Off a Mac (development on Linux) they go to `.daily-brief/channel-secrets.json`, readable only by you. Links in messages point to this Mac (`http://localhost:4242`), so they open only here.
+
+- **Email:** your own SMTP server or a Resend API key. Gmail: turn on 2-Step Verification, make an app password at myaccount.google.com/apppasswords, then smtp.gmail.com, port 587, STARTTLS, your address as user. Resend: verify a domain, create a sending key, use an address on that domain as From. The email is the same HTML and text email the hosted build used, with an Open link per item.
+- **Slack:** create an app at api.slack.com/apps. With a **bot token** (`xoxb-`, scopes `chat:write`, `im:write`, `users:read`, and `users:read.email` to find people by email) and your member ID, the brief arrives as a DM from the app, in Block Kit, with item quotes collapsed into one attachment. Or paste an **incoming webhook** URL to post to one channel.
+- **Telegram:** make a bot with @BotFather, message it once, and read your chat ID from `https://api.telegram.org/bot<token>/getUpdates`. Items are numbered and quotes sit in collapsed blockquotes. Turn on **Close items from Telegram** to reply `/done 3`: the app asks Telegram for replies every 5 minutes (no webhook, nothing listens on your Mac) and only messages from your chat count.
+- **WhatsApp** (Meta WhatsApp Cloud API): create a Business app with WhatsApp at developers.facebook.com, note the phone number ID, add your number, and make a permanent system-user token with `whatsapp_business_messaging`. Create a **Utility** template named `daily_brief` (English) with the body `Daily brief, {{1}}: {{2}} {{3}}`: the date, a one-line summary, and the link you set (empty means "Open Daily brief on your Mac"). Meta must approve the template before sends work.
+
+**Nudges on Slack.** With a Slack bot token saved, a nudge draft shows **Send on Slack…**. It looks the person up in your workspace (or by email), then a dialog shows the recipient and the exact text. Nothing is sent until you press **Send** in that dialog, every time; the confirmation is signed for that person and that text and works once, for ten minutes. With a user token (`xoxp-`, same scopes as user scopes) it is sent as you; otherwise the app sends it, starting "From <your name>:".
+
 ## Ask Claude about your brief
 
 A local MCP server lets Claude Desktop or Claude Code read your brief and close items: "what do I owe Tarun?", "what did we decide about the dividend banner?", "mark the venue booking done".
@@ -59,7 +72,7 @@ It reads the same `state.json` as the app (`DAILY_BRIEF_DIR` works here too), re
 
 ## Ask, nudges and changed decisions
 
-These use your Anthropic key and the same model as extraction (`EXTRACTION_MODEL`). Only stored items go to Claude (text, person, quote, meeting title and date), never transcripts, and nothing is ever sent to anyone.
+These use your Anthropic key and the same model as extraction (`EXTRACTION_MODEL`). Only stored items go to Claude (text, person, quote, meeting title and date), never transcripts, and nothing is ever sent to anyone unless you confirm it (see Nudges on Slack above).
 
 - **Ask** (`/ask`, or ⌘K then type a question and pick *Ask*): Claude answers from up to 40 matching items, found locally with search, and cites them as [1], [2], each linking to the item with its quote. When nothing matches it says "I don't see that in your meetings" without calling Claude. The page shows the estimated and actual cost; about ₹0.5-1.5 a question with the default model.
 - **Nudges**: once a day, after the brief, each thing you're waiting on that is 3+ days overdue gets a short Slack-style nudge draft (Hinglish if the quote was), shown on the item with Copy and Start this. Drafted once per item and kept in `.daily-brief/ai.json`; at most 10 a day, about ₹0.2-0.5 each.

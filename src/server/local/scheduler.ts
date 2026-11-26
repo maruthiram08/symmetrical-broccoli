@@ -10,6 +10,7 @@ import { dataDir } from "./paths";
 import { notifyPrep } from "./prep";
 import { notifyFreshMeetings } from "./fresh";
 import { afterJobs } from "@/server/ai";
+import { pollRepliesLocal } from "@/server/channels/local";
 
 export const TICK_MS = 5 * 60_000;
 export const POLL_EVERY_MS = 30 * 60_000;
@@ -140,6 +141,7 @@ export function startScheduler(): void {
         afterDeliver: async () => {
           await notifyPrep(getStore(), new Date());
           await afterJobs(); // contradiction check on new decisions; nudges once a day after the brief
+          await pollRepliesLocal(); // Telegram "/done 3" replies, when turned on
         },
         afterProcess: () => notifyFreshMeetings(getStore(), new Date()),
       }));
