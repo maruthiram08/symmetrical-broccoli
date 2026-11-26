@@ -3,7 +3,7 @@ import { nextUpcoming, prepFor, prepNotice, type Prep } from "@/lib/wow/prep";
 import type { User } from "@/lib/types";
 import type { AppStore } from "@/server/app-store";
 import { errLine } from "./log";
-import { macNotify } from "./publish";
+import { osNotify } from "./publish";
 
 /** Notify this many minutes (or fewer) before a meeting starts. Ticks are 5 minutes apart. */
 export const PREP_NOTIFY_MIN = 10;
@@ -23,7 +23,7 @@ export async function prepCard(store: Pick<AppStore, "listUsers" | "getUpcoming"
 export async function notifyPrep(
   store: Pick<AppStore, "listUsers" | "getUpcoming" | "listItems" | "markPrepNotified">,
   now: Date,
-  notify: (title: string, body: string) => void = macNotify,
+  notify: (title: string, body: string) => void = osNotify,
 ): Promise<number> {
   let sent = 0;
   try {

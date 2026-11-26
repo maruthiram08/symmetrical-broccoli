@@ -1,6 +1,6 @@
 import type { Item } from "@/lib/types";
 import type { AppStore } from "@/server/app-store";
-import { macNotify } from "./publish";
+import { osNotify } from "./publish";
 
 /** Meetings that started longer ago than this are backfill or a re-read: no notification. */
 export const FRESH_WINDOW_MS = 3 * 60 * 60_000;
@@ -24,7 +24,7 @@ export function freshSummary(items: Pick<Item, "kind">[]): string | null {
 export async function notifyFreshMeetings(
   store: Pick<AppStore, "listUsers" | "listMeetingsBetween" | "listItems" | "markPrepNotified">,
   now: Date,
-  notify: (title: string, body: string) => void = macNotify,
+  notify: (title: string, body: string) => void = osNotify,
 ): Promise<number> {
   let sent = 0;
   try {
