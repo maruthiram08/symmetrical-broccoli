@@ -39,6 +39,12 @@ const SECRET_PATTERNS: Array<[RegExp, string]> = [
   [/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{8,}/gi, "$1 [redacted]"],
   [/\b(access_token|refresh_token|id_token|client_secret|code_verifier|api[_-]?key|x-api-key|authorization)(["']?\s*[:=]\s*["']?)[^\s"'&,}]+/gi, "$1$2[redacted]"],
   [/([?&]code=)[^\s&"']+/g, "$1[redacted]"],
+  [/\bxox[abposr]-[A-Za-z0-9-]{8,}/g, "[redacted]"], // Slack tokens
+  [/hooks\.slack\.com\/services\/[A-Za-z0-9/_-]+/g, "hooks.slack.com/services/[redacted]"],
+  [/\bbot\d{5,}:[A-Za-z0-9_-]{20,}/g, "bot[redacted]"], // Telegram bot token in a URL
+  [/\b\d{6,}:AA[A-Za-z0-9_-]{20,}/g, "[redacted]"], // bare Telegram bot token
+  [/\bre_[A-Za-z0-9_]{16,}/g, "[redacted]"], // Resend keys
+  [/\bEAA[A-Za-z0-9]{20,}/g, "[redacted]"], // Meta (WhatsApp) access tokens
   [/\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{5,}/g, "[redacted]"], // JWTs
 ];
 

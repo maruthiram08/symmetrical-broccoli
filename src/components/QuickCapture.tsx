@@ -168,6 +168,7 @@ export function QuickCapture() {
               {editId ? null : <span className="db-capture__text">{text}</span>}
               {person ? <span className="db-capture__chip">{person}</span> : null}
               {dueDate ? <span className="db-capture__chip db-capture__chip--due">{dayLabel(dueDate)}</span> : null}
+              {!editId && !person.trim() && !dueDate ? <span className="db-capture__chip" title="No person or date: it waits in your Inbox">To Inbox</span> : null}
             </span>
           ) : (
             <span className="db-capture__hint">Names, “today”, “tomorrow”, a weekday or a date are picked up as you type.</span>

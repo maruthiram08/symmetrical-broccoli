@@ -1,4 +1,4 @@
-import type { CalendarCache, Connection, Health, Item, LastLook, Meeting, UpcomingCache, User } from "@/lib/types";
+import type { CalendarCache, Connection, Health, Item, ItemTicket, LastLook, Meeting, UpcomingCache, User } from "@/lib/types";
 import { manualItem, type ManualInput } from "@/lib/capture/items";
 import { applyOps, emptyDirectory, resolveItems, resolveMeeting, resolveUpcoming, undoOps, type ChangeCtx, type Directory, type PeopleChange } from "@/lib/directory/directory";
 
@@ -42,6 +42,8 @@ export interface Store {
   recordMeetingFailure?(meetingId: string, failure: string, at: string): Promise<void>;
   /** Retry: forget failed attempts, so set-aside meetings are read again. Returns how many. */
   resetMeetingFailures?(userId: string): Promise<number>;
+  /** Mark a meeting as a copy of another (same meeting, another recorder): it is closed without a read. Optional. */
+  markMeetingDuplicate?(meetingId: string, duplicateOf: string, at: string): Promise<void>;
   /** What the app last managed to do. Optional: stores without it show no Health section. */
   getHealth?(): Promise<Health>;
   setHealth?(patch: Partial<Health>): Promise<void>;
@@ -89,7 +91,7 @@ export class MemoryStore implements Store {
   async getConnection(userId: string) { return this.connections.get(userId) ?? null; }
   async saveConnection(c: Connection) { this.connections.set(c.userId, c); }
   async upsertMeeting(m: Omit<Meeting, "id" | "processedAt">) {
-    const existing = [...this.meetings.values()].find((x) => x.userId === m.userId && x.providerMeetingId === m.providerMeetingId);
+    const existing = [...this.meetings.values()].find((x) => x.userId === m.userId && x.providerMeetingId === m.providerMeetingId && (x.provider ?? "wispr_flow") === (m.provider ?? "wispr_flow"));
     if (existing) return { meeting: existing, created: false };
     const meeting: Meeting = { ...m, id: this.newId(), processedAt: null };
     this.meetings.set(meeting.id, meeting);
@@ -99,8 +101,13 @@ export class MemoryStore implements Store {
     return [...this.meetings.values()].filter((m) => m.userId === userId && !m.processedAt).sort((a, b) => a.startedAt.localeCompare(b.startedAt));
   }
   async listMeetingsBetween(userId: string, fromIso: string, toIso: string) {
+    // A meeting recorded twice counts once: the copy (duplicateOf) is left out.
     const d = this.people.get(userId);
-    return [...this.meetings.values()].filter((m) => m.userId === userId && m.startedAt >= fromIso && m.startedAt < toIso).map((m) => resolveMeeting(m, d));
+    return [...this.meetings.values()].filter((m) => m.userId === userId && m.startedAt >= fromIso && m.startedAt < toIso && !m.duplicateOf).map((m) => resolveMeeting(m, d));
+  }
+  async markMeetingDuplicate(meetingId: string, duplicateOf: string, at: string) {
+    const m = this.meetings.get(meetingId);
+    if (m && !m.processedAt) Object.assign(m, { duplicateOf, processedAt: at });
   }
   async getMeeting(id: string) {
     const m = this.meetings.get(id);
@@ -138,6 +145,7 @@ export class MemoryStore implements Store {
   async setItemStatus(itemId: string, status: Item["status"], at: string) {
     const it = this.items.get(itemId);
     if (it) Object.assign(it, { status, closedAt: status === "open" ? null : at });
+    if (it?.closeReason) it.closeReason = null; // a reason only explains a ticket's close
   }
   /** Add an item by hand (source "manual"). Not part of Store: only the local app adds them. */
   async addManualItem(userId: string, input: ManualInput, at: string): Promise<Item> {
@@ -151,6 +159,20 @@ export class MemoryStore implements Store {
     if (!it) return null;
     Object.assign(it, patch);
     return it;
+  }
+  /** Attach (or clear) the ticket made from an item. Returns the item, or null when it is gone. */
+  async setItemTicket(itemId: string, ticket: ItemTicket | null): Promise<Item | null> {
+    const it = this.items.get(itemId);
+    if (!it) return null;
+    it.ticket = ticket;
+    return it;
+  }
+  /** Close an open item because its ticket closed ("Closed in Linear"). False when it wasn't open. */
+  async closeItemWithReason(itemId: string, reason: string, at: string): Promise<boolean> {
+    const it = this.items.get(itemId);
+    if (!it || it.status !== "open") return false;
+    Object.assign(it, { status: "done", closedAt: at, closeReason: reason });
+    return true;
   }
   /** Delete an item outright. The app only offers it for manual items; extracted ones are marked Wrong. */
   async deleteItem(itemId: string): Promise<boolean> { return this.items.delete(itemId); }

@@ -2,7 +2,8 @@ import { randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { keychainMode, macKeychain, type Env, type Keychain } from "./keychain";
-import { dataDir } from "./paths";
+import { homeDataDir as dataDir } from "./workspaces";
+// Secrets and settings.env are shared by every workspace: they live in the home folder's .daily-brief/.
 
 /** Non-secret settings the app reads from <data>/settings.env, since it has no .env.local. */
 const SETTINGS = ["EXTRACTION_MODEL", "WISPR_MCP_URL"] as const;

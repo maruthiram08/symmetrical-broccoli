@@ -12,6 +12,11 @@ import "./ask.css";
 import "./calendar.css";
 import "./capture.css";
 import "./names.css";
+import "./workspace.css";
+import "./integrations.css";
+import "./channels.css";
+import "./sources.css";
+import "./review.css";
 import { QuickCapture } from "@/components/QuickCapture";
 import { ItemKeys } from "@/components/ItemKeys";
 
