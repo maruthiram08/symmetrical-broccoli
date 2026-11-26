@@ -7,7 +7,8 @@ import { existsSync } from "node:fs";
 
 const SECURITY = "/usr/bin/security";
 export const KEYCHAIN_SERVICE = "app.dailybrief";
-export type SecretName = "ANTHROPIC_API_KEY" | "TOKEN_ENCRYPTION_KEY";
+/** CHANNEL_* names hold delivery secrets (src/server/channels/secrets.ts), base64url-encoded. */
+export type SecretName = "ANTHROPIC_API_KEY" | "TOKEN_ENCRYPTION_KEY" | `CHANNEL_${string}`;
 
 /** API keys and base64 keys only. Anything else is refused rather than quoted. */
 const SAFE_VALUE = /^[A-Za-z0-9+/=_.-]{8,512}$/;
@@ -16,6 +17,8 @@ export interface Keychain {
   available(): boolean;
   read(name: SecretName): Promise<string | null>;
   write(name: SecretName, value: string): Promise<boolean>;
+  /** Delete the item. Optional: only channel secrets are ever removed. */
+  remove?(name: SecretName): Promise<boolean>;
 }
 
 export const macKeychain: Keychain = {
@@ -41,6 +44,12 @@ export const macKeychain: Keychain = {
       p.stdin.end(`add-generic-password -U -s ${KEYCHAIN_SERVICE} -a ${name} -w ${value}\n`);
     });
     return ok && (await macKeychain.read(name)) === value;
+  },
+
+  remove(name) {
+    return new Promise((resolve) => {
+      execFile(SECURITY, ["delete-generic-password", "-s", KEYCHAIN_SERVICE, "-a", name], { timeout: 15_000 }, (err) => resolve(!err));
+    });
   },
 };
 

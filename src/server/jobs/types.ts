@@ -1,4 +1,4 @@
-import type { BriefModel, ExtractionInput, ExtractionResult, User } from "@/lib/types";
+import type { BriefModel, ExtractionInput, ExtractionResult, Meeting, User } from "@/lib/types";
 import type { Store } from "@/server/store";
 import type { WeekModel } from "@/lib/brief/week";
 import type { WisprClient } from "@/server/wispr/client";
@@ -20,6 +20,8 @@ export interface Deps {
   /** On Fridays `week` carries the weekly recap (week-YYYY-Www.md). */
   publish: (user: User, model: BriefModel, markdown: string, week?: { key: string; markdown: string }) => Promise<{ id: string }>;
   now: () => Date;
+  /** Transcript of a meeting from a local recorder (Granola, Zoom, files). Default: src/server/recorders. */
+  localTranscript?: (meeting: Meeting, user: User) => Promise<string>;
 }
 
 /**
@@ -28,7 +30,7 @@ export interface Deps {
  * Never throws.
  */
 export async function logJobError(
-  deps: Pick<Deps, "store">,
+  deps: { store: Pick<Store, "logEvent"> },
   userId: string | null,
   job: string,
   err: unknown,

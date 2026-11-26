@@ -15,6 +15,7 @@ import { publishLocal } from "./publish";
 import { withTomorrow } from "./calendar";
 import { afterPublish, renderDailyFor, renderDecisionsFor, renderWeekFor } from "./outputs";
 import { currentWorkspace, homeDataDir } from "./workspaces";
+import { publishChannels } from "@/server/channels/local";
 
 /**
  * A random key kept next to the data, used to seal the short-lived OAuth state cookie and the
@@ -82,6 +83,7 @@ export function buildDeps(): Deps {
       const decisions = await renderDecisionsFor(ws, store, model);
       const r = await publishLocal(dir, user, model, markdown, undefined, week, decisions);
       await afterPublish(ws, store, user, model, week);
+      await publishChannels(store, user, model, { recap: !!week }); // email, Slack, Telegram, WhatsApp; never throws
       return r;
     },
     now,
