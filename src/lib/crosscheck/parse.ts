@@ -74,6 +74,13 @@ const cleanOwner = (s: string) => s.replace(/^@/, "").replace(/\s+/g, " ").trim(
 /** Splits an owner off a task line: "Asha: x", "Asha – x", "Asha to x", "Asha will x", "x (Asha)", "x — Owner: Asha". */
 export function splitOwner(line: string): { text: string; owner: string | null } {
   const s = line.trim();
+  // Wispr Flow's own format: "(Maruthi Ram M N V) Present chart alerts…", "(Speaker 1) Share the doc".
+  const lead = s.match(/^\(([^()]{1,60})\)\s+(\S.*)$/);
+  if (lead) {
+    const who = cleanOwner(lead[1]);
+    const unknown = /^(?:speaker|unknown|participant)\s*\d*$/i.test(who) || !/^[\p{Lu}]/u.test(who);
+    return { owner: unknown ? null : who, text: cap(lead[2].trim()) };
+  }
   let m = s.match(/^(?:owner\s*:\s*)?([^:–—]{1,40}?)\s*(?::|\s[–—-]\s)\s*(.+)$/i);
   if (m && nameLike(m[1])) return { owner: cleanOwner(m[1]), text: cap(m[2].trim()) };
   m = s.match(/^([^,;:]{1,40}?)\s+(?:to|will|should|must|needs to|is going to|'ll)\s+(\S.*)$/);

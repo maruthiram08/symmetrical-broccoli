@@ -132,3 +132,24 @@ describe("owner helpers", () => {
     expect(splitOwner("@ravi: hmm")).toEqual({ owner: null, text: "@ravi: hmm" });
   });
 });
+
+describe("Wispr Flow's real summary format", () => {
+  const summary = `### Context
+Some notes.
+
+### Next Steps
+- (Speaker 1) Share the Notion requirement document with the team
+- (Maruthi Ram M N V) Present chart alerts in PBR next week, Monday or Tuesday
+- (Tarun) Align backend on the futures categorization revamp
+
+### Decisions Made
+- Ship the banner as is`;
+  it("reads the owner in parentheses, and leaves Speaker N unknown", () => {
+    const items = parseActionItems(summary);
+    expect(items.map((i) => [i.owner, i.text])).toEqual([
+      [null, "Share the Notion requirement document with the team"],
+      ["Maruthi Ram M N V", "Present chart alerts in PBR next week, Monday or Tuesday"],
+      ["Tarun", "Align backend on the futures categorization revamp"],
+    ]);
+  });
+});
