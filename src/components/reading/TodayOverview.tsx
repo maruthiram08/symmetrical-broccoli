@@ -25,6 +25,7 @@ export function TodayOverview({ items, meetings, ctx, href, extras, after }: {
   const today = localDate(ctx.now, ctx.timeZone);
   const tomorrow = addDays(today, 1);
   const back = comingBack(items, ctx);
+  // "Start with #1" only when today has something to act on: late, on today's brief, or back tomorrow.
   const hint = (i: Item, why: string) => {
     const who = i.person?.split(/\s+/)[0];
     if (why.endsWith("late")) return who ? `Mark done or message ${who}` : "Mark done, or block 30 minutes for it";
@@ -39,7 +40,7 @@ export function TodayOverview({ items, meetings, ctx, href, extras, after }: {
         <CrumbLine crumb={{ page: "Today", group: "Overview" }} />
         <div className="rp-acts">
           <Link className="rp-btn" href="/today">Open daily note</Link>
-          {first[0] ? <Link className="rp-btn rp-btn--pri" href={href(first[0].item.id)} scroll={false}>Start with #1</Link> : null}
+          {first[0] && (s.late.length || s.now.length || s.tomorrow.length) ? <Link className="rp-btn rp-btn--pri" href={href(first[0].item.id)} scroll={false}>Start with #1</Link> : null}
         </div>
       </Bar>
       <div className="rp-dbody">

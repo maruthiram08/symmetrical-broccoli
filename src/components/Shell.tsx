@@ -43,8 +43,8 @@ const LABELS: Record<string, string> = {
   meeting: "Meeting", canvas: "Canvas", tags: "Tags", views: "Views", inbox: "Inbox", search: "Search", settings: "Settings", "note-types": "Note types",
 };
 
-function Nav({ href, on, children, sub }: { href: string; on: boolean; children: ReactNode; sub?: boolean }) {
-  return <Link className={`db-nav rp-ni${sub ? " rp-ni--sub" : ""}`} href={href} aria-current={on ? "page" : undefined}>{children}</Link>;
+function Nav({ href, on, children, sub, tip }: { href: string; on: boolean; children: ReactNode; sub?: boolean; tip?: string }) {
+  return <Link className={`db-nav rp-ni${sub ? " rp-ni--sub" : ""}`} href={href} aria-current={on ? "page" : undefined} title={tip}>{children}</Link>;
 }
 
 async function Sidebar({ current, footer, query }: { current: string; footer?: ReactNode; query?: string }) {
@@ -59,10 +59,10 @@ async function Sidebar({ current, footer, query }: { current: string; footer?: R
         <input id="db-search" className="db-search__input" type="search" name="q" defaultValue={query} placeholder="Search" aria-label="Search everything" autoComplete="off" />
         <span className="rp-kbd" aria-hidden="true">⌘K</span>
       </form>
-      <Nav href="/" on={is("today", "wrap", "week")}>{ICONS.today}<span>Today</span>{c.late ? <span className="rp-ni__c rp-ni__c--late">{c.late} late</span> : null}</Nav>
-      <Nav href="/open" on={is("open", "item")}>{ICONS.open}<span>All open</span>{c.open ? <span className="rp-ni__c">{c.open}</span> : null}</Nav>
-      <Nav href="/people" on={is("people")}>{ICONS.people}<span>People</span></Nav>
-      <Nav href="/projects" on={is("projects")}>{ICONS.projects}<span>Projects</span>{c.projects ? <span className="rp-ni__c">{c.projects}</span> : null}</Nav>
+      <Nav tip="Today" href="/" on={is("today", "wrap", "week")}>{ICONS.today}<span>Today</span>{c.late ? <span className="rp-ni__c rp-ni__c--late">{c.late} late</span> : null}</Nav>
+      <Nav tip="All open" href="/open" on={is("open", "item")}>{ICONS.open}<span>All open</span>{c.open ? <span className="rp-ni__c">{c.open}</span> : null}</Nav>
+      <Nav tip="People" href="/people" on={is("people")}>{ICONS.people}<span>People</span></Nav>
+      <Nav tip="Projects" href="/projects" on={is("projects")}>{ICONS.projects}<span>Projects</span>{c.projects ? <span className="rp-ni__c">{c.projects}</span> : null}</Nav>
       <InboxLink current={current} />
       <div className="rp-sh">Library</div>
       <Nav href="/day" on={is("day") || /^\d{4}-\d{2}-\d{2}$/.test(current)}><span>Daily briefs</span></Nav>

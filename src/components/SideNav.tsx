@@ -12,8 +12,11 @@ export function SideNav({ brand, children, foot }: { brand: ReactNode; children:
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    // Over the page (the icon rail on mid-size windows): a click outside closes it.
+    const onDown = (e: PointerEvent) => { if (!(e.target as HTMLElement | null)?.closest(".db-side")) setOpen(false); };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener("pointerdown", onDown);
+    return () => { window.removeEventListener("keydown", onKey); window.removeEventListener("pointerdown", onDown); };
   }, [open]);
 
   const onClick = (e: MouseEvent) => { if ((e.target as HTMLElement).closest("a")) setOpen(false); };
