@@ -2,6 +2,9 @@
   "name": "daily-brief",
   "version": "0.1.0",
   "private": true,
+  "bin": {
+    "daily-brief": "bin/daily-brief"
+  },
   "scripts": {
     "dev": "next dev -H 127.0.0.1 -p 4242",
     "build": "next build",
@@ -18,7 +21,9 @@
     "mac:build": "zsh scripts/mac-build.sh",
     "tauri": "tauri",
     "mcp": "tsx src/mcp/server.ts",
-    "mcp:install": "zsh scripts/install-mcp.sh"
+    "mcp:install": "zsh scripts/install-mcp.sh",
+    "cli": "tsx src/cli/main.ts",
+    "cli:install": "sh scripts/install-cli.sh"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.71.0",

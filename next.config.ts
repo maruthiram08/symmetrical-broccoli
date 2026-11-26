@@ -21,6 +21,8 @@ const nextConfig: NextConfig = {
   outputFileTracingRoot: root,
   // Loaded at send time by src/server/channels/senders.ts; kept external so the standalone build ships it.
   serverExternalPackages: ["nodemailer"],
+  // Settings > Other recorders uploads transcripts (.docx) through a server action: allow up to 10 MB.
+  experimental: { serverActions: { bodySizeLimit: "10mb" } },
   env: {
     DAILY_BRIEF_VERSION: (JSON.parse(readFileSync(join(root, "package.json"), "utf8")) as { version: string }).version,
     DAILY_BRIEF_COMMIT: gitCommit(),

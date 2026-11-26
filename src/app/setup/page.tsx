@@ -12,17 +12,19 @@ import { formatBytes, summarizeHealth } from "@/server/local/health";
 import { formatTime, localDate } from "@/lib/brief/time";
 import { ChannelHealthRows, ChannelSettings } from "@/components/channels/ChannelSettings";
 import { BRIEF_TIMES, formatBriefTime, timeZones, todayIn } from "../_lib/time";
+import { SourcesSection } from "@/components/SourcesSection";
+import { sourceStatuses } from "@/server/recorders/status";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Setup" };
 
-export default async function Setup({ searchParams }: { searchParams: Promise<{ error?: string; pull?: string; shared?: string; ch?: string; saved?: string; test?: string; err?: string; removed?: string }> }) {
+export default async function Setup({ searchParams }: { searchParams: Promise<{ error?: string; pull?: string; shared?: string; upload?: string; source?: string; which?: string; ch?: string; saved?: string; test?: string; err?: string; removed?: string }> }) {
   const user = await me();
   const conn = user ? await getStore().getConnection(user.id) : null;
   // First run happens on /welcome; Settings is for changing things afterwards.
   if (!user || !conn) redirect("/welcome");
   const connected = conn?.status === "active";
-  const { error, pull, shared, ...flash } = await searchParams;
+  const { error, pull, shared, upload, source, which, ...flash } = await searchParams;
   const pulling = pullState()?.running ?? false;
   const tz = user?.timeZone ?? "Asia/Kolkata";
   const today = todayIn(tz);
@@ -137,6 +139,7 @@ export default async function Setup({ searchParams }: { searchParams: Promise<{ 
           ) : null}
         </section>
       ) : null}
+      <SourcesSection statuses={sourceStatuses(user, [...getStore().meetings.values()].filter((m) => m.userId === user.id), new Date())} flash={{ upload, source, which }} />
       {connected ? (
         <form action={rereadAllMeetings} className="db-stack db-subsection">
           <h2 className="db-section__title">Re-read all meetings in order</h2>
