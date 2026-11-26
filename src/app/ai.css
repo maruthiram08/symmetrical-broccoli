@@ -102,3 +102,5 @@
   .at__menu-sum{cursor:pointer;margin:0}
   .at__menu[open] .at__menu-sum{margin-bottom:var(--space-2)}
 }
+/* On wide screens the results table steps out of the narrow page column, centred, so 3 models fit side by side. */
+@media (min-width:1000px){.cmp__scroll{--cmp-w:min(1040px,calc(100vw - 64px));width:var(--cmp-w);max-width:none;margin-left:calc((100% - var(--cmp-w)) / 2)}}
