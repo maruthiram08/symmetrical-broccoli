@@ -1,10 +1,14 @@
-// Daily brief for macOS: a small shell around the local Next.js server.
+// Daily brief for macOS, Windows and Linux: a small shell around the local Next.js server.
 //
 // On start it reuses a Daily brief server already on 127.0.0.1:4242 (say, the old launchd agent
 // or `npm start`). Otherwise it starts the bundled Next standalone server with the system Node.
 // The window shows a starting page until /api/health answers. A watchdog keeps checking: if the
 // server goes away (ours crashed, or the reused one was stopped), it starts ours again.
-// Closing the window hides it to the menu bar.
+// Closing the window hides it to the menu bar (the tray on Windows and Linux), whose title shows
+// how many things you owe today ("3"), refreshed every minute from /api/widget.
+
+// No console window next to the app on Windows.
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use std::fs::OpenOptions;
 use std::io::{Read, Write};
@@ -106,22 +110,80 @@ fn node_version(node: &Path) -> Option<(u32, u32)> {
     Some((it.next()?.parse().ok()?, it.next()?.parse().ok()?))
 }
 
-/// Apps opened from Finder get a bare PATH, so look in the usual places, then ask a login shell.
-fn find_node() -> Option<PathBuf> {
-    let mut candidates: Vec<PathBuf> = vec![
-        "/opt/homebrew/bin/node".into(),
-        "/usr/local/bin/node".into(),
-    ];
-    if let Ok(out) = Command::new("/bin/zsh")
-        .args(["-lc", "command -v node"])
-        .stdin(Stdio::null())
-        .stderr(Stdio::null())
-        .output()
-    {
-        let p = String::from_utf8_lossy(&out.stdout).trim().to_string();
-        if p.starts_with('/') {
-            candidates.push(p.into());
+fn home() -> PathBuf {
+    std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" })
+        .map(PathBuf::from)
+        .unwrap_or_else(std::env::temp_dir)
+}
+
+/// Where Node usually lives on this system, before asking the shell.
+fn node_candidates() -> Vec<PathBuf> {
+    let mut c: Vec<PathBuf> = Vec::new();
+    if cfg!(target_os = "macos") {
+        c.push("/opt/homebrew/bin/node".into());
+        c.push("/usr/local/bin/node".into());
+    } else if cfg!(windows) {
+        for var in ["ProgramFiles", "ProgramW6432", "ProgramFiles(x86)"] {
+            if let Some(p) = std::env::var_os(var) {
+                c.push(PathBuf::from(p).join("nodejs").join("node.exe"));
+            }
         }
+        if let Some(p) = std::env::var_os("NVM_SYMLINK") {
+            c.push(PathBuf::from(p).join("node.exe"));
+        }
+        if let Some(p) = std::env::var_os("LOCALAPPDATA") {
+            c.push(PathBuf::from(p).join("Volta").join("bin").join("node.exe"));
+        }
+    } else {
+        c.push("/usr/bin/node".into());
+        c.push("/usr/local/bin/node".into());
+        c.push(home().join(".volta/bin/node"));
+        c.push(home().join(".local/bin/node"));
+        c.push("/snap/bin/node".into());
+    }
+    c
+}
+
+/// Asks the user's shell where node is: apps opened from Finder or a desktop launcher get a bare
+/// PATH, and nvm/fnm only set it up in a login shell. On Windows, `where node`.
+fn node_from_shell() -> Option<PathBuf> {
+    #[cfg(windows)]
+    let out = {
+        use std::os::windows::process::CommandExt;
+        Command::new("where")
+            .arg("node")
+            .creation_flags(CREATE_NO_WINDOW)
+            .stdin(Stdio::null())
+            .stderr(Stdio::null())
+            .output()
+            .ok()?
+    };
+    #[cfg(not(windows))]
+    let out = {
+        let shell = std::env::var("SHELL").unwrap_or_else(|_| {
+            if cfg!(target_os = "macos") {
+                "/bin/zsh".into()
+            } else {
+                "/bin/sh".into()
+            }
+        });
+        Command::new(shell)
+            .args(["-lc", "command -v node"])
+            .stdin(Stdio::null())
+            .stderr(Stdio::null())
+            .output()
+            .ok()?
+    };
+    let text = String::from_utf8_lossy(&out.stdout);
+    let p = text.lines().next()?.trim();
+    let path = PathBuf::from(p);
+    path.is_absolute().then_some(path)
+}
+
+fn find_node() -> Option<PathBuf> {
+    let mut candidates = node_candidates();
+    if let Some(p) = node_from_shell() {
+        candidates.push(p);
     }
     // Next 15 needs Node 18.18 or later.
     candidates.into_iter().filter(|p| p.is_file()).find(|p| {
@@ -129,11 +191,37 @@ fn find_node() -> Option<PathBuf> {
     })
 }
 
+/// How to get Node, for the error page.
+fn node_hint() -> &'static str {
+    if cfg!(target_os = "macos") {
+        "No Node.js 18.18 or later was found in /opt/homebrew/bin, /usr/local/bin or your shell's PATH. Install it (brew install node), then open the app again."
+    } else if cfg!(windows) {
+        "No Node.js 18.18 or later was found in Program Files or your PATH. Install the LTS from nodejs.org (or winget install OpenJS.NodeJS.LTS), then open the app again."
+    } else {
+        "No Node.js 18.18 or later was found in /usr/bin, /usr/local/bin or your shell's PATH. Install it (your package manager, nvm, or nodejs.org), then open the app again."
+    }
+}
+
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+/// The server's log. The same places as src/server/local/log.ts (and passed to it as DAILY_BRIEF_LOG).
 fn log_path() -> PathBuf {
-    let home = std::env::var_os("HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("/tmp"));
-    home.join("Library/Logs/daily-brief.log")
+    if cfg!(target_os = "macos") {
+        home().join("Library/Logs/daily-brief.log")
+    } else if cfg!(windows) {
+        std::env::var_os("LOCALAPPDATA")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| home().join("AppData").join("Local"))
+            .join("Daily Brief")
+            .join("daily-brief.log")
+    } else {
+        std::env::var_os("XDG_STATE_HOME")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| home().join(".local/state"))
+            .join("daily-brief")
+            .join("daily-brief.log")
+    }
 }
 
 fn spawn_server(app: &AppHandle, node: &Path) -> Result<Child, String> {
@@ -145,7 +233,7 @@ fn spawn_server(app: &AppHandle, node: &Path) -> Result<Child, String> {
     let script = dir.join("server.js");
     if !script.is_file() {
         return Err(format!(
-            "The server is missing from the app ({}). Rebuild it with npm run mac:build.",
+            "The server is missing from the app ({}). Rebuild the app (see the README).",
             script.display()
         ));
     }
@@ -159,15 +247,22 @@ fn spawn_server(app: &AppHandle, node: &Path) -> Result<Child, String> {
         .open(&log)
         .map_err(|e| format!("Couldn't open {}: {e}", log.display()))?;
     let err = out.try_clone().map_err(|e| e.to_string())?;
-    Command::new(node)
-        .arg(&script)
+    let mut cmd = Command::new(node);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    cmd.arg(&script)
         .current_dir(&dir)
         .env("PORT", PORT.to_string())
         .env("HOSTNAME", "127.0.0.1")
         .env("NODE_ENV", "production")
         .env("NEXT_TELEMETRY_DISABLED", "1")
         .env("APP_URL", APP_URL)
-        // Secrets come from the macOS Keychain (see src/server/local/secrets.ts), never from here.
+        .env("DAILY_BRIEF_LOG", &log)
+        // Secrets come from the system's secret store (macOS Keychain, Windows Credential Manager,
+        // the Linux keyring; see src/server/local/keychain.ts), never from here.
         .env("DAILY_BRIEF_KEYCHAIN", "1")
         .stdin(Stdio::null())
         .stdout(Stdio::from(out))
@@ -202,7 +297,7 @@ fn ensure_server(app: &AppHandle) -> Result<(), (String, String)> {
     let node = find_node().ok_or_else(|| {
         (
             "Daily brief needs Node.js".to_string(),
-            "No Node.js 18.18 or later was found in /opt/homebrew/bin, /usr/local/bin or your shell's PATH. Install it (brew install node), then open the app again.".to_string(),
+            node_hint().to_string(),
         )
     })?;
     let child =
@@ -230,10 +325,15 @@ fn stop_server(app: &AppHandle) {
     let Some(mut child) = state.child.lock().unwrap().take() else {
         return;
     };
-    // SIGTERM first so the server can finish writing state.json; SIGKILL after 5 s.
-    let _ = Command::new("/bin/kill")
+    // SIGTERM first so the server can finish writing state.json; SIGKILL after 5 s. Windows has no
+    // SIGTERM for a console process, so it is stopped at once (state.json is written by rename,
+    // so a stop never leaves half a file).
+    #[cfg(unix)]
+    let _ = Command::new("kill")
         .args(["-TERM", &child.id().to_string()])
         .status();
+    #[cfg(windows)]
+    let _ = child.kill();
     let start = Instant::now();
     while start.elapsed() < Duration::from_secs(5) {
         if matches!(child.try_wait(), Ok(Some(_))) {
@@ -259,7 +359,22 @@ fn percent_encode(s: &str) -> String {
 }
 
 fn open_in_browser(url: &str) {
+    // Only ever our own http(s) URLs or ones a page opened; never passed through a shell.
+    if !(url.starts_with("http://") || url.starts_with("https://")) {
+        return;
+    }
+    #[cfg(target_os = "macos")]
     let _ = Command::new("/usr/bin/open").arg(url).spawn();
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        let _ = Command::new("rundll32")
+            .args(["url.dll,FileProtocolHandler", url])
+            .creation_flags(CREATE_NO_WINDOW)
+            .spawn();
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let _ = Command::new("xdg-open").arg(url).spawn();
 }
 
 fn show_window(app: &AppHandle) {
@@ -378,6 +493,7 @@ fn start(app: AppHandle, start_hidden: bool) {
         let mut down_since: Option<Instant> = None;
         let mut first = true;
         let mut last_error: Option<(String, String)> = None;
+        let mut ticks: u32 = 0;
         loop {
             let state = app.state::<Server>();
             if state.quitting.load(Ordering::SeqCst) {
@@ -387,6 +503,10 @@ fn start(app: AppHandle, start_hidden: bool) {
             if matches!(port, Port::DailyBrief) {
                 down_since = None;
                 set_page(&app, &Page::App);
+                if ticks.is_multiple_of(COUNT_EVERY) {
+                    update_count(&app);
+                }
+                ticks = ticks.wrapping_add(1);
             } else {
                 let since = *down_since.get_or_insert_with(Instant::now);
                 let (ours, ours_alive) = {
@@ -467,6 +587,39 @@ fn start(app: AppHandle, start_hidden: bool) {
     });
 }
 
+// ---------- menu bar count ----------
+
+/// What the tray shows: ("3", "3 you owe today · 1 overdue"), from /api/widget's JSON body.
+/// The body may come chunked, so the JSON is taken from the first '{' to the last '}'.
+fn parse_widget(response: &str) -> Option<(String, String)> {
+    let body = response.split_once("\r\n\r\n")?.1;
+    let json = &body[body.find('{')?..=body.rfind('}')?];
+    let v: serde_json::Value = serde_json::from_str(json).ok()?;
+    let title = v.get("title")?.as_str()?.to_string();
+    let text = v.get("text")?.as_str()?.to_string();
+    Some((title, text))
+}
+
+const COUNT_EVERY: u32 = 20; // watchdog ticks of 3 s: once a minute
+
+/// Puts the count in the menu bar title (macOS; the label on Linux) and the line in the tooltip.
+fn update_count(app: &AppHandle) {
+    let Some(tray) = app.tray_by_id("tray") else {
+        return;
+    };
+    match http("GET", "/api/widget", Duration::from_secs(10)) {
+        Ok((200, resp)) => {
+            if let Some((title, text)) = parse_widget(&resp) {
+                let _ = tray.set_title((!title.is_empty()).then_some(title.as_str()));
+                let _ = tray.set_tooltip(Some(format!("Daily brief: {text}").as_str()));
+            }
+        }
+        _ => {
+            let _ = tray.set_title(None::<&str>);
+        }
+    }
+}
+
 // ---------- menu bar ----------
 
 fn check_meetings_now() {
@@ -538,7 +691,14 @@ fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
             "open" => show_window(app),
             "quick" => quick_add(app),
             "browser" => open_in_browser(APP_URL),
-            "check" => check_meetings_now(),
+            "check" => {
+                check_meetings_now();
+                let app = app.clone();
+                thread::spawn(move || {
+                    thread::sleep(Duration::from_secs(20));
+                    update_count(&app);
+                });
+            }
             "login" => {
                 let al = app.autolaunch();
                 let res = if al.is_enabled().unwrap_or(false) {
@@ -562,7 +722,8 @@ fn main() {
     let start_hidden = std::env::args().any(|a| a == HIDDEN_ARG);
     let app = tauri::Builder::default()
         .plugin(
-            // A per-user LaunchAgent (the plugin's default on macOS), toggled from the menu bar.
+            // Launch at login, toggled from the menu bar: a per-user LaunchAgent on macOS, the Run
+            // registry key on Windows, an XDG autostart .desktop file on Linux.
             tauri_plugin_autostart::Builder::new()
                 .args([HIDDEN_ARG])
                 .build(),
@@ -597,4 +758,30 @@ fn main() {
         }
         _ => {}
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reads_the_count_from_a_plain_or_chunked_response() {
+        let plain = "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\n\r\n{\"text\":\"3 you owe today · 1 overdue\",\"owe\":3,\"title\":\"3\"}";
+        assert_eq!(
+            parse_widget(plain),
+            Some(("3".into(), "3 you owe today · 1 overdue".into()))
+        );
+        let chunked = "HTTP/1.1 200 OK\r\ntransfer-encoding: chunked\r\n\r\n3a\r\n{\"text\":\"Nothing owed today\",\"title\":\"\"}\r\n0\r\n\r\n";
+        assert_eq!(
+            parse_widget(chunked),
+            Some(("".into(), "Nothing owed today".into()))
+        );
+        assert_eq!(parse_widget("HTTP/1.1 500 x\r\n\r\noops"), None);
+    }
+
+    #[test]
+    fn logs_where_the_server_does() {
+        let p = log_path();
+        assert!(p.ends_with("daily-brief.log"));
+    }
 }

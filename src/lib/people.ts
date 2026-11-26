@@ -2,6 +2,7 @@
 // Pure functions; the pages load items and meetings and pass them in.
 
 import type { Item, Meeting } from "@/lib/types";
+import type { Person } from "@/lib/directory/directory";
 
 /** "  Nitin  K. " -> "nitin k". Lowercase, punctuation to spaces, collapsed. */
 export function normalizeName(name: string): string {
@@ -40,6 +41,8 @@ export interface PersonGroup {
   keys: string[];
   /** Every spelling seen, as written, most used first. */
   spellings: string[];
+  /** The directory person this group is, when confirmed. */
+  personId?: string;
 }
 
 /**
@@ -47,7 +50,7 @@ export interface PersonGroup {
  * ("Nitin") joins a longer one ("Nitin K") only when exactly one person has that first name.
  * Names in `exclude` (the user and their aliases) are left out.
  */
-export function groupNames(names: Iterable<string>, exclude: Iterable<string> = []): PersonGroup[] {
+export function groupNames(names: Iterable<string>, exclude: Iterable<string> = [], people: Person[] = []): PersonGroup[] {
   const skip = new Set([...exclude].map(normalizeName).filter(Boolean));
   const spellings = new Map<string, Map<string, number>>(); // key -> raw spelling -> count
   for (const raw of names) {
@@ -58,6 +61,19 @@ export function groupNames(names: Iterable<string>, exclude: Iterable<string> = 
     m.set(shown, (m.get(shown) ?? 0) + 1);
     spellings.set(key, m);
   }
+
+  // Confirmed people are fixed groups: their name and aliases, never merged with anyone by guess.
+  const fixed: PersonGroup[] = [];
+  const taken = new Set<string>();
+  for (const p of people) {
+    if (p.status !== "confirmed") continue;
+    const ks = [...new Set([p.name, ...p.aliases].map(normalizeName).filter((k) => k && !skip.has(k) && !taken.has(k)))];
+    if (!ks.length) continue;
+    ks.forEach((k) => taken.add(k));
+    const seen = ks.flatMap((k) => [...(spellings.get(k)?.keys() ?? [])]);
+    fixed.push({ name: p.name, slug: personSlug(p.name), keys: ks.sort(), spellings: [...new Set([p.name, ...seen, ...p.aliases])], personId: p.id });
+  }
+  for (const k of taken) spellings.delete(k);
 
   // Union-find over multi-word keys, then attach single words.
   const keys = [...spellings.keys()];
@@ -77,7 +93,7 @@ export function groupNames(names: Iterable<string>, exclude: Iterable<string> = 
   const clusters = new Map<string, string[]>();
   for (const k of keys) clusters.set(find(k), [...(clusters.get(find(k)) ?? []), k]);
 
-  return [...clusters.values()].map((ks) => {
+  return [...fixed, ...[...clusters.values()].map((ks) => {
     const counts = new Map<string, number>();
     for (const k of ks) for (const [s, n] of spellings.get(k)!) counts.set(s, (counts.get(s) ?? 0) + n);
     // A capitalised spelling wins over a more common lowercase one ("Nitin" over "nitin").
@@ -85,7 +101,7 @@ export function groupNames(names: Iterable<string>, exclude: Iterable<string> = 
       capitalised(b[0]) - capitalised(a[0]) || b[1] - a[1] || b[0].length - a[0].length || a[0].localeCompare(b[0]));
     const name = ranked[0][0];
     return { name, slug: personSlug(name), keys: ks.sort(), spellings: ranked.map(([x]) => x) };
-  });
+  })];
 }
 
 const capitalised = (s: string) => (s[0] && s[0] !== s[0].toLowerCase() ? 1 : 0);
@@ -101,6 +117,16 @@ export function belongsTo(group: PersonGroup, raw: string | null | undefined): b
   return group.keys.some((k) => tokens(k).length > 1 && t.length > 1 && compatible(tokens(k), t));
 }
 
+/**
+ * Is this item theirs? With a directory, a resolved item belongs only to its person and an
+ * unresolved one only to a group that isn't a confirmed person (or matches its keys exactly).
+ * Without one this is belongsTo on the item's person.
+ */
+export function ownsItem(group: PersonGroup, i: Pick<Item, "person" | "personId">): boolean {
+  if (group.personId) return i.personId === group.personId || (!i.personId && !!i.person && group.keys.includes(normalizeName(i.person)));
+  return !i.personId && belongsTo(group, i.person);
+}
+
 export interface PersonSummary {
   name: string;
   slug: string;
@@ -113,6 +139,11 @@ export interface PersonSummary {
   /** Start of the latest meeting they were in, ISO, or null. */
   lastMeetingAt: string | null;
   meetingCount: number;
+  /** Latest of their last meeting and their newest item, ISO, or null. */
+  lastSeenAt: string | null;
+  /** In the people directory as a confirmed person. False: a name nobody has checked yet. */
+  confirmed: boolean;
+  personId?: string;
 }
 
 export interface PeopleInput {
@@ -121,13 +152,15 @@ export interface PeopleInput {
   now: Date;
   /** The user's own name and aliases, never listed as a person. */
   self?: string[];
+  /** The people directory: confirmed people group by their aliases and are never merged by guess. */
+  people?: Person[];
 }
 
 const live = (i: Item) => i.status !== "wrong";
 
 /** Everyone named on an item, busiest first (open items, then most recent meeting). */
-export function listPeople({ items, meetings, now, self = [] }: PeopleInput): PersonSummary[] {
-  const groups = groupNames(items.filter(live).map((i) => i.person ?? "").filter(Boolean), self);
+export function listPeople({ items, meetings, now, self = [], people = [] }: PeopleInput): PersonSummary[] {
+  const groups = groupNames(items.filter(live).map((i) => i.person ?? "").filter(Boolean), self, people);
   return groups
     .map((g) => summarize(g, items, meetings, now))
     .sort((a, b) =>
@@ -137,17 +170,22 @@ export function listPeople({ items, meetings, now, self = [] }: PeopleInput): Pe
 }
 
 function summarize(g: PersonGroup, items: Item[], meetings: Meeting[], now: Date): PersonSummary {
-  const mine = items.filter((i) => live(i) && belongsTo(g, i.person));
+  const mine = items.filter((i) => live(i) && ownsItem(g, i));
   const open = mine.filter((i) => i.status === "open");
   const met = meetingsWith(g, mine, meetings);
+  const newest = mine.reduce((a, i) => (i.createdAt > a ? i.createdAt : a), "");
+  const lastMeetingAt = met[0]?.startedAt ?? null;
   return {
     name: g.name,
     slug: g.slug,
     youOwe: open.filter((i) => i.kind === "owe").length,
     theyOwe: open.filter((i) => i.kind === "waiting").length,
     overdue: open.filter((i) => i.kind !== "decision" && i.dueAt && Date.parse(i.dueAt) < now.getTime()).length,
-    lastMeetingAt: met[0]?.startedAt ?? null,
+    lastMeetingAt,
     meetingCount: met.length,
+    lastSeenAt: [lastMeetingAt ?? "", newest].sort().pop() || null,
+    confirmed: !!g.personId,
+    ...(g.personId ? { personId: g.personId } : {}),
   };
 }
 
@@ -163,7 +201,7 @@ function meetingsWith(g: PersonGroup, theirItems: Item[], meetings: Meeting[]): 
 export function findPerson(slug: string, input: PeopleInput): PersonGroup | null {
   const want = personSlug(decodeURIComponent(slug));
   if (!want) return null;
-  const groups = groupNames(input.items.filter(live).map((i) => i.person ?? "").filter(Boolean), input.self ?? []);
+  const groups = groupNames(input.items.filter(live).map((i) => i.person ?? "").filter(Boolean), input.self ?? [], input.people ?? []);
   return groups.find((g) => g.slug === want) ?? groups.find((g) => g.keys.some((k) => personSlug(k) === want)) ?? null;
 }
 
@@ -187,7 +225,7 @@ export function personDetail(slug: string, input: PeopleInput, recentDays = 30):
   const { items, meetings, now } = input;
   const byId = new Map(meetings.map((m) => [m.id, m]));
   const started = (i: Item) => byId.get(i.meetingId)?.startedAt ?? i.createdAt;
-  const mine = items.filter((i) => live(i) && belongsTo(g, i.person));
+  const mine = items.filter((i) => live(i) && ownsItem(g, i));
   const met = meetingsWith(g, mine, meetings);
   const metIds = new Set(met.map((m) => m.id));
   const since = now.getTime() - recentDays * 86400000;
@@ -201,7 +239,7 @@ export function personDetail(slug: string, input: PeopleInput, recentDays = 30):
       .filter((i) => i.status === "done" && i.closedAt && Date.parse(i.closedAt) >= since)
       .sort((a, b) => (b.closedAt ?? "").localeCompare(a.closedAt ?? "")),
     decisions: items
-      .filter((i) => i.kind === "decision" && live(i) && (metIds.has(i.meetingId) || belongsTo(g, i.person)))
+      .filter((i) => i.kind === "decision" && live(i) && (metIds.has(i.meetingId) || ownsItem(g, i)))
       .sort((a, b) => started(b).localeCompare(started(a))),
     meetings: met,
   };
@@ -211,4 +249,10 @@ export function personDetail(slug: string, input: PeopleInput, recentDays = 30):
 export function initials(name: string): string {
   const w = name.split(/\s+/).filter(Boolean);
   return ((w[0]?.[0] ?? "") + (w.length > 1 ? w[w.length - 1][0] : "")).toUpperCase();
+}
+
+/** Has something open, or was seen in the last `days`: shown on People without "Show everyone". */
+export function isActive(p: PersonSummary, now: Date, days = 30): boolean {
+  if (p.youOwe || p.theyOwe) return true;
+  return !!p.lastSeenAt && Date.parse(p.lastSeenAt) >= now.getTime() - days * 86400000;
 }

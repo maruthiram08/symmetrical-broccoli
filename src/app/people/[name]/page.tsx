@@ -5,8 +5,9 @@ import { BriefItem, ClosedItem, Section } from "@/components/BriefList";
 import { Mark } from "@/components/Mark";
 import { Shell } from "@/components/Shell";
 import { Backlinks } from "@/components/Backlinks";
-import { initials, normalizeName, personDetail } from "@/lib/people";
-import { me } from "@/server/local/app";
+import { initials, listPeople, normalizeName, ownsItem, personDetail } from "@/lib/people";
+import { getStore, me } from "@/server/local/app";
+import { PersonManage, type ManageTarget } from "@/components/PersonManage";
 import { localDate } from "@/lib/brief/time";
 import { isSnoozed, starredFirst } from "@/lib/capture/items";
 import { pastDays } from "../../_lib/days";
@@ -21,13 +22,15 @@ export async function generateMetadata({ params }: { params: Promise<{ name: str
 }
 
 // One person: what you owe them, what they owe you, what closed, what was decided with them, and when you met.
-export default async function Person({ params }: { params: Promise<{ name: string }> }) {
+export default async function Person({ params, searchParams }: { params: Promise<{ name: string }>; searchParams: Promise<{ merged?: string }> }) {
   const { name } = await params;
+  const { merged } = await searchParams;
   const user = await me();
   if (!user) redirect("/setup");
   const now = new Date();
-  const { items, meetings } = await loadAll(user);
-  const found = personDetail(name, { items, meetings, now, self: [user.name, ...user.aliases] });
+  const { items, meetings, people } = await loadAll(user);
+  const input = { items, meetings, now, self: [user.name, ...user.aliases], people };
+  const found = personDetail(name, input);
   if (!found) notFound();
   // Snoozed items wait for their day; starred ones go first.
   const today = localDate(now, user.timeZone);
@@ -41,6 +44,17 @@ export default async function Person({ params }: { params: Promise<{ name: strin
   const back = `/people/${d.person.slug}`;
   const s = d.summary;
   const openCount = items.filter((i) => i.status === "open" && i.kind !== "decision").length;
+  const me_ = d.person.personId ? people.find((p) => p.id === d.person.personId) : undefined;
+  // Merge and split targets: everyone else on People.
+  const targets: ManageTarget[] = listPeople(input)
+    .filter((p) => p.slug !== d.person.slug)
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map((p) => p.personId
+      ? { value: `p:${p.personId}`, label: p.name, slug: p.slug, ref: { personId: p.personId } }
+      : { value: `n:${p.slug}`, label: `${p.name} (not checked)`, slug: p.slug, ref: { name: p.name } });
+  // Split works on every item that names them, open ones first.
+  const theirItems = items.filter((i) => i.status !== "wrong" && ownsItem(d.person, i)).sort((a, b) => Number(b.status === "open") - Number(a.status === "open"));
+  const undo = merged ? (await getStore().listPeopleChanges(user.id)).find((c) => c.id === merged && !c.undone) : undefined;
   const n = (k: number, one: string, many = one + "s") => `${k} ${k === 1 ? one : many}`;
   const facts = [
     s.youOwe ? `You owe ${n(s.youOwe, "thing")}` : null,
@@ -59,7 +73,14 @@ export default async function Person({ params }: { params: Promise<{ name: strin
       <p className="db-subtitle">
         {facts || "Nothing open."}
         {aka.length ? <span className="db-person-aka"> · Also written {aka.join(", ")}</span> : null}
+        {me_?.email ? <span className="db-person-aka"> · {me_.email}</span> : null}
       </p>
+      {me_?.note ? <p className="nr-note">{me_.note}</p> : null}
+      {!d.person.personId ? (
+        <p className="nr-unchecked">
+          <span className="nr-check">check</span> This name hasn’t been checked. Is it right? <Link className="db-link" href="/people/review">Check names</Link>
+        </p>
+      ) : null}
 
       <Section title="You owe" count={d.youOwe.length ? String(d.youOwe.length) : undefined} empty={`Nothing owed to ${d.person.name}.`}>
         {d.youOwe.map((i) => <BriefItem key={i.id} line={toLine(i, byId, user, now)} back={back} />)}
@@ -97,6 +118,17 @@ export default async function Person({ params }: { params: Promise<{ name: strin
           ))}
         </ul> : null}
       </Section>
+      <PersonManage
+        key={`${d.person.slug}:${merged ?? ""}`}
+        self={d.person.personId ? { personId: d.person.personId } : { name: d.person.name, spellings: d.person.spellings }}
+        name={d.person.name}
+        personId={d.person.personId}
+        email={me_?.email ?? null}
+        note={me_?.note ?? null}
+        items={theirItems.map((i) => ({ id: i.id, text: i.text, kind: i.kind, status: i.status }))}
+        targets={targets}
+        undo={undo ? { changeId: undo.id, label: undo.label } : null}
+      />
       <Backlinks person={d.person} />
     </Shell>
   );

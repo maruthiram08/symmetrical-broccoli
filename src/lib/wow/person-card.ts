@@ -1,6 +1,6 @@
 // Person hover card and "who's waiting on you". Pure; reuses People's name matching.
 
-import { belongsTo, findPerson, groupNames, type PeopleInput } from "@/lib/people";
+import { belongsTo, findPerson, groupNames, ownsItem, type PeopleInput } from "@/lib/people";
 import type { Item, Meeting } from "@/lib/types";
 
 export interface PersonCardItem {
@@ -31,7 +31,7 @@ export function personCard(slug: string, input: PeopleInput, max = 3): PersonCar
   const { items, meetings, now } = input;
   const byId = new Map(meetings.map((m) => [m.id, m]));
   const started = (i: Item) => byId.get(i.meetingId)?.startedAt ?? i.createdAt;
-  const mine = items.filter((i) => live(i) && belongsTo(g, i.person));
+  const mine = items.filter((i) => live(i) && ownsItem(g, i));
   const open = mine.filter((i) => i.status === "open").sort((a, b) => started(a).localeCompare(started(b)));
   const card = (i: Item): PersonCardItem => ({ id: i.id, text: i.text, late: !!i.dueAt && Date.parse(i.dueAt) < now.getTime() });
   const owe = open.filter((i) => i.kind === "owe");
@@ -64,15 +64,15 @@ export interface WaitingOnYou {
  * person count; the user's own names are left out.
  */
 export function waitingOnYou(input: PeopleInput & { meetings: Meeting[] }, max = 3): WaitingOnYou[] {
-  const { items, meetings, now, self = [] } = input;
+  const { items, meetings, now, self = [], people = [] } = input;
   const owe = items.filter((i) => i.status === "open" && i.kind === "owe" && i.person);
   if (!owe.length) return [];
   const byId = new Map(meetings.map((m) => [m.id, m]));
   const started = (i: Item) => Date.parse(byId.get(i.meetingId)?.startedAt ?? i.createdAt);
   // Group over every live item so the name and link match the People page.
-  return groupNames(items.filter((i) => live(i) && i.person).map((i) => i.person!), self)
+  return groupNames(items.filter((i) => live(i) && i.person).map((i) => i.person!), self, people)
     .map((g) => {
-      const theirs = owe.filter((i) => belongsTo(g, i.person));
+      const theirs = owe.filter((i) => ownsItem(g, i));
       const oldest = Math.min(...theirs.map(started));
       return { name: g.name, slug: g.slug, count: theirs.length, oldestDays: Math.max(0, Math.floor((now.getTime() - oldest) / 86400000)) };
     })

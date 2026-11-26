@@ -11,9 +11,18 @@ import "./wow3.css";
 import "./ask.css";
 import "./calendar.css";
 import "./capture.css";
+import "./hosted.css";
+import "./names.css";
+import "./workspace.css";
+import "./integrations.css";
+import "./channels.css";
+import "./sources.css";
+import "./review.css";
 import "./editor.css";
 import { QuickCapture } from "@/components/QuickCapture";
 import { ItemKeys } from "@/components/ItemKeys";
+import "./platforms.css";
+import { PwaRegister } from "@/components/PwaRegister";
 
 const sans = Instrument_Sans({ subsets: ["latin"], weight: ["400", "500", "600"], variable: "--font-instrument-sans", display: "swap" });
 const mono = Geist_Mono({ subsets: ["latin"], weight: ["400", "500"], variable: "--font-geist-mono", display: "swap" });
@@ -21,6 +30,8 @@ const mono = Geist_Mono({ subsets: ["latin"], weight: ["400", "500"], variable: 
 export const metadata: Metadata = {
   title: { default: "Daily brief", template: "%s · Daily brief" },
   description: "Your meetings, turned into your day: what you owe, what you're waiting on, and what was decided.",
+  appleWebApp: { capable: true, title: "Daily brief", statusBarStyle: "default" },
+  icons: { apple: "/apple-touch-icon.png" },
 };
 
 export const viewport: Viewport = {
@@ -39,6 +50,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <Keys />
         <QuickCapture />
         <ItemKeys />
+        <PwaRegister />
       </body>
     </html>
   );

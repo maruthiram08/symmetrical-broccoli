@@ -24,7 +24,7 @@ export interface Contradiction {
   status: "open" | "kept" | "replaced";
 }
 
-interface AiState {
+export interface AiState {
   version: 1;
   nudges: Nudge[];
   contradictions: Contradiction[];
@@ -36,27 +36,27 @@ interface AiState {
   nudgeDay: string | null;
 }
 
-const empty = (): AiState => ({ version: 1, nudges: [], contradictions: [], checked: [], primed: false, nudgeDay: null });
+export const emptyAiState = (): AiState => ({ version: 1, nudges: [], contradictions: [], checked: [], primed: false, nudgeDay: null });
 const MAX_CHECKED = 5000;
 
 export class AiStore {
-  private s: AiState = empty();
+  protected s: AiState = emptyAiState();
   private mtime = 0;
   constructor(readonly path: string) { this.reload(); }
 
-  private reload(): void {
+  protected reload(): void {
     if (!existsSync(this.path)) return;
     const m = statSync(this.path).mtimeMs;
     if (m === this.mtime) return;
     try {
-      this.s = { ...empty(), ...(JSON.parse(readFileSync(this.path, "utf8")) as Partial<AiState>) };
+      this.s = { ...emptyAiState(), ...(JSON.parse(readFileSync(this.path, "utf8")) as Partial<AiState>) };
     } catch {
-      this.s = empty(); // a broken file only loses cached drafts and flags
+      this.s = emptyAiState(); // a broken file only loses cached drafts and flags
     }
     this.mtime = m;
   }
 
-  private flush(): void {
+  protected flush(): void {
     mkdirSync(dirname(this.path), { recursive: true, mode: 0o700 });
     const tmp = `${this.path}.tmp`;
     this.s.checked = this.s.checked.slice(-MAX_CHECKED);
@@ -111,7 +111,12 @@ export class AiStore {
   }
 }
 
-const g = globalThis as unknown as { __dbAiStore?: AiStore };
+const g = globalThis as unknown as { __dbAiStores?: Map<string, AiStore> };
+/** One AI store per workspace (each has its own ai.json). */
 export function getAiStore(): AiStore {
-  return (g.__dbAiStore ??= new AiStore(join(dataDir(), "ai.json")));
+  const path = join(dataDir(), "ai.json");
+  const all = (g.__dbAiStores ??= new Map());
+  let s = all.get(path);
+  if (!s) all.set(path, (s = new AiStore(path)));
+  return s;
 }

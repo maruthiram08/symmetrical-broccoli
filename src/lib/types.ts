@@ -1,7 +1,8 @@
 // Shared domain types. Every module imports from here; keep it the single source of truth.
 
 export type ItemKind = "owe" | "waiting" | "decision";
-export type ItemStatus = "open" | "done" | "wrong";
+/** "inbox": captured by you without a person or due date, waiting in the Inbox to be triaged. */
+export type ItemStatus = "open" | "done" | "wrong" | "inbox";
 
 export interface User {
   id: string;
@@ -15,7 +16,30 @@ export interface User {
   briefTime: string;
   /** Settings: also read meetings others shared with you (Wispr Flow shared=true). Missing = off. */
   includeShared?: boolean;
+  /** Settings: capture sources beyond Wispr Flow (src/server/recorders). Missing = all off. */
+  sources?: SourceSettings;
   createdAt: string;
+}
+
+/** Where a meeting was recorded. Meetings stored before this existed are "wispr_flow". */
+export type MeetingProvider = "wispr_flow" | "granola" | "zoom" | "google_meet" | "file" | "phone";
+
+/** A local capture source the user turned on. Every source is off until turned on in Settings. */
+export interface SourceToggle {
+  enabled: boolean;
+  /** Meetings that started before this (ISO) are not read: set to 7 days back when turned on, so old history isn't read (and paid for) at once. */
+  since?: string | null;
+  /** Folder or file to read instead of the default. */
+  path?: string | null;
+}
+
+export interface SourceSettings {
+  granola?: SourceToggle;
+  zoom?: SourceToggle;
+  /** Google Meet transcripts and any other transcript file dropped in the inbox folder. */
+  files?: SourceToggle;
+  /** Phone-call transcripts dropped in the inbox folder. Shares the inbox folder with `files`. */
+  phone?: SourceToggle;
 }
 
 export interface Connection {
@@ -50,6 +74,16 @@ export interface Meeting {
   lastFailedAt?: string | null;
   /** What the last failed read ran into ("extract", "transcript", "transient", ...). */
   lastFailure?: string | null;
+  /** Which recorder it came from. Missing = "wispr_flow" (older data); see providerOf. */
+  provider?: MeetingProvider;
+  /** Local recorders: the file the transcript is read from at read time (never the transcript itself). */
+  sourcePath?: string | null;
+  /** The same meeting recorded by another source: set, the meeting is never read. Holds the kept meeting's id. */
+  duplicateOf?: string | null;
+}
+
+export function providerOf(m: Pick<Meeting, "provider">): MeetingProvider {
+  return m.provider ?? "wispr_flow";
 }
 
 /** A meeting that failed this many reads is set aside until the user presses Retry. */
@@ -107,6 +141,26 @@ export interface Item {
   starred?: boolean;
   /** Local date "YYYY-MM-DD": hidden from lists until that day. */
   snoozedUntil?: string | null;
+  /** Set on read when the people directory resolved `person`: the name as extracted. Never stored. */
+  personRaw?: string | null;
+  /** Set on read: the directory person this item belongs to. Never stored. */
+  personId?: string;
+  /** A ticket made from this item in Jira, Linear, Notion or Todoist (src/server/integrations). */
+  ticket?: ItemTicket | null;
+  /** Why it closed when neither a meeting nor you closed it: "Closed in Linear". */
+  closeReason?: string | null;
+}
+
+export type TicketProvider = "jira" | "linear" | "notion" | "todoist";
+
+export interface ItemTicket {
+  provider: TicketProvider;
+  /** The provider's own id (Jira issue id, Linear issue id, Notion page id, Todoist task id). */
+  id: string;
+  /** What we show: "LIN-123", "OPS-7", "Notion", "Todoist". */
+  key: string;
+  url: string;
+  createdAt: string;
 }
 
 /** "extracted" from a meeting, or "manual": added by you. */
@@ -130,6 +184,8 @@ export interface ExtractionInput {
   user: Pick<User, "name" | "aliases" | "timeZone">;
   meeting: Pick<Meeting, "title" | "startedAt" | "participants"> & Partial<Pick<Meeting, "shared" | "ownerName">>;
   openItems: Array<Pick<Item, "id" | "kind" | "text" | "person">>;
+  /** People the user confirmed, with their other spellings, so names come back as the known spelling. */
+  knownPeople?: Array<{ name: string; aliases: string[] }>;
 }
 
 export interface Brief {

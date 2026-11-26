@@ -6,6 +6,8 @@ import type { CalendarCache, Connection, Health, Item, LastLook, Meeting, Upcomi
 import { MemoryStore } from "@/server/store";
 import { isManual, migrateItem, type ManualInput } from "@/lib/capture/items";
 import type { OAuthClientStore } from "@/server/wispr/oauth";
+import type { AppStore } from "@/server/app-store";
+import type { ChangeCtx, Directory, PeopleChange } from "@/lib/directory/directory";
 
 interface State {
   version: 1;
@@ -29,6 +31,9 @@ interface State {
   health?: Health;
   /** Set when state.json couldn't be read and was restored; shown as a banner until dismissed. */
   recovery?: Recovery | null;
+  /** Added with the people directory: missing in older files (names then show as extracted). */
+  people?: Array<[string, Directory]>;
+  peopleLog?: Array<[string, PeopleChange[]]>;
 }
 
 /** What happened when state.json couldn't be read. */
@@ -125,6 +130,19 @@ export function applyMarks(items: Item[], marks: Mark[]): Mark[] {
   return left;
 }
 
+/** The hand-made marks (Done/Wrong, star, snooze) on a user's extracted items, to keep across a re-read. */
+export function marksToKeep(items: Item[], userId: string): Mark[] {
+  const out: Mark[] = [];
+  for (const i of items) {
+    if (i.userId !== userId || isManual(i)) continue;
+    if ((i.status !== "open" && !i.closedByMeetingId) || i.starred || i.snoozedUntil) {
+      const status = i.closedByMeetingId ? "open" : i.status; // a close by a meeting comes back on the re-read
+      out.push({ userId, meetingId: i.meetingId, kind: i.kind, text: i.text, quote: i.quote, status, closedAt: status === "open" ? null : i.closedAt, starred: i.starred || undefined, snoozedUntil: i.snoozedUntil || undefined });
+    }
+  }
+  return out;
+}
+
 const MAX_EVENTS = 2000;
 /** How alike two items of one meeting must be to count as the same item read twice. */
 const DUPLICATE_SIMILARITY = 0.6;
@@ -135,7 +153,7 @@ const MAX_PREP_NOTIFIED = 500;
  * Small on purpose: a year of meetings is a few MB. The v1.1 desktop app moves this to SQLite.
  * Only this user's machine can read it (0600). Transcripts are never in it.
  */
-export class FileStore extends MemoryStore implements OAuthClientStore {
+export class FileStore extends MemoryStore implements OAuthClientStore, AppStore {
   oauthClients = new Map<string, OAuthClientInformationMixed>();
   marks: Mark[] = [];
   protected newId = () => randomUUID();
@@ -238,7 +256,8 @@ export class FileStore extends MemoryStore implements OAuthClientStore {
   private apply(s: State): void {
     this.users = new Map(s.users.map((u) => [u.id, u]));
     this.connections = new Map(s.connections.map((c) => [c.userId, c]));
-    this.meetings = new Map(s.meetings.map((m) => [m.id, m]));
+    // Meetings stored before recorders existed all came from Wispr Flow.
+    this.meetings = new Map(s.meetings.map((m) => [m.id, m.provider ? m : { ...m, provider: "wispr_flow" as const }]));
     this.items = new Map(s.items.map((i) => [i.id, migrateItem(i)]));
     this.briefs = new Map(s.briefs);
     this.oauthClients = new Map(s.oauthClients ?? []);
@@ -250,6 +269,8 @@ export class FileStore extends MemoryStore implements OAuthClientStore {
     this.calendar = new Map(s.calendar ?? []);
     this.health = s.health ?? {};
     this.recovery = s.recovery ?? null;
+    this.people = new Map((s.people ?? []).map(([k, d]) => [k, { people: d?.people ?? [], moved: d?.moved ?? {} }]));
+    this.peopleLog = new Map(s.peopleLog ?? []);
   }
 
   /** True when state.json is no longer the file this copy last read or wrote. */
@@ -297,6 +318,8 @@ export class FileStore extends MemoryStore implements OAuthClientStore {
       calendar: [...this.calendar.entries()],
       health: this.health,
       recovery: this.recovery,
+      people: [...this.people.entries()],
+      peopleLog: [...this.peopleLog.entries()],
     };
     mkdirSync(dirname(this.path), { recursive: true, mode: 0o700 });
     const json = JSON.stringify(state);
@@ -368,6 +391,8 @@ export class FileStore extends MemoryStore implements OAuthClientStore {
   async setItemStatus(itemId: string, status: Item["status"], at: string) { await this.change(() => super.setItemStatus(itemId, status, at)); }
   async addManualItem(userId: string, input: ManualInput, at: string) { return this.change(() => super.addManualItem(userId, input, at)); }
   async updateItem(...a: Parameters<MemoryStore["updateItem"]>) { return this.change(() => super.updateItem(...a), (i) => !!i); }
+  async setItemTicket(...a: Parameters<MemoryStore["setItemTicket"]>) { return this.change(() => super.setItemTicket(...a), (i) => !!i); }
+  async closeItemWithReason(...a: Parameters<MemoryStore["closeItemWithReason"]>) { return this.change(() => super.closeItemWithReason(...a), (ok) => ok); }
   async deleteItem(itemId: string) { return this.change(() => super.deleteItem(itemId), (ok) => ok); }
   async saveBrief(...a: Parameters<MemoryStore["saveBrief"]>) { await this.change(() => super.saveBrief(...a)); }
   async logEvent(e: Parameters<MemoryStore["logEvent"]>[0]) { const at = new Date().toISOString(); await this.change(() => super.logEvent({ ...e, at })); }
@@ -391,13 +416,7 @@ export class FileStore extends MemoryStore implements OAuthClientStore {
 
   private resetExtractionInMemory(userId: string): number {
     // Keep what the user marked by hand so the re-read doesn't undo it.
-    for (const i of this.items.values()) {
-      if (i.userId !== userId || isManual(i)) continue;
-      if ((i.status !== "open" && !i.closedByMeetingId) || i.starred || i.snoozedUntil) {
-        const status = i.closedByMeetingId ? "open" : i.status; // a close by a meeting comes back on the re-read
-        this.marks.push({ userId, meetingId: i.meetingId, kind: i.kind, text: i.text, quote: i.quote, status, closedAt: status === "open" ? null : i.closedAt, starred: i.starred || undefined, snoozedUntil: i.snoozedUntil || undefined });
-      }
-    }
+    this.marks.push(...marksToKeep([...this.items.values()], userId));
     // Your own items aren't read from meetings: they stay.
     for (const [id, i] of this.items) if (i.userId === userId && !isManual(i)) this.items.delete(id);
     let n = 0;
@@ -405,8 +424,15 @@ export class FileStore extends MemoryStore implements OAuthClientStore {
     return n;
   }
 
+  async getPeople(userId: string) { this.reload(); return super.getPeople(userId); }
+  async listPeopleChanges(userId: string) { this.reload(); return super.listPeopleChanges(userId); }
+  async changePeople(userId: string, plan: (d: Directory, ctx: ChangeCtx) => PeopleChange | null, at: string) {
+    return this.change(() => super.changePeople(userId, plan, at), (c) => !!c);
+  }
+  async undoPeopleChange(userId: string, changeId: string) { return this.change(() => super.undoPeopleChange(userId, changeId), (c) => !!c); }
   async getHealth() { this.reload(); return super.getHealth(); }
   async setHealth(patch: Partial<Health>) { await this.change(() => super.setHealth(patch)); }
+  async markMeetingDuplicate(meetingId: string, duplicateOf: string, at: string) { await this.change(() => super.markMeetingDuplicate(meetingId, duplicateOf, at)); }
   async recordMeetingFailure(meetingId: string, failure: string, at: string) { await this.change(() => super.recordMeetingFailure(meetingId, failure, at)); }
   async resetMeetingFailures(userId: string) { return this.change(() => super.resetMeetingFailures(userId), (n) => n > 0); }
   /** The "restored from backup" notice, until the user dismisses it. */

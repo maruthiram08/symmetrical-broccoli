@@ -3,12 +3,13 @@ import { dueLabel, formatTime, lateLabel } from "@/lib/brief/time";
 import type { BriefLine, ClosedLine, Item, Meeting, User } from "@/lib/types";
 import { getStore } from "@/server/local/app";
 import { lineExtras } from "@/lib/capture/items";
+import type { Person } from "@/lib/directory/directory";
 
-/** Everything one user has: items (all statuses) and meetings. Read straight from the local store. */
-export async function loadAll(user: User): Promise<{ items: Item[]; meetings: Meeting[] }> {
+/** Everything one user has: items (all statuses, names resolved through the people directory), meetings and the directory's people. */
+export async function loadAll(user: User): Promise<{ items: Item[]; meetings: Meeting[]; people: Person[] }> {
   const store = getStore();
-  const [items, meetings] = await Promise.all([store.listItems(user.id), store.listMeetingsBetween(user.id, "0000", "9999")]);
-  return { items, meetings };
+  const [items, meetings, dir] = await Promise.all([store.listItems(user.id), store.listMeetingsBetween(user.id, "0000", "9999"), store.getPeople(user.id)]);
+  return { items, meetings, people: dir.people };
 }
 
 /** "25 Nov" in the user's zone. */

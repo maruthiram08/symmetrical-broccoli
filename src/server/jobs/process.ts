@@ -1,6 +1,8 @@
 import { AnthropicCallError, isNetworkError } from "@/lib/extract/errors";
 import { keepSharedItems, sharedMeetingConcernsUser } from "@/lib/extract/shared";
-import { MAX_MEETING_ATTEMPTS, QUOTE_MAX, type ExtractionResult, type Item, type Meeting } from "@/lib/types";
+import { knownPeople } from "@/lib/directory/directory";
+import { MAX_MEETING_ATTEMPTS, providerOf, QUOTE_MAX, type ExtractionResult, type Item, type Meeting } from "@/lib/types";
+import { localTranscript } from "@/server/recorders";
 import type { WisprClient } from "@/server/wispr/client";
 import { ReconnectRequiredError } from "@/server/wispr/oauth";
 import { logJobError, mapLimit, type Deps } from "./types";
@@ -56,7 +58,7 @@ const clip = (s: string) => (s.length > QUOTE_MAX ? s.slice(0, QUOTE_MAX - 1) + 
 const inFlight: Set<string> = ((globalThis as unknown as { __dbInFlight?: Set<string> }).__dbInFlight ??= new Set<string>());
 
 export async function processMeeting(
-  deps: Pick<Deps, "store" | "wispr" | "extract" | "costInr" | "model" | "now">,
+  deps: Pick<Deps, "store" | "wispr" | "extract" | "costInr" | "model" | "now" | "localTranscript">,
   meetingId: string,
   opts: { client?: WisprClient } = {},
 ): Promise<ProcessResult> {
@@ -70,7 +72,7 @@ export async function processMeeting(
 }
 
 async function processMeetingOnce(
-  deps: Pick<Deps, "store" | "wispr" | "extract" | "costInr" | "model" | "now">,
+  deps: Pick<Deps, "store" | "wispr" | "extract" | "costInr" | "model" | "now" | "localTranscript">,
   meetingId: string,
   opts: { client?: WisprClient },
 ): Promise<ProcessResult> {
@@ -90,11 +92,13 @@ async function processMeetingOnce(
     return { status: "processed", newItems: 0, closes: 0 };
   }
 
-  const client = opts.client ?? deps.wispr(meeting.userId);
+  // Wispr Flow meetings are read over MCP; every other recorder from its local file (src/server/recorders).
+  const wispr = providerOf(meeting) === "wispr_flow";
+  const client = wispr ? opts.client ?? deps.wispr(meeting.userId) : null;
   try {
     let transcript: string;
     try {
-      transcript = await client.getTranscript(meeting.providerMeetingId);
+      transcript = client ? await client.getTranscript(meeting.providerMeetingId) : await (deps.localTranscript ?? localTranscript)(meeting, user);
     } catch (e) {
       if (e instanceof ReconnectRequiredError) throw e;
       throw new ProcessError("transcript", e instanceof Error ? e.name : "Error", isNetworkError(e) ? "offline" : "transcript");
@@ -115,6 +119,7 @@ async function processMeetingOnce(
       // Someone else's meeting where you neither speak nor are named: nothing could reach your brief.
       result = nothing();
     } else {
+      const known = knownPeople(await store.getPeople?.(meeting.userId));
       try {
         result = await deps.extract({
           transcript,
@@ -124,6 +129,7 @@ async function processMeetingOnce(
             ...(meeting.shared ? { shared: true, ownerName: meeting.ownerName ?? null } : {}),
           },
           openItems: open.map((i) => ({ id: i.id, kind: i.kind, text: i.text, person: i.person })),
+          ...(known.length ? { knownPeople: known } : {}),
         });
       } catch (e) {
         throw new ProcessError("extract", e instanceof Error ? e.name : "Error", extractFailure(e));
@@ -131,7 +137,7 @@ async function processMeetingOnce(
       if (meeting.shared) result = { ...result, newItems: keepSharedItems(result.newItems, transcript, user) };
     }
   } finally {
-    if (!opts.client) await client.close?.();
+    if (client && !opts.client) await client.close?.();
   }
 
   const at = deps.now().toISOString();
@@ -177,28 +183,37 @@ async function processMeetingOnce(
  * A failed meeting is never marked processed. Stops starting new meetings after `deadline` (epoch ms).
  */
 export async function processPending(
-  deps: Pick<Deps, "store" | "wispr" | "extract" | "costInr" | "model" | "now">,
+  deps: Pick<Deps, "store" | "wispr" | "extract" | "costInr" | "model" | "now" | "allowance" | "localTranscript">,
   userId: string,
   opts: { deadline?: number } = {},
 ): Promise<{ processed: number; failed: number; remaining: number; setAside: number; stoppedBy?: FailureKind | "reconnect" }> {
   const all = await deps.store.listUnprocessedMeetings(userId);
   const setAside = all.filter(isSetAside).length;
-  const pending = all.filter((m) => !isSetAside(m));
+  const allowed = deps.allowance ? Math.max(0, await deps.allowance(userId)) : Infinity;
+  // Over the free tier's limit: the rest stay queued (unread) until the month turns or they subscribe.
+  const pending = all.filter((m) => !isSetAside(m)).slice(0, allowed);
+  const held = all.length - setAside - pending.length;
   let processed = 0;
   let failed = 0;
   let stoppedBy: FailureKind | "reconnect" | undefined;
-  if (pending.length === 0) return { processed, failed, remaining: 0, setAside };
+  if (pending.length === 0) return { processed, failed, remaining: held, setAside };
   const conn = await deps.store.getConnection(userId);
-  if (!conn || conn.status === "needs_reconnect") return { processed, failed, remaining: pending.length, setAside, stoppedBy: "reconnect" };
+  // Without a working Wispr Flow connection, meetings from local recorders are still read.
+  const wisprOk = !!conn && conn.status !== "needs_reconnect";
+  const runnable = wisprOk ? pending : pending.filter((m) => providerOf(m) !== "wispr_flow");
+  if (!wisprOk && runnable.length < pending.length) stoppedBy = "reconnect";
+  if (runnable.length === 0) return { processed, failed, remaining: pending.length + held, setAside, stoppedBy: "reconnect" };
 
   const nowMs = deps.now().getTime();
-  const client = deps.wispr(userId);
+  // One Wispr Flow connection for the run, opened only if a Wispr Flow meeting is read.
+  let opened: WisprClient | null = null;
+  const lazy = (): WisprClient => (opened ??= deps.wispr(userId));
   try {
-    for (const m of pending) {
+    for (const m of runnable) {
       if (opts.deadline && Date.now() > opts.deadline) break;
       if (m.lastFailedAt && nowMs - Date.parse(m.lastFailedAt) < retryAfterMs(m.failedAttempts ?? 0)) continue;
       try {
-        const r = await processMeeting(deps, m.id, { client });
+        const r = await processMeeting(deps, m.id, providerOf(m) === "wispr_flow" ? { client: lazy() } : {});
         if (r.status === "processed") processed++;
       } catch (e) {
         failed++;
@@ -216,14 +231,14 @@ export async function processPending(
       }
     }
   } finally {
-    await client.close?.();
+    await (opened as WisprClient | null)?.close?.();
   }
   const nowSetAside = (await deps.store.listUnprocessedMeetings(userId)).filter(isSetAside).length;
-  return { processed, failed, remaining: pending.length - processed - failed, setAside: nowSetAside, ...(stoppedBy ? { stoppedBy } : {}) };
+  return { processed, failed, remaining: pending.length - processed - failed + held, setAside: nowSetAside, ...(stoppedBy ? { stoppedBy } : {}) };
 }
 
 export async function processAllPending(
-  deps: Pick<Deps, "store" | "wispr" | "extract" | "costInr" | "model" | "now">,
+  deps: Pick<Deps, "store" | "wispr" | "extract" | "costInr" | "model" | "now" | "allowance" | "localTranscript">,
   opts: { deadline?: number; concurrency?: number } = {},
 ) {
   const users = await deps.store.listUsers();

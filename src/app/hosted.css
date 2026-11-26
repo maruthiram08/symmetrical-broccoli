@@ -1,0 +1,22 @@
+/* Hosted-only pages: sign-in, account, billing, team. Uses the shared tokens from globals.css. */
+.db-h-card { border: 1px solid var(--border); border-radius: var(--radius-lg); padding: var(--space-6); display: grid; gap: var(--space-3); }
+.db-h-card + .db-h-card { margin-top: var(--space-4); }
+.db-h-card__title { font-size: 15px; font-weight: 600; margin: 0; }
+.db-h-muted { color: var(--ink-muted); font-size: 14px; line-height: 20px; margin: 0; }
+.db-h-big { font-size: 28px; line-height: 32px; font-weight: 600; letter-spacing: -0.01em; }
+.db-h-row { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
+.db-h-code { font-family: var(--font-mono); font-size: 15px; padding: 2px 10px; border-radius: var(--radius-full); background: var(--highlight); color: var(--on-highlight); }
+.db-h-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.db-h-table th { text-align: left; font-weight: 500; color: var(--ink-faint); padding: 6px 8px 6px 0; border-bottom: 1px solid var(--border); }
+.db-h-table td { padding: 8px 8px 8px 0; border-bottom: 1px solid var(--border); vertical-align: top; overflow-wrap: break-word; word-break: break-word; }
+.db-h-table .db-btn, .db-h-nowrap { white-space: nowrap; }
+.db-h-table td.db-h-nowrap { font-size: 13px; color: var(--ink-faint); }
+.db-h-details summary { cursor: pointer; font-size: 15px; font-weight: 600; }
+.db-h-details[open] summary { margin-bottom: var(--space-3); }
+.db-h-select { font: inherit; font-size: 14px; padding: 4px 8px; border-radius: var(--radius-full); border: 1px solid var(--border); background: var(--bg); color: var(--ink); }
+.db-h-edge { display: flex; gap: var(--space-2); align-items: baseline; flex-wrap: wrap; }
+.db-h-edge__n { font-family: var(--font-mono); font-size: 13px; color: var(--ink-faint); }
+.db-h-list { margin: 0; padding-left: 18px; display: grid; gap: 4px; font-size: 14px; }
+.db-h-tabs { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-4); }
+.db-h-share { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; margin-top: var(--space-4); font-size: 14px; color: var(--ink-muted); }
+.db-h-scroll { overflow-x: auto; }

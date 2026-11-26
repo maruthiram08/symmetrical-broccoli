@@ -9,6 +9,7 @@ import type { Item, Meeting, User } from "@/lib/types";
 import { getAiStore, type Contradiction } from "@/server/local/ai-store";
 import { runAiJobs, type AiDeps } from "@/server/local/ai-jobs";
 import { getStore } from "@/server/local/app";
+import { currentAi } from "@/server/ai-state";
 
 const g = globalThis as unknown as { __dbAiClient?: Anthropic };
 
@@ -60,7 +61,7 @@ export interface ContradictionView {
 
 /** Open flags whose two decisions are both still there (and the old one not already closed). */
 export async function openContradictions(user: User): Promise<ContradictionView[]> {
-  const flags = getAiStore().contradictions().filter((c) => c.status === "open");
+  const flags = (await currentAi()).ai.contradictions().filter((c) => c.status === "open");
   if (!flags.length) return [];
   const store = getStore();
   const items = new Map((await store.listItems(user.id)).map((i) => [i.id, i]));
@@ -74,7 +75,7 @@ export async function openContradictions(user: User): Promise<ContradictionView[
 }
 
 export async function resolveContradiction(user: User, id: string, how: "keep" | "replace"): Promise<Contradiction | null> {
-  const ai = getAiStore();
+  const { ai, save } = await currentAi();
   const c = ai.contradictions().find((x) => x.id === id);
   if (!c) return null;
   if (how === "replace") {
@@ -83,5 +84,7 @@ export async function resolveContradiction(user: User, id: string, how: "keep" |
     if (old) await store.setItemStatus(old.id, "done", new Date().toISOString());
     await store.logEvent({ userId: user.id, type: "decision_replaced", payload: { oldId: c.oldId, newId: c.newId } });
   }
-  return ai.setContradictionStatus(id, how === "keep" ? "kept" : "replaced");
+  const out = ai.setContradictionStatus(id, how === "keep" ? "kept" : "replaced");
+  await save();
+  return out;
 }

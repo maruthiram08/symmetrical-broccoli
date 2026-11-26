@@ -10,8 +10,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
   const { slug } = await params;
   const user = await me();
   if (!user) return NextResponse.json({ error: "not_found" }, { status: 404 });
-  const { items, meetings } = await loadAll(user);
-  const card = personCard(slug.slice(0, 120), { items, meetings, now: new Date(), self: [user.name, ...user.aliases] });
+  const { items, meetings, people } = await loadAll(user);
+  const card = personCard(slug.slice(0, 120), { items, meetings, now: new Date(), self: [user.name, ...user.aliases], people });
   if (!card) return NextResponse.json({ error: "not_found" }, { status: 404 });
   return NextResponse.json(
     { ...card, lastMeeting: card.lastMeeting ? { title: card.lastMeeting.title, date: shortDate(card.lastMeeting.startedAt, user.timeZone) } : null },

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
+import { isHosted } from "@/server/mode";
 import type { ReactNode } from "react";
 import { AutoRefresh } from "@/components/AutoRefresh";
 import { Button, ButtonLink } from "@/components/Button";
@@ -56,7 +57,7 @@ export default async function Welcome({ searchParams }: { searchParams: Promise<
 
   return (
     <Page title="Set up your brief">
-      <p className="db-lead">Three short steps, then your meetings turn into your day. Everything stays in one folder on this Mac.</p>
+      <p className="db-lead">Three short steps, then your meetings turn into your day. {isHosted() ? "Your brief arrives by email at the time you pick." : "Everything stays in one folder on this Mac."}</p>
       <ol className="db-steps">
         <Step
           n={1}

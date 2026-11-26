@@ -170,3 +170,16 @@ describe("when reading fails", () => {
     expect(store.meetings.get(meeting.id)?.processedAt).not.toBeNull();
   });
 });
+
+describe("processPending with an allowance (hosted free tier)", () => {
+  it("reads only as many meetings as allowed and leaves the rest queued", async () => {
+    const { deps, store, user, wispr } = await setup();
+    await store.upsertMeeting({ userId: user.id, providerMeetingId: "p2", title: "Two", startedAt: "2026-11-25T10:00:00.000Z", participants: [] });
+    wispr.transcripts.set("p2", "x");
+    deps.allowance = async () => 1;
+    expect(await processPending(deps, user.id)).toMatchObject({ processed: 1, remaining: 1 });
+    deps.allowance = async () => 0;
+    expect(await processPending(deps, user.id)).toMatchObject({ processed: 0, remaining: 1 });
+    expect(await store.listUnprocessedMeetings(user.id)).toHaveLength(1);
+  });
+});

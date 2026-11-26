@@ -3,25 +3,35 @@ import { Button } from "@/components/Button";
 import { Field } from "@/components/Field";
 import { Page } from "@/components/Page";
 import { TimeZoneSelect } from "@/components/TimeZoneSelect";
-import { getStore, me } from "@/server/local/app";
+import { getFileStore, getStore, me } from "@/server/local/app";
 import { redirect } from "next/navigation";
+import { isHosted } from "@/server/mode";
 import { SubmitOnChange } from "@/components/SubmitOnChange";
 import { pullMeetingsSince, rereadAllMeetings, saveIncludeShared, saveSetup } from "../actions";
 import { pullState, schedulerStatus } from "@/server/local/scheduler";
 import { formatBytes, summarizeHealth } from "@/server/local/health";
 import { formatTime, localDate } from "@/lib/brief/time";
+import { ChannelHealthRows, ChannelSettings } from "@/components/channels/ChannelSettings";
 import { BRIEF_TIMES, formatBriefTime, timeZones, todayIn } from "../_lib/time";
+import { headers } from "next/headers";
+import { PlatformSettings } from "@/components/PlatformSettings";
+import { isRemote } from "@/server/local/phone-proxy";
+import { SyncSettings } from "@/components/SyncSettings";
+import { IntegrationsSettings } from "@/components/integrations/IntegrationsSettings";
+import { SourcesSection } from "@/components/SourcesSection";
+import { sourceStatuses } from "@/server/recorders/status";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Setup" };
 
-export default async function Setup({ searchParams }: { searchParams: Promise<{ error?: string; pull?: string; shared?: string }> }) {
+export default async function Setup({ searchParams }: { searchParams: Promise<{ error?: string; pull?: string; shared?: string; upload?: string; source?: string; which?: string; integ?: string; ch?: string; saved?: string; test?: string; err?: string; removed?: string; sync?: string; git?: string; model?: string }> }) {
   const user = await me();
   const conn = user ? await getStore().getConnection(user.id) : null;
   // First run happens on /welcome; Settings is for changing things afterwards.
   if (!user || !conn) redirect("/welcome");
   const connected = conn?.status === "active";
-  const { error, pull, shared } = await searchParams;
+  const { error, pull, shared, upload, source, which, integ, sync, git, model, ...flash } = await searchParams;
+  const remote = isRemote(await headers());
   const pulling = pullState()?.running ?? false;
   const tz = user?.timeZone ?? "Asia/Kolkata";
   const today = todayIn(tz);
@@ -41,7 +51,7 @@ export default async function Setup({ searchParams }: { searchParams: Promise<{ 
   };
   return (
     <Page title="Set up your brief">
-      <p className="db-lead">{connected ? "Change your details. Your meetings stay connected." : "A few things, then connect your meetings. Everything stays on this Mac."}</p>
+      <p className="db-lead">{connected ? "Change your details. Your meetings stay connected." : (isHosted() ? "A few things, then connect your meetings. Your brief arrives by email." : "A few things, then connect your meetings. Everything stays on this Mac.")}</p>
       <form action={saveSetup} className="db-stack">
         <Field id="name" name="name" label="Your name" hint="So we know which promises are yours." defaultValue={user?.name ?? ""} autoComplete="name" required />
         <Field id="aliases" name="aliases" label="Other names people call you" hint="Comma separated, like Maru, MR. Optional." defaultValue={user?.aliases.join(", ") ?? ""} />
@@ -136,6 +146,7 @@ export default async function Setup({ searchParams }: { searchParams: Promise<{ 
           ) : null}
         </section>
       ) : null}
+      {isHosted() ? null : <SourcesSection statuses={sourceStatuses(user, [...getFileStore().meetings.values()].filter((m) => m.userId === user.id), new Date())} flash={{ upload, source, which }} />}
       {connected ? (
         <form action={rereadAllMeetings} className="db-stack db-subsection">
           <h2 className="db-section__title">Re-read all meetings in order</h2>
@@ -150,6 +161,10 @@ export default async function Setup({ searchParams }: { searchParams: Promise<{ 
           </div>
         </form>
       ) : null}
+      <ChannelSettings flash={flash} timeZone={tz} />
+      <SyncSettings syncError={sync} gitError={git} />
+      <IntegrationsSettings flash={integ} timeZone={tz} />
+      <PlatformSettings remote={remote} timeZone={tz} modelError={model === "bad"} />
       {health ? (
         <section className="db-stack db-subsection" aria-labelledby="health">
           <h2 className="db-section__title" id="health">Health</h2>
@@ -163,9 +178,16 @@ export default async function Setup({ searchParams }: { searchParams: Promise<{ 
                 ? `${health.errors24h} (${health.errorsByJob.map(([j, n]) => `${j} ${n}`).join(" · ")}), last at ${at(health.lastErrorAt)}`
                 : "None"}
             </dd>
+            {isHosted() ? (
+              <><dt>Data</dt><dd>Supabase</dd><dt>Background jobs</dt><dd>Vercel Cron, every 30 minutes</dd></>
+            ) : (
+              <>
+            <ChannelHealthRows timeZone={tz} />
             <dt>Data file</dt><dd className="db-mono">{health.dataBytes === null ? "Not written yet" : formatBytes(health.dataBytes)}</dd>
             <dt>Background jobs</dt>
             <dd>{!jobs.running ? "Not started" : jobs.owner ? "Running here" : `Run by another Daily brief (pid ${jobs.holderPid ?? "?"})`}</dd>
+              </>
+            )}
             <dt>Version</dt><dd className="db-mono">{health.version}</dd>
           </dl>
         </section>

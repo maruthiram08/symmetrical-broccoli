@@ -7,8 +7,12 @@ import { join } from "node:path";
  * so it can be rotated from inside the server with copy-then-truncate (the writer's next line lands
  * at the start of the emptied file). DAILY_BRIEF_LOG overrides it (tests, other setups).
  */
-export function logPath(): string {
-  return process.env.DAILY_BRIEF_LOG ?? join(homedir(), "Library", "Logs", "daily-brief.log");
+export function logPath(env: Record<string, string | undefined> = process.env, platform: NodeJS.Platform = process.platform, home = homedir()): string {
+  if (env.DAILY_BRIEF_LOG) return env.DAILY_BRIEF_LOG;
+  // The same places the desktop app uses (src-tauri/src/main.rs, log_path).
+  if (platform === "win32") return join(env.LOCALAPPDATA ?? join(home, "AppData", "Local"), "Daily Brief", "daily-brief.log");
+  if (platform === "linux") return join(env.XDG_STATE_HOME ?? join(home, ".local", "state"), "daily-brief", "daily-brief.log");
+  return join(home, "Library", "Logs", "daily-brief.log");
 }
 
 export const LOG_MAX_BYTES = 5 * 1024 * 1024;
@@ -39,6 +43,12 @@ const SECRET_PATTERNS: Array<[RegExp, string]> = [
   [/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{8,}/gi, "$1 [redacted]"],
   [/\b(access_token|refresh_token|id_token|client_secret|code_verifier|api[_-]?key|x-api-key|authorization)(["']?\s*[:=]\s*["']?)[^\s"'&,}]+/gi, "$1$2[redacted]"],
   [/([?&]code=)[^\s&"']+/g, "$1[redacted]"],
+  [/\bxox[abposr]-[A-Za-z0-9-]{8,}/g, "[redacted]"], // Slack tokens
+  [/hooks\.slack\.com\/services\/[A-Za-z0-9/_-]+/g, "hooks.slack.com/services/[redacted]"],
+  [/\bbot\d{5,}:[A-Za-z0-9_-]{20,}/g, "bot[redacted]"], // Telegram bot token in a URL
+  [/\b\d{6,}:AA[A-Za-z0-9_-]{20,}/g, "[redacted]"], // bare Telegram bot token
+  [/\bre_[A-Za-z0-9_]{16,}/g, "[redacted]"], // Resend keys
+  [/\bEAA[A-Za-z0-9]{20,}/g, "[redacted]"], // Meta (WhatsApp) access tokens
   [/\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{5,}/g, "[redacted]"], // JWTs
 ];
 

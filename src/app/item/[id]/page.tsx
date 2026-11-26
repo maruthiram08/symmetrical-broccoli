@@ -5,12 +5,14 @@ import { Section } from "@/components/BriefList";
 import { Mark } from "@/components/Mark";
 import { PersonPeek } from "@/components/PersonPeek";
 import { Shell } from "@/components/Shell";
+import { ShareToTeam } from "@/components/ShareToTeam";
 import { formatTime } from "@/lib/brief/time";
 import { personSlug } from "@/lib/people";
 import type { Item, Meeting } from "@/lib/types";
 import { relatedItems, timeline, type TimelineEvent } from "@/lib/wow/timeline";
 import { me } from "@/server/local/app";
 import { pastDays } from "../../_lib/days";
+import { TicketLabel, TicketSend } from "@/components/integrations/TicketSlot";
 import { loadAll, shortDate } from "../../_lib/lines";
 
 export const dynamic = "force-dynamic";
@@ -41,7 +43,7 @@ export default async function ItemPage({ params }: { params: Promise<{ id: strin
   const when = (iso: string) => `${shortDate(iso, tz)}, ${formatTime(iso, tz)}`;
   const late = item.status === "open" && item.kind !== "decision" && !!item.dueAt && Date.parse(item.dueAt) < now.getTime();
   const slug = item.person ? personSlug(item.person) : "";
-  const status = item.status === "open" ? (item.kind === "decision" ? "Decided" : late ? "Overdue" : "Open") : item.status === "done" ? "Done" : "Marked wrong";
+  const status = item.status === "open" ? (item.kind === "decision" ? "Decided" : late ? "Overdue" : "Open") : item.status === "done" ? "Done" : item.status === "inbox" ? "In your Inbox" : "Marked wrong";
 
   return (
     <Shell days={await pastDays(user.id, "")} current="item" openCount={openCount}>
@@ -54,7 +56,10 @@ export default async function ItemPage({ params }: { params: Promise<{ id: strin
         <span>{KIND[item.kind]}</span>
         {item.person ? <span>{slug ? <PersonPeek slug={slug}>{item.person}</PersonPeek> : item.person}</span> : null}
         <span className={`w3-status${late ? " w3-status--late" : ""}`}>{status}</span>
+        <TicketLabel itemId={item.id} lead="" />
       </p>
+      <ShareToTeam itemId={item.id} />
+      {item.kind !== "decision" && item.status === "open" ? <div className="int-page-send"><TicketSend itemId={item.id} variant="row" /></div> : null}
 
       <Section title="Timeline">
         <ol className="w3-tl" aria-label="What happened to this item">
@@ -113,7 +118,7 @@ function Event({ e, item, when }: { e: TimelineEvent; item: Item; when: (iso: st
         </li>
       );
     case "marked":
-      return <li className="w3-tl__ev w3-tl__ev--end">{head(e.status === "done" ? "You marked it done" : "You marked it wrong", e.at)}</li>;
+      return <li className="w3-tl__ev w3-tl__ev--end">{head(e.reason ?? (e.status === "done" ? "You marked it done" : "You marked it wrong"), e.at, e.reason && item.ticket ? item.ticket.key : undefined)}</li>;
     case "open":
       return <li className="w3-tl__ev w3-tl__ev--now">{head("Still open", null, "nothing has closed it yet")}</li>;
   }

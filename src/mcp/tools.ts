@@ -6,10 +6,11 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { buildBrief } from "@/lib/brief/build";
 import { dueLabel, formatTime, lateLabel, localDayBounds } from "@/lib/brief/time";
-import { belongsTo, findPerson, groupNames, listPeople, normalizeName, personDetail, type PersonGroup } from "@/lib/people";
+import { findPerson, groupNames, listPeople, normalizeName, ownsItem, personDetail, type PersonGroup } from "@/lib/people";
 import { buildIndex, search as searchIndex, type SearchHit } from "@/lib/search";
 import type { BriefLine, Item, ItemKind, Meeting, User } from "@/lib/types";
 import type { Store } from "@/server/store";
+import type { Person } from "@/lib/directory/directory";
 
 export interface ToolContext {
   /** A FileStore on state.json (any Store works). Its reads reload the file when it changed on disk. */
@@ -19,8 +20,10 @@ export interface ToolContext {
 
 const NOT_SET_UP = "Daily brief isn't set up yet: open http://localhost:4242 and save your name first.";
 
-interface Snapshot {
+export interface Snapshot {
   user: User;
+  /** The people directory's people (confirmed and ignored); empty without one. */
+  people: Person[];
   items: Item[];
   meetings: Meeting[];
   byId: Map<string, Meeting>;
@@ -28,14 +31,15 @@ interface Snapshot {
 }
 
 /** Fresh read of everything for the one local user, or null before setup. */
-async function snapshot(ctx: ToolContext): Promise<Snapshot | null> {
+export async function snapshot(ctx: ToolContext): Promise<Snapshot | null> {
   const user = (await ctx.store.listUsers())[0];
   if (!user) return null;
-  const [items, meetings] = await Promise.all([
+  const [items, meetings, dir] = await Promise.all([
     ctx.store.listItems(user.id),
     ctx.store.listMeetingsBetween(user.id, "0000", "9999"),
+    ctx.store.getPeople?.(user.id),
   ]);
-  return { user, items, meetings, byId: new Map(meetings.map((m) => [m.id, m])), now: (ctx.now ?? (() => new Date()))() };
+  return { user, people: dir?.people ?? [], items, meetings, byId: new Map(meetings.map((m) => [m.id, m])), now: (ctx.now ?? (() => new Date()))() };
 }
 
 // ---------- formatting ----------
@@ -64,7 +68,7 @@ function dueText(i: Item, s: Snapshot): string | null {
  */
 export function formatItem(i: Item, s: Snapshot): string {
   const tz = s.user.timeZone;
-  const status = i.status === "open" ? "" : i.status === "done" ? " (done)" : " (marked wrong)";
+  const status = i.status === "open" ? "" : i.status === "done" ? " (done)" : i.status === "inbox" ? " (in the Inbox)" : " (marked wrong)";
   const head = [`[${i.id}] ${KIND_LABEL[i.kind]}${status}`, i.person, dueText(i, s)].filter(Boolean).join(" · ");
   const m = s.byId.get(i.meetingId);
   const src = m ? `${m.title}, ${day(m.startedAt, tz)}` : "a meeting";
@@ -101,21 +105,21 @@ const selfNames = (u: User) => [u.name, ...u.aliases];
  * Returns one person, or the candidates when it's ambiguous.
  */
 export function resolvePerson(name: string, s: Snapshot): { person: PersonGroup } | { candidates: string[] } {
-  const input = { items: s.items, meetings: s.meetings, now: s.now, self: selfNames(s.user) };
+  const input = { items: s.items, meetings: s.meetings, now: s.now, self: selfNames(s.user), people: s.people };
   const exact = findPerson(name, input);
   if (exact) return { person: exact };
   const want = normalizeName(name).split(" ").filter(Boolean);
   if (!want.length) return { candidates: [] };
-  const groups = groupNames(s.items.filter((i) => i.status !== "wrong").map((i) => i.person ?? "").filter(Boolean), selfNames(s.user));
+  const groups = groupNames(s.items.filter((i) => i.status !== "wrong").map((i) => i.person ?? "").filter(Boolean), selfNames(s.user), s.people);
   const hits = groups.filter((g) =>
     g.keys.some((k) => { const ws = k.split(" "); return want.every((w) => ws.some((x) => x.startsWith(w))); }));
   if (hits.length === 1) return { person: hits[0] };
   return { candidates: hits.map((g) => g.name) };
 }
 
-function noSuchPerson(name: string, candidates: string[], s: Snapshot): string {
+export function noSuchPerson(name: string, candidates: string[], s: Snapshot): string {
   if (candidates.length) return `"${name}" could be: ${candidates.join(", ")}. Ask again with the full name.`;
-  const people = listPeople({ items: s.items, meetings: s.meetings, now: s.now, self: selfNames(s.user) }).slice(0, 30).map((p) => p.name);
+  const people = listPeople({ items: s.items, meetings: s.meetings, now: s.now, self: selfNames(s.user), people: s.people }).slice(0, 30).map((p) => p.name);
   return `Nobody called "${name}" in your meetings.${people.length ? ` People: ${people.join(", ")}.` : ""}`;
 }
 
@@ -132,7 +136,7 @@ export async function listOpen(ctx: ToolContext, args: { kind?: z.infer<typeof K
   if (args.person) {
     const r = resolvePerson(args.person, s);
     if (!("person" in r)) return noSuchPerson(args.person, r.candidates, s);
-    open = open.filter((i) => belongsTo(r.person, i.person));
+    open = open.filter((i) => ownsItem(r.person, i));
     who = ` with ${r.person.name}`;
   }
   const limit = args.limit ?? 50;
@@ -151,7 +155,7 @@ export async function person(ctx: ToolContext, args: { name: string; recent_days
   if (!s) return NOT_SET_UP;
   const r = resolvePerson(args.name, s);
   if (!("person" in r)) return noSuchPerson(args.name, r.candidates, s);
-  const d = personDetail(r.person.slug, { items: s.items, meetings: s.meetings, now: s.now, self: selfNames(s.user) }, args.recent_days ?? 30)!;
+  const d = personDetail(r.person.slug, { items: s.items, meetings: s.meetings, now: s.now, self: selfNames(s.user), people: s.people }, args.recent_days ?? 30)!;
   const p = d.person;
   const aka = p.spellings.filter((x) => normalizeName(x) !== normalizeName(p.name));
   const last = d.meetings[0];
@@ -239,15 +243,20 @@ export async function today(ctx: ToolContext): Promise<string> {
   );
 }
 
+/** An item by its id or a unique prefix of 6+ characters ("[abc123]" brackets are fine). */
+export function findItem(raw: string, s: Pick<Snapshot, "items">): { item: Item } | { error: string } {
+  const id = raw.trim().replace(/^\[|\]$/g, "");
+  const matches = s.items.filter((i) => i.id === id || (id.length >= 6 && i.id.startsWith(id)));
+  if (matches.length === 1) return { item: matches[0] };
+  return { error: matches.length ? `"${id}" matches ${matches.length} items; use the full id.` : `No item with id "${id}". Ids are shown in [brackets] by the other tools.` };
+}
+
 export async function markItem(ctx: ToolContext, args: { id: string; status: "done" | "wrong" | "open" }): Promise<{ text: string; isError?: boolean }> {
   const s = await snapshot(ctx);
   if (!s) return { text: NOT_SET_UP, isError: true };
-  const id = args.id.trim().replace(/^\[|\]$/g, "");
-  const matches = s.items.filter((i) => i.id === id || (id.length >= 6 && i.id.startsWith(id)));
-  if (matches.length !== 1) {
-    return { text: matches.length ? `"${id}" matches ${matches.length} items; use the full id.` : `No item with id "${id}". Ids are shown in [brackets] by the other tools.`, isError: true };
-  }
-  const item = matches[0];
+  const found = findItem(args.id, s);
+  if ("error" in found) return { text: found.error, isError: true };
+  const item = found.item;
   if (item.status === args.status) return { text: `Already ${args.status}:\n${formatItem(item, s)}` };
   // Same call the Done / Wrong / Undo buttons make (src/app/actions.ts setStatus): FileStore
   // reloads state.json, applies the change and writes it atomically. The web app sees it on its

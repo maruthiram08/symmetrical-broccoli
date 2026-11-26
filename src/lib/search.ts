@@ -41,7 +41,7 @@ export function buildIndex(items: Item[], meetings: Meeting[]): SearchIndex {
         at: m?.startedAt ?? i.createdAt, score: 0,
       },
       // fields joined with a separator so a phrase never spans two of them
-      hay: [i.text, i.quote, i.closeQuote ?? "", i.person ?? ""].map(fold).join("\u0000"),
+      hay: [i.text, i.quote, i.closeQuote ?? "", i.person ?? "", i.personRaw ?? ""].map(fold).join("\u0000"),
       ctx: fold(title),
     });
   }
