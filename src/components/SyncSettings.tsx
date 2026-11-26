@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { saveFolderSyncAction, saveGitAction, saveLinksAction, syncNowAction } from "@/app/workspace-actions";
+import { me } from "@/server/local/app";
 import { isGitRepo } from "@/server/local/git-sync";
 import { readSyncStatus, type SyncResult } from "@/server/local/sync-status";
 import { currentWorkspace, gitSettings, linksOn, listWorkspaces } from "@/server/local/workspaces";
@@ -8,9 +9,9 @@ import { SubmitOnChange } from "./SubmitOnChange";
 
 const tilde = (p: string) => p.replace(/^\/Users\/[^/]+/, "~").replace(/^\/home\/[^/]+/, "~");
 
-function Last({ r, label }: { r?: SyncResult; label: string }) {
+function Last({ r, label, tz }: { r?: SyncResult; label: string; tz?: string }) {
   if (!r) return null;
-  const when = new Date(r.at).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
+  const when = new Date(r.at).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit", timeZone: tz });
   return <p className={`db-note${r.ok ? "" : " db-note--error"}`} style={{ marginTop: 0 }}>{label}, {when}: {r.detail}</p>;
 }
 
@@ -21,6 +22,7 @@ export async function SyncSettings({ syncError, gitError }: { syncError?: string
   const status = readSyncStatus(ws);
   const git = gitSettings(ws);
   const repo = await isGitRepo(ws.path);
+  const tz = (await me())?.timeZone;
   return (
     <>
       <section className="db-stack db-subsection" aria-labelledby="ws-title">
@@ -69,7 +71,7 @@ export async function SyncSettings({ syncError, gitError }: { syncError?: string
           <div className="db-row">
             <Button type="submit" variant="secondary">Save</Button>
           </div>
-          <Last r={status.folder} label="Last copy" />
+          <Last r={status.folder} label="Last copy" tz={tz} />
         </form>
 
         <form action={saveGitAction} className="db-stack">
@@ -97,8 +99,8 @@ export async function SyncSettings({ syncError, gitError }: { syncError?: string
           </div>
           {gitError ? <p className="db-note db-note--error" role="alert">{gitError}</p> : null}
           <div className="db-row"><Button type="submit" variant="secondary">Save</Button></div>
-          <Last r={status.git} label="Last commit" />
-          <Last r={status.push} label="Last push" />
+          <Last r={status.git} label="Last commit" tz={tz} />
+          <Last r={status.push} label="Last push" tz={tz} />
         </form>
         <form action={syncNowAction} className="db-row">
           <Button type="submit" variant="ghost">Sync now</Button>

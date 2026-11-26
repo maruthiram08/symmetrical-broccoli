@@ -22,7 +22,7 @@ export default async function Templates({ searchParams }: { searchParams: Promis
         How the Markdown notes in <span className="db-mono">{ws.name}</span> are laid out. The defaults write the notes exactly as
         before. Templates are kept in this workspace&apos;s <span className="db-mono">.daily-brief/templates/</span>.
       </p>
-      <p className="db-crumb"><Link className="db-link" href="/setup#sync">Back to Settings</Link></p>
+      <p className="tp-back"><Link className="db-link" href="/setup#sync">Back to Settings</Link></p>
       {problem && !problem.ok ? <p className="db-note db-note--error" role="alert">{problem.detail}</p> : null}
       <nav className="tp-tabs" aria-label="Templates">
         {TEMPLATE_KINDS.map((t) => (

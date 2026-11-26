@@ -53,7 +53,7 @@
 .tp-editor__panes { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); }
 .tp-editor__pane { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; }
 .tp-editor__label { display: flex; align-items: center; gap: var(--space-2); font: 500 13px/18px var(--font-sans); color: var(--ink-muted); }
-.tp-editor__src { height: 560px; padding: var(--space-3); font-size: 12px; line-height: 18px; resize: vertical; white-space: pre; overflow: auto; }
+.tp-editor__src { height: 560px; padding: var(--space-3); font-family: var(--font-mono); font-size: 12px; line-height: 18px; resize: vertical; white-space: pre; overflow: auto; }
 .tp-editor__out { flex: 1; height: 560px; margin: 0; padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface-100); font-size: 12px; line-height: 18px; white-space: pre-wrap; overflow: auto; }
 .tp-editor__err { margin: 0; }
 .tp-editor__status { font-size: 13px; color: var(--ink-muted); }
@@ -63,3 +63,4 @@
   .tp-editor__panes { grid-template-columns: 1fr; }
   .tp-editor__src, .tp-editor__out { height: 360px; }
 }
+.tp-back { margin: 0 0 var(--space-2); font-size: 13px; }

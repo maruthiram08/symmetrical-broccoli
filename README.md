@@ -39,6 +39,15 @@ When something needs you, every page says so with a button: Wispr Flow signed yo
 
 To start over, quit the app and delete `.daily-brief/`.
 
+## Workspaces, templates, links and sync
+
+- **Workspaces** (Settings › Workspace, or `/workspaces`): each workspace is a notes folder with its own items, daily notes, `.daily-brief/` data and Wispr Flow connection. The first one is always `~/Daily Brief` (or `DAILY_BRIEF_DIR`); the list lives in its `.daily-brief/workspaces.json`, and the one you pick is remembered. Switch from the sidebar once there are two. Background checks and briefs run for every workspace. Removing a workspace only takes it off the list; its folder is left alone. The Anthropic key, `settings.env` and the token key are shared.
+- **Inbox** (`/inbox`): anything you add with **c** that names no person and no day lands here instead of on your lists. Give it You owe or Waiting on, a person and a date and move it, or delete it.
+- **Automatic links** (on by default, Settings › Notes, links and sync): notes link people (`[[Nitin]]`), meetings (`[[2026-11-25 Standup|Standup]]`) and decisions (`[[decisions#^d-1a2b3c4d|decision log]]`), and the brief writes `people/<Name>.md` and `meetings/<date> <title>.md` so backlinks work in Obsidian. Decisions logged before links were on have no block id. Turn it off for the plain notes.
+- **Templates** (Settings › Edit templates): the daily note, weekly recap and meeting note use `{{field}}`, `{{#if}}…{{else}}…{{/if}}`, `{{#each}}…{{/each}}` templates with a live preview, kept in `.daily-brief/templates/`. The defaults write exactly the notes as before. A broken template never stops a brief: the default is used and Settings says why.
+- **Folder sync** (off by default): after each brief, daily notes, `decisions.md`, weekly recaps and `people/`, `meetings/` pages are copied one way into `<folder>/daily-brief/` (an iCloud Drive folder or an Obsidian vault). Writes are atomic and skipped when unchanged; only files it put in `daily-brief/` are ever removed.
+- **Git**: if the notes folder is a git repo (`git init` in it), each brief commits the notes it wrote as “Daily brief 2026-11-26” with your git name and email. **Then push** is off by default and pushes to a named remote (default `origin`) with your own git credentials; the app never stores a URL or token, and git is never allowed to prompt, so a push that needs a password is skipped and reported in Settings.
+
 ## Ask Claude about your brief
 
 A local MCP server lets Claude Desktop or Claude Code read your brief and close items: "what do I owe Tarun?", "what did we decide about the dividend banner?", "mark the venue booking done".

@@ -33,7 +33,16 @@ async function load(store: Store, user: User): Promise<Loaded> {
     ...meetings.flatMap((m) => m.participants).filter((p) => !p.includes("@")),
   ];
   const self = [user.name, ...user.aliases].filter(Boolean);
-  const notes = new Map(meetings.map((m) => [m.id, meetingNoteName(localDate(new Date(m.startedAt), user.timeZone), m.title)]));
+  // Two meetings with the same title on the same day get "… (2)", oldest first.
+  const notes = new Map<string, string>();
+  const taken = new Set<string>();
+  for (const m of [...meetings].sort((a, b) => a.startedAt.localeCompare(b.startedAt) || a.id.localeCompare(b.id))) {
+    const base = meetingNoteName(localDate(new Date(m.startedAt), user.timeZone), m.title);
+    let name = base;
+    for (let n = 2; taken.has(name.toLowerCase()); n++) name = `${base} (${n})`;
+    taken.add(name.toLowerCase());
+    notes.set(m.id, name);
+  }
   return { user, items, meetings, names, self, links: linkContext({ names, self, meetings: notes }) };
 }
 
@@ -80,23 +89,20 @@ function writePage(dir: string, rel: string, md: string): boolean {
 }
 
 /**
- * people/<Name>.md for everyone with items, and meetings/<date> <title>.md for the day's meetings
- * and every meeting the brief points at. Returns the relative paths it wrote (changed or not).
+ * people/<Name>.md for everyone with items, and meetings/<date> <title>.md for every meeting, so
+ * each [[link]] in the notes has a page. Unchanged pages aren't written again. Returns the
+ * relative paths of all the pages.
  */
-export function writeLinkedPages(ws: Workspace, data: Loaded, model: Pick<BriefModel, "date" | "youOwe" | "waitingOn" | "decisions" | "stillOpen">, now: Date): string[] {
+export function writeLinkedPages(ws: Workspace, data: Loaded, now: Date): string[] {
   const { user, items, meetings, links } = data;
   const tz = user.timeZone;
   const out: string[] = [];
   const byId = new Map(meetings.map((m) => [m.id, m]));
-
-  const wanted = new Set<string>();
-  for (const m of meetings) if (localDate(new Date(m.startedAt), tz) === model.date) wanted.add(m.id);
-  for (const l of [...model.youOwe, ...model.waitingOn, ...model.decisions, ...model.stillOpen]) if (l.meetingId && byId.has(l.meetingId)) wanted.add(l.meetingId);
-  for (const id of wanted) {
-    const m = byId.get(id)!;
+  for (const m of meetings) {
+    const id = m.id;
     const input = { meeting: m, items: items.filter((i) => i.meetingId === id), closed: items.filter((i) => i.closedByMeetingId === id && i.meetingId !== id), timeZone: tz, now };
     const md = withTemplate(ws, "meeting", (t) => renderMeetingNote(input, { template: t, links }));
-    const rel = `meetings/${meetingNoteFile(m, tz)}`;
+    const rel = `meetings/${links.meeting(id) ?? meetingNoteFile(m, tz).replace(/\.md$/, "")}.md`;
     writePage(ws.path, rel, md);
     out.push(rel);
   }
@@ -157,7 +163,7 @@ export async function runGitSync(ws: Workspace, files: string[], date: string): 
 export async function afterPublish(ws: Workspace, store: Store, user: User, model: BriefModel, week?: { key: string }, now = new Date()): Promise<string[]> {
   const files = [`${model.date}.md`, "decisions.md", ...(week ? [`week-${week.key}.md`] : [])];
   try {
-    if (linksOn(ws)) files.push(...writeLinkedPages(ws, await load(store, user), model, now));
+    if (linksOn(ws)) files.push(...writeLinkedPages(ws, await load(store, user), now));
   } catch (e) {
     console.error(`[sync] linked pages: ${e instanceof Error ? e.name : "Error"}`);
   }
@@ -169,9 +175,8 @@ export async function afterPublish(ws: Workspace, store: Store, user: User, mode
 /** Settings' "Sync now": rebuild the linked pages from the stored data and mirror the folder. */
 export async function syncNow(ws: Workspace, store: Store, user: User, now = new Date()): Promise<void> {
   if (linksOn(ws)) {
-    const date = localDate(now, user.timeZone);
     try {
-      writeLinkedPages(ws, await load(store, user), { date, youOwe: [], waitingOn: [], decisions: [], stillOpen: [] }, now);
+      writeLinkedPages(ws, await load(store, user), now);
     } catch (e) {
       console.error(`[sync] linked pages: ${e instanceof Error ? e.name : "Error"}`);
     }

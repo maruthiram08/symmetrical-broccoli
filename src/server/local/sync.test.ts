@@ -211,6 +211,16 @@ describe("after a brief", () => {
     expect(readFileSync(join(dir, "decisions.md"), "utf8").match(/Ship on Friday/g)).toHaveLength(1);
   });
 
+  it("gives every meeting its own note, even two with the same title on one day", async () => {
+    const dir = tmp();
+    const w = ws(dir);
+    const { store, user, model } = await seeded(dir);
+    await store.upsertMeeting({ userId: user.id, providerMeetingId: "p2", title: "Growth standup", startedAt: "2026-11-26T09:00:00Z", participants: [] });
+    await store.upsertMeeting({ userId: user.id, providerMeetingId: "p3", title: "Old: sync/plan", startedAt: "2026-11-02T09:00:00Z", participants: [] });
+    await afterPublish(w, store, user, model);
+    expect(readdirSync(join(dir, "meetings")).sort()).toEqual(["2026-11-02 Old sync plan.md", "2026-11-26 Growth standup (2).md", "2026-11-26 Growth standup.md"]);
+  });
+
   it("with links off, writes the plain notes and no extra pages; no repo, no git", async () => {
     const dir = tmp();
     const w = ws(dir, { links: false });
