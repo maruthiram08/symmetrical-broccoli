@@ -5,12 +5,15 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { addSuggestionAction, dismissSuggestionAction } from "@/app/routine-actions";
 import { RoutineEditor, type EditorValue } from "./RoutineEditor";
+import { TitleWithPerson } from "./Who";
 
 /** One routine on /routines, already worded on the server. Edit opens the editor in place. */
 export interface RoutineRowView extends EditorValue {
   id: string;
   label: string;
   next: string | null;
+  /** "Overdue since Tue", or null. */
+  overdue: string | null;
   lastDone: string | null;
   streak: number;
   fromMeeting: { id: string; title: string } | null;
@@ -24,9 +27,11 @@ export function RoutineRow({ r, today, people }: { r: RoutineRowView; today: str
   return (
     <div className={`db-item rt-row${r.archived ? " rt-row--archived" : ""}`}>
       <span className="db-item__icon"><span className="db-mark rt-mark" aria-hidden="true" /></span>
-      <span className="db-item__text">{r.title}{r.person ? <> · <b>{r.person}</b></> : null}</span>
+      <span className="db-item__text"><TitleWithPerson title={r.title} person={r.person} /></span>
       <span className="db-item__side">
-        {r.archived ? <span className="db-item__time">Archived</span> : r.next ? <span className="db-item__time">{r.next === "Today" ? "Due today" : `Next ${r.next}`}</span> : null}
+        {r.archived ? <span className="db-item__time">Archived</span>
+          : r.overdue ? <span className="db-item__late">{r.overdue}</span>
+          : r.next ? <span className="db-item__time">{r.next === "Today" ? "Due today" : r.next === "Tomorrow" ? "Tomorrow" : `Next ${r.next}`}</span> : null}
       </span>
       <span className="db-item__meta">
         <span>{r.label}</span>
@@ -69,7 +74,7 @@ export function SuggestionCard({ s, today, people }: { s: SuggestionView; today:
   return (
     <div className="rt-suggest">
       <div className="rt-suggest__head">
-        <span className="rt-suggest__title">{s.title}{s.person ? <> · <b>{s.person}</b></> : null}</span>
+        <span className="rt-suggest__title"><TitleWithPerson title={s.title} person={s.person} /></span>
         <span className="rt-suggest__when db-mono">{s.label}</span>
       </div>
       <p className="rt-suggest__quote">&ldquo;{s.quote}&rdquo;{s.meeting ? <> · <Link className="db-link" href={`/meeting/${s.meeting.id}`}>{s.meeting.title}</Link>, {s.meeting.when}</> : null}</p>

@@ -4,7 +4,7 @@ import { Section } from "@/components/BriefList";
 import { Shell } from "@/components/Shell";
 import { NewRoutine, RoutineRow, SuggestionCard, type RoutineRowView, type SuggestionView } from "@/components/routines/RoutineRows";
 import { addDays, localDate } from "@/lib/brief/time";
-import { lastDone, nextDue, streak } from "@/lib/routines/schedule";
+import { lastDone, nextDue, routineLine, streak } from "@/lib/routines/schedule";
 import { cadenceLabel, relativeDay, shortDay } from "@/lib/routines/words";
 import { getStore, me } from "@/server/local/app";
 import { routineStore } from "@/server/routines";
@@ -35,21 +35,25 @@ export default async function Routines() {
     return meetingTitle.get(id) ?? null;
   };
 
-  const rows: RoutineRowView[] = [];
+  const rows: Array<RoutineRowView & { order: string }> = [];
   for (const r of routines) {
     const next = r.archived ? null : nextDue(r, occ, today, tz);
     const last = lastDone(occ, r.id);
+    const overdue = r.archived ? null : routineLine(r, occ, today, tz)?.overdueLabel ?? null;
     const m = r.source.type === "meeting" ? await meetingOf(r.source.meetingId) : null;
     rows.push({
       id: r.id, title: r.title, cadence: r.cadence, time: r.time, person: r.person, archived: r.archived,
       label: cadenceLabel(r.cadence, r.time),
       next: next ? relativeDay(next, today, tomorrow) : null,
+      overdue: overdue ? overdue[0].toUpperCase() + overdue.slice(1) : null,
+      order: overdue ? `0${r.title}` : `1${next ?? "9999"}${r.title}`,
       lastDone: last ? (last === today ? "today" : shortDay(last)) : null,
       streak: streak(r, occ, today, tz),
       fromMeeting: r.source.type === "meeting" && m ? { id: r.source.meetingId, title: m.title } : null,
     });
   }
-  const active = rows.filter((r) => !r.archived).sort((a, b) => a.title.localeCompare(b.title));
+  // Overdue first, then by when each is next due.
+  const active = rows.filter((r) => !r.archived).sort((a, b) => a.order.localeCompare(b.order));
   const archived = rows.filter((r) => r.archived);
 
   const suggestions: SuggestionView[] = [];

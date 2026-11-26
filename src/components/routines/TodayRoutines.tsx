@@ -4,6 +4,7 @@ import { Section } from "@/components/BriefList";
 import { ItemActs } from "@/components/ItemActs";
 import { dayLabel } from "@/lib/routines/words";
 import type { RoutineLine } from "@/lib/routines/types";
+import { TitleWithPerson } from "./Who";
 
 function Mark({ line, status, label, cls }: { line: RoutineLine; status: "done" | "skipped"; label: string; cls?: string }) {
   return (
@@ -32,7 +33,7 @@ export function TodayRoutines({ lines, today }: { lines: RoutineLine[]; today: s
             <input type="hidden" name="status" value="done" />
             <button className="rt-tick" type="submit" aria-label={`Done: ${l.title}${l.date === today ? "" : `, ${dayLabel(l.date)}`}`} title="Done for this day" />
           </form>
-          <span className="db-item__text">{l.title}{l.person ? <> · <b>{l.person}</b></> : null}</span>
+          <span className="db-item__text"><TitleWithPerson title={l.title} person={l.person} /></span>
           <span className="db-item__side">
             {l.overdueLabel ? <span className="db-item__late">{l.overdueLabel}</span> : l.time ? <span className="db-item__time">{l.time}</span> : null}
           </span>
