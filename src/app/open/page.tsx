@@ -8,12 +8,15 @@ import { isSnoozed, lineExtras, starredFirst } from "@/lib/capture/items";
 import type { BriefLine, Item } from "@/lib/types";
 import { getStore, me } from "@/server/local/app";
 import { pastDays } from "../_lib/days";
+import { ByProject } from "@/components/structure/ByProject";
+import Link from "next/link";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "All open" };
 
-// Everything still open, oldest promise first, grouped by person.
-export default async function AllOpen() {
+// Everything still open, oldest promise first, grouped by person (or by project, ?group=project).
+export default async function AllOpen({ searchParams }: { searchParams: Promise<{ group?: string }> }) {
+  const byProject = (await searchParams).group === "project";
   const user = await me();
   if (!user) redirect("/setup");
   const store = getStore();
@@ -58,9 +61,12 @@ export default async function AllOpen() {
   return (
     <Shell days={await pastDays(user.id, "")} current="open" openCount={open.length}>
       <h1 className="db-title">All open</h1>
-      <p className="db-subtitle">{open.length} promises not closed yet, oldest first, grouped by person.</p>
+      <p className="db-subtitle">
+        {open.length} promises not closed yet, oldest first, grouped by {byProject ? "project" : "person"}.
+        {" · "}<Link className="db-link" href={byProject ? "/open" : "/open?group=project"}>{byProject ? "Group by person" : "Group by project"}</Link>
+      </p>
       <Section title="You owe" count={String(count(owe))} empty="Nothing owed.">
-        {owe.map(([person, items]) => (
+        {byProject ? <ByProject lines={owe.flatMap(([, xs]) => xs).sort((a, b) => started(a).localeCompare(started(b))).map(line)} back="/open?group=project" /> : owe.map(([person, items]) => (
           <div key={person} className="db-group">
             <h3 className="db-group__title">{person} <span className="db-section__count">{items.length}</span></h3>
             {items.map((i) => <BriefItem key={i.id} line={line(i)} back="/open" />)}
@@ -68,7 +74,7 @@ export default async function AllOpen() {
         ))}
       </Section>
       <Section title="Waiting on" count={String(count(waiting))} empty="Nobody owes you anything.">
-        {waiting.map(([person, items]) => (
+        {byProject ? <ByProject lines={waiting.flatMap(([, xs]) => xs).sort((a, b) => started(a).localeCompare(started(b))).map(line)} back="/open?group=project" /> : waiting.map(([person, items]) => (
           <div key={person} className="db-group">
             <h3 className="db-group__title">{person} <span className="db-section__count">{items.length}</span></h3>
             {items.map((i) => <BriefItem key={i.id} line={line(i)} back="/open" />)}

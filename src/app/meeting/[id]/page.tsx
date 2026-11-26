@@ -51,7 +51,7 @@ export default async function MeetingPage({ params }: { params: Promise<{ id: st
         {m.link ? <> · <a className="db-link" href={m.link} target="_blank" rel="noopener noreferrer">Notes in Wispr Flow</a></> : null}
       </p>
       {projects.length ? (
-        <p className="db-subtitle st-line">
+        <p className="db-subtitle pf-meetings">
           {projects.map(([slug, n]) => <Link key={slug} className="st-proj" href={`/notes/${encodeURIComponent(slug)}`} title={`${n} item${n === 1 ? "" : "s"} from this meeting`}>+{projectLabel(slug)}</Link>)}
         </p>
       ) : null}

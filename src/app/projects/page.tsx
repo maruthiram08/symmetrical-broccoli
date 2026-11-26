@@ -10,6 +10,7 @@ import { autoFileProjects, filedByYou, filingProjects, suggestProjects } from "@
 import { projectRows } from "@/server/structure/notes";
 import { openCountFor, pastDays } from "../_lib/days";
 import { loadAll, toLine } from "../_lib/lines";
+import { ProjectBoardView } from "./ProjectBoardView";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Projects" };
@@ -17,10 +18,12 @@ export const metadata: Metadata = { title: "Projects" };
 const SUGGEST_DAYS = 45;
 const newestFirst = (a: Item, b: Item) => b.createdAt.localeCompare(a.createdAt);
 
-// Your projects, what was filed into them on its own, what still needs a project, and projects worth
+// Two views. By project (default): every project with its open items, decisions and the meetings
+// that fed it. Filing: your projects, what was filed into them on its own, what still needs a project, and projects worth
 // making from the topics your meetings share. Filing runs on load, so a project you just made in a
 // note, or new keywords, take effect here.
-export default async function Projects() {
+export default async function Projects({ searchParams }: { searchParams: Promise<{ view?: string }> }) {
+  const view = (await searchParams).view === "filing" ? "filing" : "board";
   const user = await me();
   if (!user) redirect("/setup");
   await autoFileProjects(getFileStore(), user.id).catch(() => undefined);
@@ -34,10 +37,26 @@ export default async function Projects() {
   const auto = open.filter((i) => i.project && i.projectBy === "auto").sort(newestFirst);
   const since = new Date(now.getTime() - SUGGEST_DAYS * 86_400_000).toISOString();
   const topics = suggestProjects(live, meetings, filingProjects(), since);
-  const back = "/projects";
+  const back = view === "filing" ? "/projects?view=filing" : "/projects";
+  const tabs = (
+    <p className="db-subtitle pf-tabs" role="tablist">
+      <Link role="tab" aria-selected={view === "board"} className={view === "board" ? "pf-tab pf-tab--on" : "pf-tab"} href="/projects">By project</Link>
+      <Link role="tab" aria-selected={view === "filing"} className={view === "filing" ? "pf-tab pf-tab--on" : "pf-tab"} href="/projects?view=filing">Filing{needs.length ? ` · ${needs.length} need a project` : ""}</Link>
+    </p>
+  );
+  if (view === "board") {
+    return (
+      <Shell days={await pastDays(user.id, "")} current="projects" openCount={await openCountFor(user.id)}>
+        <h1 className="db-title">Projects</h1>
+        {tabs}
+        <ProjectBoardView projects={rows.map((r) => ({ slug: r.slug, title: r.title, status: typeof r.props.status === "string" ? r.props.status : null }))} items={live} meetings={meetings} user={user} now={now} needs={needs.length} topics={topics.length} />
+      </Shell>
+    );
+  }
   return (
     <Shell days={await pastDays(user.id, "")} current="projects" openCount={await openCountFor(user.id)}>
       <h1 className="db-title">Projects</h1>
+      {tabs}
       <p className="db-subtitle">
         Each promise, waiting-on and decision goes into the project it clearly belongs to, so one meeting can feed several projects. When it isn&apos;t clear, it waits under Needs a project. Move one and the app learns from it. Add <span className="db-mono">keywords:</span> to a project note to teach it words up front.
       </p>
