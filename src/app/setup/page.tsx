@@ -13,7 +13,7 @@ import { formatBytes, summarizeHealth } from "@/server/local/health";
 import { formatTime, localDate } from "@/lib/brief/time";
 import { ChannelHealthRows, ChannelSettings } from "@/components/channels/ChannelSettings";
 import { BRIEF_TIMES, formatBriefTime, timeZones, todayIn } from "../_lib/time";
-import { headers } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { PlatformSettings } from "@/components/PlatformSettings";
 import { isRemote } from "@/server/local/phone-proxy";
 import { SyncSettings } from "@/components/SyncSettings";
@@ -22,6 +22,7 @@ import { SourcesSection } from "@/components/SourcesSection";
 import { sourceStatuses } from "@/server/recorders/status";
 import { AiSettings } from "@/components/ai/AiSettings";
 import { AppearanceSettings } from "@/components/AppearanceSettings";
+import { MODE_COOKIE, parseMode } from "@/lib/theme/mode";
 import { readThemes } from "@/server/local/themes";
 
 export const dynamic = "force-dynamic";
@@ -169,7 +170,7 @@ export default async function Setup({ searchParams }: { searchParams: Promise<{ 
       <IntegrationsSettings flash={integ} timeZone={tz} />
       <PlatformSettings remote={remote} timeZone={tz} modelError={model === "bad"} />
       {isHosted() ? null : <AiSettings remote={remote} flash={{ ai, p: aiProvider }} />}
-      {isHosted() ? null : <AppearanceSettings initial={readThemes()} />}
+      {isHosted() ? null : <AppearanceSettings initial={readThemes()} mode={parseMode((await cookies()).get(MODE_COOKIE)?.value)} />}
       {health ? (
         <section className="db-stack db-subsection" aria-labelledby="health">
           <h2 className="db-section__title" id="health">Health</h2>
