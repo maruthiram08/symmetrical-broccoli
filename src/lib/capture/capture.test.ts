@@ -50,6 +50,11 @@ describe("manual items in the store", () => {
     const s = new FileStore(path);
     expect((await s.listItems("u"))[0]).toMatchObject({ id: "i1", source: "extracted" });
     expect(migrateItem({ ...old, source: "manual" }).source).toBe("manual");
+    // Added from Cross-check with Wispr's owner prefix still in the text.
+    const added = { ...old, source: "manual" as const, meetingId: "m1", text: "(Speaker 1) Share the Notion document", person: "backend" };
+    expect(migrateItem(added)).toMatchObject({ text: "Share the Notion document", person: null });
+    expect(migrateItem({ ...added, text: "Plain title", person: "Tarun" })).toMatchObject({ text: "Plain title", person: "Tarun" });
+    expect(migrateItem({ ...old, meetingId: "m1", text: "(Speaker 1) Extracted stays" }).text).toBe("(Speaker 1) Extracted stays");
   });
 
   it("never treats manual items as a duplicate meeting batch", () => {
