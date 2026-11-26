@@ -26,7 +26,7 @@ export function lineExtras(i: Item): Pick<BriefLine, "manual" | "note" | "starre
 
 /** Items stored before manual items existed have no source: they came from meetings. */
 export function migrateItem(i: Item): Item {
-  let out = i.source ? i : { ...i, source: "extracted" };
+  let out: Item = i.source ? i : { ...i, source: "extracted" };
   // Items added from Cross-check before 26 Nov 2026 kept Wispr's "(Name) " prefix, and could get a
   // word like "backend" as the person. Tidy both; the user sets the right person if there is one.
   if (out.source === "manual" && out.meetingId) {
