@@ -1,6 +1,11 @@
-# Builds the desktop app for macOS (Apple Silicon), Windows (x64) and Linux (AppImage and .deb)
-# when a version tag is pushed (git tag v0.2.0 && git push origin v0.2.0), and attaches the
-# installers to a draft GitHub release. The builds are unsigned (see README › Windows and Linux).
+# Builds the desktop app for macOS (Apple Silicon), Windows (x64) and Linux (AppImage and .deb),
+# each with the pinned Node runtime bundled inside (scripts/node-runtime.mjs).
+#
+# - Run it by hand on any branch (Actions › Desktop builds › Run workflow, or
+#   gh workflow run desktop.yml --ref <branch>): the installers are uploaded as workflow artifacts.
+# - Push a version tag (git tag v0.2.0 && git push origin v0.2.0): the same, plus a draft GitHub
+#   release with the installers attached.
+# The builds are unsigned (see README › Windows and Linux).
 name: Desktop builds
 
 on:
@@ -9,7 +14,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: desktop-${{ github.ref }}
@@ -25,7 +30,8 @@ jobs:
           - name: macOS (arm64)
             os: macos-14
             target: aarch64-apple-darwin
-            bundles: app,dmg
+            # The .dmg is made by scripts/make-dmg.sh below (tauri's bundle_dmg is flaky).
+            bundles: app
           - name: Windows (x64)
             os: windows-2022
             target: x86_64-pc-windows-msvc
@@ -37,11 +43,11 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
 
       - name: Rust toolchain
@@ -57,7 +63,8 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf libssl-dev
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev \
+            patchelf libssl-dev libxdo-dev build-essential file libsecret-tools libnotify-bin
 
       - name: Install
         run: npm ci
@@ -69,15 +76,39 @@ jobs:
       - name: Build and stage the server
         run: node scripts/stage-server.mjs
 
+      - name: Cache the Node runtime download
+        uses: actions/cache@v5
+        with:
+          path: src-tauri/target/node-cache
+          key: node-runtime-${{ matrix.target }}-${{ hashFiles('scripts/node-runtime.mjs') }}
+
+      - name: Bundled Node runtime (SHA-256 checked)
+        run: node scripts/node-runtime.mjs --target ${{ matrix.target }}
+
       - name: Build the app
         run: npx tauri build --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
 
+      - name: Zip the .app
+        if: runner.os == 'macOS'
+        working-directory: src-tauri/target/${{ matrix.target }}/release/bundle/macos
+        run: ditto -c -k --keepParent "Daily Brief.app" "Daily Brief_aarch64.app.zip"
+
+      - name: Make the .dmg
+        if: runner.os == 'macOS'
+        # A failed .dmg never fails the build: the zipped .app is uploaded either way.
+        continue-on-error: true
+        run: |
+          version=$(node -p 'require("./src-tauri/tauri.conf.json").version')
+          bundle=src-tauri/target/${{ matrix.target }}/release/bundle
+          bash scripts/make-dmg.sh "$bundle/macos/Daily Brief.app" "$bundle/dmg/Daily Brief_${version}_aarch64.dmg"
+
       - name: Upload installers
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: daily-brief-${{ matrix.target }}
           if-no-files-found: error
           path: |
+            src-tauri/target/${{ matrix.target }}/release/bundle/macos/*.app.zip
             src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg
             src-tauri/target/${{ matrix.target }}/release/bundle/nsis/*.exe
             src-tauri/target/${{ matrix.target }}/release/bundle/msi/*.msi
@@ -89,12 +120,14 @@ jobs:
     needs: build
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-22.04
+    permissions:
+      contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           path: dist
           merge-multiple: true
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         with:
           draft: true
           files: dist/*

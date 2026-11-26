@@ -241,7 +241,7 @@ Review in the sidebar opens `/review/month/YYYY-MM` (and `/review/year/YYYY`): p
 
 ## The Mac app
 
-`Daily Brief.app` is a small Tauri window and menu bar item around the same server. It starts the server with your Node.js (Homebrew's is fine, 18.18 or later), or reuses one already running on port 4242, and stops the one it started when you quit. Closing the window keeps it in the menu bar, where you also find **Check meetings now**, **Open in browser** and **Launch at login**.
+`Daily Brief.app` is a small Tauri window and menu bar item around the same server. It starts the server with the Node.js runtime it carries inside (Node 22 LTS, so you don't need Node installed to run it), or reuses one already running on port 4242, and stops the one it started when you quit. Closing the window keeps it in the menu bar, where you also find **Check meetings now**, **Open in browser** and **Launch at login**.
 
 Build it (Apple Silicon; needs Xcode Command Line Tools and Rust):
 
@@ -257,26 +257,31 @@ cp -R "src-tauri/target/aarch64-apple-darwin/release/bundle/macos/Daily Brief.ap
 
 The app keeps its secrets in the macOS Keychain (service `app.dailybrief`), not in files: the Anthropic API key, and the Wispr Flow token key, which moves there from `.daily-brief/key` on first start. `EXTRACTION_MODEL` and `WISPR_MCP_URL` go in `.daily-brief/settings.env` (`keychain:import` copies them). `npm start` still reads `.env.local` and falls back to the Keychain. The app always uses `~/Daily Brief`. The log is `~/Library/Logs/daily-brief.log`; the app rotates it at 5 MB and keeps three old copies (`.1` to `.3`). It never holds keys, tokens or transcript text.
 
+**What `mac:build` does.** It builds the standalone server, downloads the pinned Node runtime (`NODE_VERSION` in `scripts/node-runtime.mjs`; just the `node` binary and its license, no npm) from nodejs.org, checks it against the official `SHASUMS256.txt`, and caches it in `src-tauri/target/node-cache` so the next build doesn't download it again. That adds about 108 MB to the .app (about 40 MB to the .dmg). Building still needs Node 18.18+ on your Mac; running the app doesn't. A build without the runtime (say `tauri dev`) falls back to your system Node. The .app is built first and the .dmg is made after it with `hdiutil`, retried a few times; if the .dmg still fails you get the .app anyway (`scripts/make-dmg.sh` makes the .dmg again by hand).
+
 **First launch.** The app isn't signed with an Apple Developer ID. A copy you built yourself opens normally. If macOS says it can't be opened (say, you copied it from another Mac): right-click (or Control-click) the app in Finder, choose **Open**, then **Open** again. Or allow it under System Settings › Privacy & Security › **Open Anyway**, or run `xattr -dr com.apple.quarantine "/Applications/Daily Brief.app"`.
 
 ## Windows and Linux
 
-The same app builds for Windows (x64) and Linux (AppImage and .deb). Pushing a version tag runs
-`.github/workflows/desktop.yml`, which builds macOS (Apple Silicon), Windows and Linux and attaches
-the installers to a draft GitHub release:
+The same app builds for Windows (x64) and Linux (AppImage and .deb), each with Node bundled.
+`.github/workflows/desktop.yml` builds macOS (Apple Silicon), Windows and Linux. Run it on any
+branch from Actions › Desktop builds › **Run workflow** (or `gh workflow run desktop.yml --ref <branch>`)
+and download the installers from the run's artifacts. Pushing a version tag does the same and
+attaches the installers to a draft GitHub release:
 
 ```bash
 git tag v0.2.0 && git push origin v0.2.0
 ```
 
-To build one yourself: `node scripts/stage-server.mjs` (the standalone server), then
-`npx tauri build`. On Linux first install `libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf`.
+To build one yourself: `node scripts/stage-server.mjs` (the standalone server),
+`node scripts/node-runtime.mjs` (the bundled Node for this machine; `--target <triple>` for another),
+then `npx tauri build`. On Linux first install `libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf libxdo-dev libssl-dev`.
 
 What differs per system:
 
 | | macOS | Windows | Linux |
 | --- | --- | --- | --- |
-| Node.js (18.18+) | Homebrew, or your shell's PATH | Program Files, nvm-windows, Volta, or `where node` | /usr/bin, /usr/local/bin, Volta, snap, or your login shell (nvm) |
+| Node.js | Bundled; else Homebrew or your shell's PATH (18.18+) | Bundled; else Program Files, nvm-windows, Volta, or `where node` | Bundled; else /usr/bin, /usr/local/bin, Volta, snap, or your login shell (nvm) |
 | Secrets | Keychain | Credential Manager (`app.dailybrief:<NAME>`) | Desktop keyring through `secret-tool` (package `libsecret-tools`) |
 | Notifications | Notification Center | Toast | `notify-send` (package `libnotify-bin`) |
 | Launch at login | LaunchAgent | Run key in the registry | `~/.config/autostart` |
