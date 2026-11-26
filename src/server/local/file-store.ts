@@ -7,6 +7,7 @@ import { MemoryStore } from "@/server/store";
 import { isManual, migrateItem, type ManualInput } from "@/lib/capture/items";
 import type { OAuthClientStore } from "@/server/wispr/oauth";
 import type { AppStore } from "@/server/app-store";
+import type { ChangeCtx, Directory, PeopleChange } from "@/lib/directory/directory";
 
 interface State {
   version: 1;
@@ -30,6 +31,9 @@ interface State {
   health?: Health;
   /** Set when state.json couldn't be read and was restored; shown as a banner until dismissed. */
   recovery?: Recovery | null;
+  /** Added with the people directory: missing in older files (names then show as extracted). */
+  people?: Array<[string, Directory]>;
+  peopleLog?: Array<[string, PeopleChange[]]>;
 }
 
 /** What happened when state.json couldn't be read. */
@@ -265,6 +269,8 @@ export class FileStore extends MemoryStore implements OAuthClientStore, AppStore
     this.calendar = new Map(s.calendar ?? []);
     this.health = s.health ?? {};
     this.recovery = s.recovery ?? null;
+    this.people = new Map((s.people ?? []).map(([k, d]) => [k, { people: d?.people ?? [], moved: d?.moved ?? {} }]));
+    this.peopleLog = new Map(s.peopleLog ?? []);
   }
 
   /** True when state.json is no longer the file this copy last read or wrote. */
@@ -312,6 +318,8 @@ export class FileStore extends MemoryStore implements OAuthClientStore, AppStore
       calendar: [...this.calendar.entries()],
       health: this.health,
       recovery: this.recovery,
+      people: [...this.people.entries()],
+      peopleLog: [...this.peopleLog.entries()],
     };
     mkdirSync(dirname(this.path), { recursive: true, mode: 0o700 });
     const json = JSON.stringify(state);
@@ -416,6 +424,12 @@ export class FileStore extends MemoryStore implements OAuthClientStore, AppStore
     return n;
   }
 
+  async getPeople(userId: string) { this.reload(); return super.getPeople(userId); }
+  async listPeopleChanges(userId: string) { this.reload(); return super.listPeopleChanges(userId); }
+  async changePeople(userId: string, plan: (d: Directory, ctx: ChangeCtx) => PeopleChange | null, at: string) {
+    return this.change(() => super.changePeople(userId, plan, at), (c) => !!c);
+  }
+  async undoPeopleChange(userId: string, changeId: string) { return this.change(() => super.undoPeopleChange(userId, changeId), (c) => !!c); }
   async getHealth() { this.reload(); return super.getHealth(); }
   async setHealth(patch: Partial<Health>) { await this.change(() => super.setHealth(patch)); }
   async markMeetingDuplicate(meetingId: string, duplicateOf: string, at: string) { await this.change(() => super.markMeetingDuplicate(meetingId, duplicateOf, at)); }

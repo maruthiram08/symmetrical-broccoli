@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { beforeEach, describe, expect, it } from "vitest";
+import { confirmNew } from "@/lib/directory/directory";
 import type { Connection } from "@/lib/types";
 import { pollUser } from "@/server/jobs/poll";
 import { processPending } from "@/server/jobs/process";
@@ -236,5 +237,23 @@ describe("withUserLock", () => {
   it("releases the lock when the job throws", async () => {
     await expect(withUserLock(db, a, async () => { throw new Error("boom"); })).rejects.toThrow("boom");
     expect(await withUserLock(db, a, async () => 2)).toEqual({ locked: true, value: 2 });
+  });
+});
+
+describe("HostedStore: people directory", () => {
+  it("renames through the directory on reads, undoes, and keeps users apart", async () => {
+    await root.addManualItem(a, { kind: "owe", text: "Send deck", person: "Munkku", dueAt: null }, AT);
+    expect((await root.listItems(a))[0].person).toBe("Munkku");
+    const c = await root.changePeople(a, (d, ctx) => confirmNew(d, { name: "Mangku", spellings: ["Munkku"] }, ctx), AT);
+    expect(c?.label).toBe("Munkku renamed to Mangku");
+    expect((await root.listItems(a))[0].person).toBe("Mangku");
+    expect((await root.getPeople(a)).people.map((p) => p.name)).toEqual(["Mangku"]);
+    expect((await root.getPeople(b)).people).toEqual([]);
+    expect((await root.listPeopleChanges(a)).map((x) => x.id)).toEqual([c!.id]);
+    expect(await root.changePeople(a, () => null, AT)).toBeNull();
+    expect((await root.undoPeopleChange(a, c!.id))?.undone).toBe(true);
+    expect(await root.undoPeopleChange(a, c!.id)).toBeNull();
+    expect((await root.listItems(a))[0].person).toBe("Munkku");
+    await expect(root.forUser(b).changePeople(a, () => null, AT)).rejects.toThrow(WrongUserError);
   });
 });

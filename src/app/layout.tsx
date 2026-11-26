@@ -12,6 +12,7 @@ import "./ask.css";
 import "./calendar.css";
 import "./capture.css";
 import "./hosted.css";
+import "./names.css";
 import "./workspace.css";
 import "./integrations.css";
 import "./channels.css";

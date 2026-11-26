@@ -4,15 +4,19 @@
 // and passing another user's id throws. Pages only ever get a scoped store (src/server/hosted/app.ts).
 import { randomUUID } from "node:crypto";
 import type { OAuthClientInformationMixed } from "@modelcontextprotocol/sdk/shared/auth.js";
+import { applyOps, emptyDirectory, resolveItems, resolveMeeting, resolveUpcoming, undoOps, type ChangeCtx, type Directory, type PeopleChange } from "@/lib/directory/directory";
 import { manualItem, type ManualInput } from "@/lib/capture/items";
 import type { CalendarCache, Connection, Health, Item, LastLook, Meeting, UpcomingCache, User } from "@/lib/types";
 import type { AppStore, RecoveryNotice } from "@/server/app-store";
 import { decrypt, encrypt } from "@/server/crypto";
 import { applyMarks, marksToKeep, type Mark } from "@/server/local/file-store";
 import type { Store } from "@/server/store";
-import { isUuid, iso, isoOrNull, tx, type Db } from "./db";
+import { isUuid, iso, isoOrNull, tx, type Db, type Queryable } from "./db";
 
 type Row = Record<string, unknown>;
+
+/** Undoable people changes kept per user (as the local store). */
+const MAX_PEOPLE_LOG = 200;
 
 const toUser = (r: Row): User => ({
   id: String(r.id), email: String(r.email), name: String(r.name ?? ""), aliases: (r.aliases as string[] | null) ?? [],
@@ -213,14 +217,16 @@ export class HostedStore implements AppStore {
     this.guard(userId);
     const lo = bound(fromIso, "1970-01-01T00:00:00.000Z"), hi = bound(toIso, "2999-12-31T00:00:00.000Z");
     // A meeting recorded twice counts once: the copy (duplicate_of) is left out.
-    return (await this.db.query("select * from meetings where user_id = $1 and started_at >= $2 and started_at < $3 and duplicate_of is null order by started_at", [userId, lo, hi])).rows.map(toMeeting);
+    const rows = (await this.db.query("select * from meetings where user_id = $1 and started_at >= $2 and started_at < $3 and duplicate_of is null order by started_at", [userId, lo, hi])).rows;
+    const d = await this.directoryOf(userId);
+    return rows.map((r) => resolveMeeting(toMeeting(r), d));
   }
 
   async getMeeting(id: string): Promise<Meeting | null> {
     if (!isUuid(id)) return null;
     const own = this.own(2);
     const r = (await this.db.query(`select * from meetings where id = $1${own.sql}`, [id, ...own.params])).rows[0];
-    return r ? toMeeting(r) : null;
+    return r ? resolveMeeting(toMeeting(r), await this.directoryOf(String(r.user_id))) : null;
   }
 
   /** Meetings read since `sinceIso`: the free tier's monthly count. */
@@ -313,7 +319,7 @@ export class HostedStore implements AppStore {
     const r = filter?.status
       ? await this.db.query(`select ${ITEM_COLS} from items where user_id = $1 and status = $2 order by created_at`, [userId, filter.status])
       : await this.db.query(`select ${ITEM_COLS} from items where user_id = $1 order by created_at`, [userId]);
-    return r.rows.map(toItem);
+    return resolveItems(r.rows.map(toItem), await this.directoryOf(userId));
   }
 
   async getItem(itemId: string): Promise<Item | null> {
@@ -451,9 +457,78 @@ export class HostedStore implements AppStore {
   }
 
   saveUpcoming(userId: string, cache: UpcomingCache) { return this.saveCache(userId, "upcoming", cache); }
-  getUpcoming(userId: string) { return this.getCache<UpcomingCache>(userId, "upcoming"); }
+  async getUpcoming(userId: string) {
+    const c = await this.getCache<UpcomingCache>(userId, "upcoming");
+    const d = c ? await this.directoryOf(userId) : null;
+    return c && d ? { ...c, meetings: c.meetings.map((m) => resolveUpcoming(m, d)) } : c;
+  }
   saveCalendar(userId: string, cache: CalendarCache) { return this.saveCache(userId, "calendar", cache); }
   getCalendar(userId: string) { return this.getCache<CalendarCache>(userId, "calendar"); }
+
+  // ---------- people directory (kept in caches: "people" and "people_log") ----------
+
+  /** The stored directory, or null when the user has none yet (names then show as extracted). */
+  private async directoryOf(userId: string): Promise<Directory | null> {
+    const r = (await this.db.query("select data from caches where user_id = $1 and kind = 'people'", [userId])).rows[0];
+    const d = r?.data as Partial<Directory> | undefined;
+    return d ? { people: d.people ?? [], moved: d.moved ?? {} } : null;
+  }
+
+  async getPeople(userId: string): Promise<Directory> {
+    this.guard(userId);
+    return (await this.directoryOf(userId)) ?? emptyDirectory();
+  }
+
+  /** Recent people changes, newest first (for Undo). */
+  async listPeopleChanges(userId: string): Promise<PeopleChange[]> {
+    return [...((await this.getCache<PeopleChange[]>(userId, "people_log")) ?? [])].reverse();
+  }
+
+  /**
+   * Make one people change in a transaction: the directory row is locked, `plan` gets a copy and
+   * returns the change (or null), its ops are applied and it is logged for Undo. Throws what `plan` throws.
+   */
+  async changePeople(userId: string, plan: (d: Directory, ctx: ChangeCtx) => PeopleChange | null, at: string): Promise<PeopleChange | null> {
+    this.guard(userId);
+    return tx(this.db, async (q) => {
+      const { dir, log } = await this.lockPeople(q, userId);
+      const change = plan(structuredClone(dir), { newId: randomUUID, at });
+      if (!change) return null;
+      applyOps(dir, change.ops);
+      await this.writePeople(q, userId, dir, [...log, change].slice(-MAX_PEOPLE_LOG));
+      return change;
+    });
+  }
+
+  /** Undo one change, as far as later changes allow. Returns the change, or null when there's nothing to undo. */
+  async undoPeopleChange(userId: string, changeId: string): Promise<PeopleChange | null> {
+    this.guard(userId);
+    return tx(this.db, async (q) => {
+      const { dir, log } = await this.lockPeople(q, userId);
+      const c = log.find((x) => x.id === changeId);
+      if (!c || c.undone) return null;
+      applyOps(dir, undoOps(dir, c));
+      c.undone = true;
+      await this.writePeople(q, userId, dir, log);
+      return c;
+    });
+  }
+
+  private async lockPeople(q: Queryable, userId: string): Promise<{ dir: Directory; log: PeopleChange[] }> {
+    // Make sure both rows exist, then lock them so two changes can't interleave.
+    for (const kind of ["people", "people_log"]) {
+      await q.query("insert into caches (user_id, kind, data, updated_at) values ($1, $2, $3, now()) on conflict (user_id, kind) do nothing", [userId, kind, kind === "people" ? JSON.stringify(emptyDirectory()) : "[]"]);
+    }
+    const rows = (await q.query("select kind, data from caches where user_id = $1 and kind in ('people', 'people_log') for update", [userId])).rows;
+    const d = rows.find((r) => r.kind === "people")?.data as Partial<Directory> | undefined;
+    const log = (rows.find((r) => r.kind === "people_log")?.data as PeopleChange[] | undefined) ?? [];
+    return { dir: { people: d?.people ?? [], moved: d?.moved ?? {} }, log: Array.isArray(log) ? log : [] };
+  }
+
+  private async writePeople(q: Queryable, userId: string, dir: Directory, log: PeopleChange[]): Promise<void> {
+    await q.query("update caches set data = $3, updated_at = now() where user_id = $1 and kind = $2", [userId, "people", JSON.stringify(dir)]);
+    await q.query("update caches set data = $3, updated_at = now() where user_id = $1 and kind = $2", [userId, "people_log", JSON.stringify(log)]);
+  }
 
   /** Keys look like "<userId>:<what>". Returns false when this one was already recorded. */
   async markPrepNotified(key: string): Promise<boolean> {

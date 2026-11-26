@@ -14,10 +14,10 @@ export const metadata: Metadata = { title: "Inbox" };
 export default async function Inbox() {
   const user = await me();
   if (!user) redirect("/setup");
-  const { items, meetings } = await loadAll(user);
+  const { items, meetings, people: dir } = await loadAll(user);
   const inbox = items.filter((i) => i.status === "inbox").sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   const openCount = items.filter((i) => i.status === "open" && i.kind !== "decision").length;
-  const people = listPeople({ items, meetings, now: new Date(), self: [user.name, ...user.aliases] }).map((p) => p.name);
+  const people = listPeople({ items, meetings, now: new Date(), self: [user.name, ...user.aliases], people: dir }).map((p) => p.name);
 
   return (
     <Shell days={await pastDays(user.id, "")} current="inbox" openCount={openCount}>

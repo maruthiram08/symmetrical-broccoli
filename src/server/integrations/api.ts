@@ -291,7 +291,8 @@ export const listDecisionsRoute = route(async (req, deps, { user }) => {
 export const listPeopleRoute = route(async (req, deps, { user }) => {
   const url = new URL(req.url);
   const { items, meetings } = await loadAll(deps, user);
-  const people = listPeople({ items, meetings, now: deps.now(), self: [user.name, ...user.aliases] });
+  const dir = await deps.store.getPeople?.(user.id);
+  const people = listPeople({ items, meetings, now: deps.now(), self: [user.name, ...user.aliases], people: dir?.people ?? [] });
   const p = page(people, url);
   return json({
     people: p.slice.map((x) => ({ ...x, url: `${deps.appUrl.replace(/\/+$/, "")}/people/${encodeURIComponent(x.slug)}` })),

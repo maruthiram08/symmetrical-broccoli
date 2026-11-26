@@ -97,10 +97,10 @@ export async function snoozeDatesAction(): Promise<{ today: string; tomorrow: st
 export async function captureContextAction(): Promise<{ people: string[]; self: string[]; timeZone: string } | null> {
   const user = await me();
   if (!user) return null;
-  const { items, meetings } = await loadAll(user);
+  const { items, meetings, people: dir } = await loadAll(user);
   const self = [user.name, ...user.aliases].filter(Boolean);
   const skip = new Set(self.map(normalizeName));
-  const people = listPeople({ items, meetings, now: new Date(), self }).map((p) => p.name);
+  const people = listPeople({ items, meetings, now: new Date(), self, people: dir }).map((p) => p.name);
   for (const m of meetings) for (const p of m.participants) if (!p.includes("@") && !skip.has(normalizeName(p))) people.push(p);
   return { people: [...new Set(people)], self, timeZone: user.timeZone };
 }

@@ -6,6 +6,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { Client, Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { confirmNew } from "@/lib/directory/directory";
 import { withUserLock, type Db } from "./db";
 import { HostedStore } from "./store";
 import { MIGRATIONS_DIR, TEST_KEY } from "./testing";
@@ -126,6 +127,15 @@ describe.skipIf(!URL_)("HostedStore on real Postgres", () => {
       c.release();
     }
     expect((await root.listItems(b)).map((i) => i.text)).toEqual(["B's"]);
+  });
+
+  it("people changes lock and update the directory, and concurrent changes both land", async () => {
+    const plan = (name: string) => (d: Parameters<typeof confirmNew>[0], ctx: Parameters<typeof confirmNew>[2]) => confirmNew(d, { name, spellings: [name] }, ctx);
+    await Promise.all([root.changePeople(a, plan("Ravi"), AT), root.changePeople(a, plan("Meera"), AT)]);
+    expect((await root.getPeople(a)).people.map((p) => p.name).sort()).toEqual(["Meera", "Ravi"]);
+    const [last] = await root.listPeopleChanges(a);
+    expect((await root.undoPeopleChange(a, last.id))?.undone).toBe(true);
+    expect((await root.getPeople(a)).people).toHaveLength(1);
   });
 
   it("deleting the auth account deletes everything", async () => {

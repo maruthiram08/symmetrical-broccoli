@@ -315,7 +315,7 @@ const COMMANDS: Record<string, (a: Args, d: CliDeps) => Promise<Result>> = {
     const r = resolvePerson(name, s);
     if (!("person" in r)) { d.err(noSuchPerson(name, r.candidates, s)); return fail; }
     const self = [s.user.name, ...s.user.aliases];
-    const det = personDetail(r.person.slug, { items: s.items, meetings: s.meetings, now: s.now, self }, 30)!;
+    const det = personDetail(r.person.slug, { items: s.items, meetings: s.meetings, now: s.now, self, people: s.people }, 30)!;
     const p = det.person;
     const st = d.style;
     const last = det.meetings[0];
@@ -344,7 +344,7 @@ const COMMANDS: Record<string, (a: Args, d: CliDeps) => Promise<Result>> = {
     if (!s) return fail;
     const self = [s.user.name, ...s.user.aliases].filter(Boolean);
     const skip = new Set(self.map(normalizeName));
-    const people = listPeople({ items: s.items, meetings: s.meetings, now: s.now, self }).map((p) => p.name);
+    const people = listPeople({ items: s.items, meetings: s.meetings, now: s.now, self, people: s.people }).map((p) => p.name);
     for (const m of s.meetings) for (const p of m.participants) if (!p.includes("@") && !skip.has(normalizeName(p))) people.push(p);
     const parsed = parseCapture(text, { people: [...new Set(people)], self, now: s.now, timeZone: s.user.timeZone });
     const item = await d.store.addManualItem(s.user.id, { kind: parsed.kind, text: parsed.text, person: parsed.person, dueAt: parsed.dueAt }, s.now.toISOString());

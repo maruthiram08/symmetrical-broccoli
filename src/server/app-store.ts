@@ -1,4 +1,5 @@
 import type { ManualInput } from "@/lib/capture/items";
+import type { ChangeCtx, Directory, PeopleChange } from "@/lib/directory/directory";
 import type { CalendarCache, Health, Item, LastLook, UpcomingCache, User } from "@/lib/types";
 import type { Store } from "@/server/store";
 import type { OAuthClientStore } from "@/server/wispr/oauth";
@@ -20,6 +21,10 @@ export interface AppStore extends Required<Store>, OAuthClientStore {
   readonly path: string;
   updateUser(id: string, patch: Partial<Omit<User, "id">>): Promise<User | null>;
   listEvents(type?: string): Promise<Array<Record<string, unknown>>>;
+  /** People directory changes (src/lib/directory), newest first, each undoable. */
+  listPeopleChanges(userId: string): Promise<PeopleChange[]>;
+  changePeople(userId: string, plan: (d: Directory, ctx: ChangeCtx) => PeopleChange | null, at: string): Promise<PeopleChange | null>;
+  undoPeopleChange(userId: string, changeId: string): Promise<PeopleChange | null>;
   getLastLook(userId: string): Promise<LastLook | null>;
   saveLastLook(userId: string, look: LastLook): Promise<void>;
   addManualItem(userId: string, input: ManualInput, at: string): Promise<Item>;

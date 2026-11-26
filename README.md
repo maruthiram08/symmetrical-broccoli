@@ -152,6 +152,15 @@ These use your Anthropic key and the same model as extraction (`EXTRACTION_MODEL
 
 A Claude skill for the MCP tools is in `skills/daily-brief/SKILL.md` (meeting prep, weekly review, and how to quote evidence).
 
+## Check names (people directory)
+
+Transcription misspells names ("Mangku", "Mungu", "Munkku") and sometimes guesses a name that is really someone you already know, or someone new. People shows **"N names to check"**: open it (`/people/review`) and say who each name is:
+
+- **Same as …** (keys `1`–`3`, or `p` to pick anyone): the name becomes another spelling of that person. Suggestions are ranked by how the names sound (th/t, ee/i, a/u, doubled letters), spelling, first name and shared meetings.
+- **New person** (`n`, optional email), **Rename** (`r`, fix the spelling), **Not a person** (`i`, transcription noise: its items show no name).
+- `j`/`k` move, `u` undoes the last answer; every answer has its own Undo. Names with no look-alike can be confirmed in one go.
+
+On a person's page, **Merge or split** merges them into someone else, moves selected items to another (or a new) person, and edits name, email and note. Items always keep the name as it was heard; every page, search, the prep card, person hover and the MCP tools show it through the directory. New meetings are read with your confirmed people and their spellings, so names come back as you spell them. People hides anyone with nothing open and nothing in the last 30 days behind **Show everyone**; names not checked yet carry a small "check" mark. No directory (nothing checked yet) means names show exactly as before.
 ## Send to Jira, Linear, Notion or Todoist
 
 Settings › **Send to** connects each service with your own token. All four are off until you add one. Tokens are kept in the macOS Keychain (service `app.dailybrief`); outside the Mac app, in `.daily-brief/secrets.json` (0600). **Save and test** checks the token and switches the service on only when it works.

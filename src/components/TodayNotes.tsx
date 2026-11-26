@@ -6,8 +6,8 @@ import { PersonPeek } from "./PersonPeek";
 
 /** Two quiet lines on Today: who's waiting on you the most, and a streak of days with nothing overdue. */
 export async function TodayNotes({ user, now }: { user: User; now: Date }) {
-  const { items, meetings } = await loadAll(user);
-  const people = waitingOnYou({ items, meetings, now, self: [user.name, ...user.aliases] });
+  const { items, meetings, people: dir } = await loadAll(user);
+  const people = waitingOnYou({ items, meetings, now, self: [user.name, ...user.aliases], people: dir });
   const streak = streakNote(quietStreak(items, meetings, now, user.timeZone));
   if (!people.length && !streak) return null;
   return (

@@ -13,8 +13,8 @@ export async function GET(req: Request) {
   const q = (new URL(req.url).searchParams.get("q") ?? "").slice(0, 200);
   const user = await me();
   if (!user) return NextResponse.json({ people: [], days: [], results: [] });
-  const { items, meetings } = await loadAll(user);
-  const people = listPeople({ items, meetings, now: new Date(), self: [user.name, ...user.aliases] })
+  const { items, meetings, people: dir } = await loadAll(user);
+  const people = listPeople({ items, meetings, now: new Date(), self: [user.name, ...user.aliases], people: dir })
     .map((p) => ({ name: p.name, slug: p.slug, youOwe: p.youOwe, theyOwe: p.theyOwe }));
   const results = search(buildIndex(items, meetings), q, 8).map((h) =>
     h.type === "item"

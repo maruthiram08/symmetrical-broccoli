@@ -1,5 +1,6 @@
 import { AnthropicCallError, isNetworkError } from "@/lib/extract/errors";
 import { keepSharedItems, sharedMeetingConcernsUser } from "@/lib/extract/shared";
+import { knownPeople } from "@/lib/directory/directory";
 import { MAX_MEETING_ATTEMPTS, providerOf, QUOTE_MAX, type ExtractionResult, type Item, type Meeting } from "@/lib/types";
 import { localTranscript } from "@/server/recorders";
 import type { WisprClient } from "@/server/wispr/client";
@@ -118,6 +119,7 @@ async function processMeetingOnce(
       // Someone else's meeting where you neither speak nor are named: nothing could reach your brief.
       result = nothing();
     } else {
+      const known = knownPeople(await store.getPeople?.(meeting.userId));
       try {
         result = await deps.extract({
           transcript,
@@ -127,6 +129,7 @@ async function processMeetingOnce(
             ...(meeting.shared ? { shared: true, ownerName: meeting.ownerName ?? null } : {}),
           },
           openItems: open.map((i) => ({ id: i.id, kind: i.kind, text: i.text, person: i.person })),
+          ...(known.length ? { knownPeople: known } : {}),
         });
       } catch (e) {
         throw new ProcessError("extract", e instanceof Error ? e.name : "Error", extractFailure(e));

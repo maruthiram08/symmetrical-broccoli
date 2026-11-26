@@ -1,6 +1,7 @@
 // Settings › Send to (Jira, Linear, Notion, Todoist), Local API and Webhooks. All off by default.
 // Tokens go to the Keychain (a 0600 file outside the Mac app) and are never shown again, only their
 // last four characters.
+import { switchOn } from "./switch";
 import {
   createApiTokenAction,
   disconnectProviderAction,
@@ -162,7 +163,7 @@ function ProviderCard({ id, cfg, check, saved, open }: {
           spellCheck={false}
         />
         <label className="db-check">
-          <input className="db-switch" type="checkbox" role="switch" name="enabled" defaultChecked={cfg.enabled || !saved} />
+          <input className="db-switch" type="checkbox" role="switch" name="enabled" defaultChecked={switchOn(cfg.enabled, saved)} />
           <span>
             <span className="db-check__label">Show &ldquo;Send to {label}&rdquo; on items</span>
             <span className="db-field__hint">Saving tests the token. It&apos;s switched on only when the test passes.</span>
