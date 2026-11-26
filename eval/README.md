@@ -61,7 +61,9 @@ Results and the error analysis are in `eval/RESULTS.md`.
 
 See `eval/score.ts` (unit-tested in `eval/score.test.ts`).
 
-- An actual item matches an expected one when the `kind` is the same, the `person` matches loosely (case-insensitive, first name, or one letter off; not checked for decisions), and the text is similar: content-token overlap (Dice) of at least 0.5, or the expected text's key noun (its longest word that isn't a generic verb or the person's name) appears in the actual text.
+- An actual item matches an expected one when the `kind` is the same, the `person` matches loosely (case-insensitive, first name, one letter off, or the same sound key with close spelling, so "Hashmit" ~ "Hashmeet" but not "Nitin" ~ "Nathan"; not checked for decisions), and the text is similar: content-token overlap (Dice) of at least 0.5; or at least two shared content words (generic verbs don't count) covering 60% of the shorter text; or the expected text's key noun (its longest word that isn't a generic verb or the person's name) appears in the actual text.
+- An expected `text` can be a list of fair phrasings (`"text": ["Comment on both tickets", "Add comments for both changes"]`); matching any one counts.
+- Each missed item prints its closest wrong item (`? closest to ...`) and what differs (kind, person, text), so a fair paraphrase can be added to the fixture as another phrasing and checked with `--rescore`.
 - Text tokens drop stopwords, join hyphenated words ("front-end" = "frontend") and strip simple endings (-s, -ies, -ing, -ed, -ation).
 - Matching is one-to-one, best pairs first: all matching (expected, actual) pairs are ranked by overlap and taken greedily, with required and optional items in one ranking. Unmatched required items are **missed**; actual items matching nothing are **wrong**; matches to optional items are not counted.
 - Closes are compared by id: **wrong closes** were closed but shouldn't be (and aren't optional), **missed closes** should have been closed.

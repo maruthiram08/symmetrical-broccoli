@@ -1,9 +1,11 @@
 // Pure scoring for the extraction eval. No I/O, so it is unit-tested in score.test.ts.
 import type { ExtractionResult, ItemKind } from "../src/lib/types";
+import { soundKey, spellingSimilarity } from "../src/lib/directory/phonetic";
 
 export interface ExpectedItem {
   kind: ItemKind;
-  text: string;
+  /** A list gives other fair phrasings: matching any of them counts. */
+  text: string | string[];
   /** The other person. A list means any of these is fine (null in the list allows no person). */
   person: string | null | Array<string | null>;
 }
@@ -87,10 +89,41 @@ export function keyNoun(text: string, person: ExpectedItem["person"]): string | 
   return candidates.reduce((best, t) => (t.length > best.length ? t : best));
 }
 
-export function textMatches(expected: ExpectedItem, actualText: string): boolean {
-  if (tokenOverlap(expected.text, actualText) >= 0.5) return true;
-  const key = keyNoun(expected.text, expected.person);
+/** The expected item's phrasings. */
+export function textsOf(e: Pick<ExpectedItem, "text">): string[] {
+  return Array.isArray(e.text) ? e.text : [e.text];
+}
+
+/** How much of the shorter text the longer one covers, in content words other than generic verbs: |A∩B| / min(|A|,|B|). */
+function containment(a: string, b: string): { shared: number; ratio: number } {
+  const words = (x: string) => new Set(tokens(x).filter((t) => !GENERIC_VERBS.has(t)));
+  const A = words(a);
+  const B = words(b);
+  let shared = 0;
+  for (const t of A) if (B.has(t)) shared++;
+  return { shared, ratio: A.size && B.size ? shared / Math.min(A.size, B.size) : 0 };
+}
+
+/** Best text overlap of the expected item's phrasings with an actual text. */
+export function expectedOverlap(e: Pick<ExpectedItem, "text">, actualText: string): number {
+  return Math.max(...textsOf(e).map((t) => tokenOverlap(t, actualText)));
+}
+
+/**
+ * Text match for one phrasing: Dice overlap of at least 0.5; or at least 2 shared content words
+ * (not counting generic verbs) covering 60% of the shorter text ("Check Mangku's message on the dividend tag" ~ "Check the
+ * dividend tag"); or the expected key noun appears in the actual text.
+ */
+function phrasingMatches(text: string, person: ExpectedItem["person"], actualText: string): boolean {
+  if (tokenOverlap(text, actualText) >= 0.5) return true;
+  const c = containment(text, actualText);
+  if (c.shared >= 2 && c.ratio >= 0.6) return true;
+  const key = keyNoun(text, person);
   return key !== null && tokens(actualText).includes(key);
+}
+
+export function textMatches(expected: ExpectedItem, actualText: string): boolean {
+  return textsOf(expected).some((t) => phrasingMatches(t, expected.person, actualText));
 }
 
 /** Person names match when equal ignoring case, or one is a prefix/word of the other ("Nitin" ~ "Nitin K"). */
@@ -104,7 +137,10 @@ export function personMatches(expected: string | null, actual: string | null): b
   if (ew[0] === aw[0]) return true;
   if (ew.some((w) => aw.includes(w) && w.length >= 3)) return true;
   // small typos in transcribed names: "Nithin" vs "Nitin"
-  return ew[0].length >= 4 && aw[0].length >= 4 && editDistance(ew[0], aw[0]) <= 1;
+  if (ew[0].length >= 4 && aw[0].length >= 4 && editDistance(ew[0], aw[0]) <= 1) return true;
+  // sound-alike spellings ("Hashmit" ~ "Hashmeet"), with close letters so "Nitin" !~ "Nathan"
+  const ke = soundKey(ew[0]);
+  return ke.length >= 3 && ke === soundKey(aw[0]) && spellingSimilarity(ew[0], aw[0]) >= 0.6;
 }
 
 function editDistance(a: string, b: string): number {
@@ -141,7 +177,7 @@ function matchAll(
   const pairs: Array<{ e: number; a: number; s: number }> = [];
   expected.forEach((e, ei) =>
     actual.forEach((a, ai) => {
-      if (!used.has(ai) && itemMatches(e, a)) pairs.push({ e: ei, a: ai, s: tokenOverlap(e.text, a.text) });
+      if (!used.has(ai) && itemMatches(e, a)) pairs.push({ e: ei, a: ai, s: expectedOverlap(e, a.text) });
     }),
   );
   pairs.sort((x, y) => y.s - x.s || x.e - y.e || x.a - y.a);
@@ -266,7 +302,7 @@ export function attributionScore(expected: Expected, actual: Pick<ExtractionResu
     act.forEach((a, ai) => {
       if (!textMatches(e, a.text)) return;
       const correct = e.kind === a.kind && personOk(e, a);
-      pairs.push({ e: ei, a: ai, s: (correct ? 1 : 0) + tokenOverlap(e.text, a.text) });
+      pairs.push({ e: ei, a: ai, s: (correct ? 1 : 0) + expectedOverlap(e, a.text) });
     }),
   );
   pairs.sort((x, y) => y.s - x.s || x.e - y.e || x.a - y.a);
@@ -390,4 +426,38 @@ export function restrict<A extends Pick<ExtractionResult, "newItems" | "closes">
     },
     actual: { ...actual, newItems: items ? actual.newItems.filter((i) => keep(i.kind)) : [], closes: closes ? actual.closes : [] },
   };
+}
+
+// ---------- near misses ----------
+
+export interface NearMiss {
+  expected: ExpectedItem;
+  actual: ActualItem;
+  /** What differs: "kind", "person" and/or "text". */
+  differs: string[];
+  overlap: number;
+}
+
+/**
+ * For each missed item, the closest wrong item (by text overlap, at least one shared word), and
+ * what keeps them from matching. For reading misses: a fair paraphrase shows up here with
+ * differs ["text"], and can be added to the fixture as another phrasing.
+ */
+export function nearMisses(score: Pick<MeetingScore, "missed" | "wrong">): NearMiss[] {
+  const out: NearMiss[] = [];
+  for (const e of score.missed) {
+    let best: NearMiss | null = null;
+    for (const a of score.wrong) {
+      const o = expectedOverlap(e, a.text);
+      if (o === 0 || (best && best.overlap >= o)) continue;
+      const differs = [
+        ...(e.kind !== a.kind ? ["kind"] : []),
+        ...(e.kind !== "decision" && !personList(e.person).some((p) => personMatches(p, a.person)) ? ["person"] : []),
+        ...(!textMatches(e, a.text) ? ["text"] : []),
+      ];
+      best = { expected: e, actual: a, differs, overlap: o };
+    }
+    if (best) out.push(best);
+  }
+  return out;
 }

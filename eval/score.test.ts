@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  nearMisses,
+  textMatches,
   attributionScore,
   attributionTotals,
   itemMatches,
@@ -252,5 +254,37 @@ describe("restrict", () => {
     expect(c.actual.closes).toHaveLength(1);
     expect(restrict(null, expected, actual)).toEqual({ expected, actual });
     expect(restrict("items", expected, actual).actual.newItems).toHaveLength(2);
+  });
+});
+
+describe("lenient matching for fair variants", () => {
+  it("sound-alike person spellings match, different names don't", () => {
+    expect(personMatches("Hashmit", "Hashmeet")).toBe(true);
+    expect(personMatches("Mangku", "Mungku")).toBe(true);
+    expect(personMatches("Nitin", "Nathan")).toBe(false);
+    expect(personMatches("Ravi", "Rob")).toBe(false);
+  });
+
+  it("an expected item can list other fair phrasings", () => {
+    const e = { kind: "owe" as const, text: ["Update the tickets", "Comment on both changes in Jira"], person: null };
+    expect(textMatches(e, "Add comments for both changes in Jira")).toBe(true);
+    expect(itemMatches(e, item("owe", "Add comments for both changes in Jira", null))).toBe(true);
+    expect(scoreMeeting({ newItems: [e], closes: [] }, { newItems: [item("owe", "Update the tickets", null)], closes: [] }).correct).toHaveLength(1);
+  });
+
+  it("a short text covered by a longer one matches; sharing only a generic verb and one word doesn't", () => {
+    const e = { kind: "owe" as const, text: "Check the Nvidia tag on the dividend banner", person: "Mangku" };
+    expect(textMatches(e, "Check Mangku's message about the Nvidia tag")).toBe(true);
+    const copy = { kind: "waiting" as const, text: "Review the pricing page copy for the alerts launch", person: "Ravi" };
+    expect(textMatches(copy, "Review the alerts dashboard")).toBe(false);
+  });
+
+  it("near misses say what kept the closest wrong item from matching", () => {
+    const e = { kind: "owe" as const, text: "Send Asha the pricing deck", person: "Asha" };
+    const score = scoreMeeting({ newItems: [e], closes: [] }, { newItems: [item("waiting", "Send the pricing deck", "Asha"), item("owe", "Fix login", null)], closes: [] });
+    const n = nearMisses(score);
+    expect(n).toHaveLength(1);
+    expect(n[0].actual.text).toBe("Send the pricing deck");
+    expect(n[0].differs).toEqual(["kind"]);
   });
 });

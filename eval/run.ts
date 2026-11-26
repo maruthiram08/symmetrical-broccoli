@@ -11,6 +11,7 @@ import type { ExtractionResult } from "../src/lib/types";
 import {
   attributionScore,
   attributionTotals,
+  nearMisses,
   ONLY_VALUES,
   overlap,
   overlapTotals,
@@ -18,6 +19,7 @@ import {
   restrict,
   scoreMeeting,
   THRESHOLD,
+  textsOf,
   totals,
   type AttributionMatch,
   type MeetingScore,
@@ -37,7 +39,8 @@ for (const f of [".env", ".env.local"]) {
 const Kind = z.enum(["owe", "waiting", "decision"]);
 const ExpectedItemSchema = z.object({
   kind: Kind,
-  text: z.string(),
+  /** One phrasing, or a list of fair phrasings. */
+  text: z.union([z.string(), z.array(z.string()).min(1)]),
   person: z.union([z.string(), z.null(), z.array(z.string().nullable()).min(1)]),
 });
 const FixtureSchema = z
@@ -111,12 +114,14 @@ function inputOf(fixture: Fixture) {
   };
 }
 
+const shown = (e: { text: string | string[] }) => textsOf(e).join(" | ");
+
 function describeMiss(m: AttributionMatch): string {
   const e = m.expected;
   const a = m.actual;
   const want = `${e.kind} ${Array.isArray(e.person) ? e.person.join("/") : (e.person ?? "nobody")}`;
   const got = `${a.kind} ${a.person ?? "nobody"}${a.attribution ? `, ${a.attribution}` : ""}`;
-  return `  - misattributed  ${e.text}  (expected ${want}; got ${got})  "${a.quote}"`;
+  return `  - misattributed  ${shown(e)}  (expected ${want}; got ${got})  "${a.quote}"`;
 }
 
 async function main() {
@@ -224,14 +229,16 @@ async function main() {
           `attribution ${attr.length - misattributed.length}/${attr.length}` +
           (usageLine ? `\n  ${usageLine}` : ""),
       );
-      for (const m of score.missed) console.log(`  - missed  [${m.kind}] ${m.text}${m.person ? ` (${m.person})` : ""}`);
+      for (const m of score.missed) console.log(`  - missed  [${m.kind}] ${shown(m)}${m.person ? ` (${m.person})` : ""}`);
       for (const w of score.wrong) console.log(`  - wrong   [${w.kind}] ${w.text}${w.person ? ` (${w.person})` : ""}  "${w.quote}"`);
       for (const id of score.wrongCloses) console.log(`  - wrong close   ${id}`);
       for (const id of score.missedCloses) console.log(`  - missed close  ${id}`);
       for (const m of misattributed) console.log(describeMiss(m));
+      for (const n of nearMisses(score))
+        console.log(`  ? closest to "${shown(n.expected)}": [${n.actual.kind}] ${n.actual.text}${n.actual.person ? ` (${n.actual.person})` : ""}  differs in ${n.differs.join(", ") || "nothing (taken by a better match)"}`);
       if (verbose) {
-        for (const c of score.correct) console.log(`  + ok      [${c.actual.kind}] ${c.actual.text}  ~ ${c.expected.text}`);
-        for (const c of score.optional) console.log(`  ~ optional [${c.actual.kind}] ${c.actual.text}  ~ ${c.expected.text}`);
+        for (const c of score.correct) console.log(`  + ok      [${c.actual.kind}] ${c.actual.text}  ~ ${shown(c.expected)}`);
+        for (const c of score.optional) console.log(`  ~ optional [${c.actual.kind}] ${c.actual.text}  ~ ${shown(c.expected)}`);
         for (const id of score.optionalCloses) console.log(`  ~ optional close ${id}`);
         for (const d of report.droppedItems) console.log(`  · dropped item (${d.reason}): ${d.item.text}  "${d.item.quote}"`);
         for (const d of report.droppedCloses) console.log(`  · dropped close (${d.reason}): ${d.close.itemId}  "${d.close.quote}"`);
