@@ -27,7 +27,7 @@ export interface Deps {
  * Never throws.
  */
 export async function logJobError(
-  deps: Pick<Deps, "store">,
+  deps: { store: Pick<Store, "logEvent"> },
   userId: string | null,
   job: string,
   err: unknown,

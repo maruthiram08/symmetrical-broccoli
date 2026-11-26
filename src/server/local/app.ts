@@ -14,6 +14,7 @@ import { FileStore } from "./file-store";
 import { appUrl, dataDir, notesDir } from "./paths";
 import { publishLocal } from "./publish";
 import { withTomorrow } from "./calendar";
+import { publishChannels } from "@/server/channels/local";
 
 /** A random key kept next to the data, used to seal the short-lived OAuth state cookie. */
 function ensureLocalKey(): void {
@@ -63,7 +64,11 @@ export function buildDeps(): Deps {
     model: env.extractionModel,
     buildBrief: async (store, user, at) => withTomorrow(store, user, at, await buildBrief(store, user, at)),
     renderMarkdown,
-    publish: (user, model, markdown, week) => publishLocal(notesDir(), user, model, markdown, undefined, week),
+    publish: async (user, model, markdown, week) => {
+      const r = await publishLocal(notesDir(), user, model, markdown, undefined, week);
+      await publishChannels(getStore(), user, model, { recap: !!week }); // email, Slack, Telegram, WhatsApp; never throws
+      return r;
+    },
     now,
   };
 }

@@ -7,7 +7,8 @@ import { existsSync } from "node:fs";
 
 const SECURITY = "/usr/bin/security";
 export const KEYCHAIN_SERVICE = "app.dailybrief";
-export type SecretName = "ANTHROPIC_API_KEY" | "TOKEN_ENCRYPTION_KEY" | IntegrationSecret;
+/** CHANNEL_* names hold delivery secrets (src/server/channels/secrets.ts), base64url-encoded. */
+export type SecretName = "ANTHROPIC_API_KEY" | "TOKEN_ENCRYPTION_KEY" | `CHANNEL_${string}` | IntegrationSecret;
 /** Integration tokens and the local API / webhook secrets (src/server/integrations/vault.ts). */
 export type IntegrationSecret = "JIRA_API_TOKEN" | "LINEAR_API_KEY" | "NOTION_TOKEN" | "TODOIST_TOKEN" | "LOCAL_API_TOKEN" | "WEBHOOK_SECRET";
 

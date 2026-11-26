@@ -4,12 +4,15 @@ import { cache } from "react";
 import type { BriefLine } from "@/lib/types";
 import { getAiStore } from "@/server/local/ai-store";
 import { NudgeCard } from "./NudgeCard";
+import { channelConfig } from "@/server/channels/local";
+import { nudgesReady } from "@/server/channels/nudge";
 
+const slackReady = cache(() => nudgesReady(channelConfig().read()));
 const nudges = cache(() => new Map(getAiStore().nudges().map((n) => [n.itemId, n])));
 
 export function NudgeSlot({ line }: { line: BriefLine }) {
   if (line.kind !== "waiting" || line.lateMinutes === null) return null;
   const n = nudges().get(line.itemId);
   if (!n) return null;
-  return <NudgeCard itemId={line.itemId} person={line.person} text={n.text} />;
+  return <NudgeCard itemId={line.itemId} person={line.person} text={n.text} slack={slackReady()} />;
 }
