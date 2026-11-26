@@ -210,7 +210,7 @@ export class HostedStore implements AppStore {
     const id = randomUUID();
     await this.db.query(
       `insert into meetings (id, user_id, provider_meeting_id, title, started_at, participants, link, shared, owner_name, provider)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) on conflict (user_id, provider_meeting_id) do nothing`,
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) on conflict (user_id, provider_meeting_id) do update set link = coalesce(meetings.link, excluded.link) where meetings.link is null and excluded.link is not null`,
       [id, m.userId, m.providerMeetingId, m.title, m.startedAt, m.participants, m.link ?? null, !!m.shared, m.ownerName ?? null, m.provider ?? "wispr_flow"],
     );
     // Whichever row won: ours (created) or the one that was there.

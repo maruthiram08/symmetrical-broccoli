@@ -43,6 +43,8 @@ export default async function ItemPage({ params }: { params: Promise<{ id: strin
   const structure = item.status !== "wrong" ? await loadStructure(user) : null;
   const openCount = items.filter((i) => i.status === "open" && i.kind !== "decision").length;
   const tz = user.timeZone;
+  const source = item.meetingId ? meetings.find((m) => m.id === item.meetingId) : undefined;
+  const wisprLink = source?.link?.startsWith("https://") ? source.link : null;
   const when = (iso: string) => `${shortDate(iso, tz)}, ${formatTime(iso, tz)}`;
   const late = item.status === "open" && item.kind !== "decision" && !!item.dueAt && Date.parse(item.dueAt) < now.getTime();
   const slug = item.person ? personSlug(item.person) : "";
@@ -60,6 +62,7 @@ export default async function ItemPage({ params }: { params: Promise<{ id: strin
         {item.person ? <span>{slug ? <PersonPeek slug={slug}>{item.person}</PersonPeek> : item.person}</span> : null}
         <span className={`w3-status${late ? " w3-status--late" : ""}`}>{status}</span>
         <TicketLabel itemId={item.id} lead="" />
+        {wisprLink ? <a className="db-link" href={wisprLink} target="_blank" rel="noopener noreferrer">Open in Wispr Flow</a> : null}
       </p>
       <ShareToTeam itemId={item.id} />
       {structure ? <ItemStructure itemId={item.id} project={item.project ?? null} tags={item.tags ?? []} projects={structure.projects} known={allTags(structure)} /> : null}
