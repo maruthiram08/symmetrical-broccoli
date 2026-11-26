@@ -151,6 +151,10 @@ export interface Item {
   ticket?: ItemTicket | null;
   /** Why it closed when neither a meeting nor you closed it: "Closed in Linear". */
   closeReason?: string | null;
+  /** Your tags ("launch", "q4/plan"), lower case. Missing = none. */
+  tags?: string[];
+  /** The project note (slug of a note of type Project) it belongs to. Missing = none. */
+  project?: string | null;
 }
 
 export type TicketProvider = "jira" | "linear" | "notion" | "todoist";
@@ -238,6 +242,9 @@ export interface BriefLine {
   snoozedUntil?: string | null;
   /** The item came from a meeting someone else recorded and shared with the user. */
   shared?: boolean;
+  /** Your tags and project (src/lib/structure). Only set when there are some. */
+  tags?: string[];
+  project?: string | null;
 }
 
 export interface QuotePeekInfo {

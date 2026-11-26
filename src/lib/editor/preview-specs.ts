@@ -6,6 +6,7 @@ import type { EditorState } from "@codemirror/state";
 import type { SyntaxNode } from "@lezer/common";
 import { linkHref, parseWikiLink, type LinkKind, type LinkResolver } from "./links";
 import { parseLineCommand } from "./slash";
+import { FOOTNOTE_DEF_RE } from "./markdown";
 
 export type Spec =
   | { t: "hide"; from: number; to: number }
@@ -18,7 +19,15 @@ export type Spec =
   | { t: "callout"; from: number; to: number; kind: string }
   | { t: "toggle"; from: number; to: number; title: string; folded: boolean; foldFrom: number; foldTo: number }
   | { t: "table"; from: number; to: number; rows: string[][]; align: Array<"left" | "center" | "right" | null> }
-  | { t: "hint"; at: number; text: string };
+  | { t: "hint"; at: number; text: string }
+  | { t: "image"; from: number; to: number; src: string; alt: string; wiki: boolean }
+  | { t: "embed"; from: number; to: number; target: string; label: string }
+  | { t: "footref"; from: number; to: number; label: string; text: string }
+  | { t: "footdef"; from: number; to: number; label: string }
+  | { t: "mermaid"; from: number; to: number; code: string };
+
+/** File types an embed or image shows as a picture. */
+export const IMAGE_RE = /\.(png|jpe?g|gif|webp|svg|avif|bmp)$/i;
 
 export const CALLOUT_RE = /^\[!([a-z]+)\][ \t]?/i;
 export const DETAILS_OPEN_RE = /^\s*<details(?:\s+open)?\s*>\s*<summary>(.*?)<\/summary>\s*$/i;
@@ -60,6 +69,23 @@ export function previewSpecs(state: EditorState, opts: PreviewOptions): Spec[] {
   const skipSpace = (pos: number, end: number) => { while (pos < end && (doc.sliceString(pos, pos + 1) === " " || doc.sliceString(pos, pos + 1) === "\t")) pos++; return pos; };
   const children = (n: SyntaxNode, name: string) => { const xs: SyntaxNode[] = []; for (let c = n.firstChild; c; c = c.nextSibling) if (c.name === name) xs.push(c); return xs; };
 
+  // Footnote definitions ("[^1]: text"), by line: their text is the tooltip of each reference.
+  const footnotes = new Map<string, string>();
+  const footLines: Array<{ from: number; to: number; label: string; markEnd: number }> = [];
+  if (doc.length < 2_000_000 && state.sliceDoc(0, doc.length).includes("[^")) {
+    for (let ln = 1; ln <= doc.lines; ln++) {
+      const line = doc.line(ln);
+      const m = line.text.match(FOOTNOTE_DEF_RE);
+      if (!m) continue;
+      footnotes.set(m[1], line.text.slice(m[0].length).trim());
+      footLines.push({ from: line.from, to: line.to, label: m[1], markEnd: line.from + m[0].length });
+    }
+  }
+  for (const f of footLines) {
+    out.push({ t: "line", at: f.from, cls: "cm-md-footdef" });
+    if (!onLines(f.from, f.to)) out.push({ t: "footdef", from: f.from, to: f.markEnd, label: f.label });
+  }
+
   tree.iterate({
     enter(ref) {
       const n = ref.node;
@@ -81,11 +107,12 @@ export function previewSpecs(state: EditorState, opts: PreviewOptions): Spec[] {
         return;
       }
       switch (name) {
-        case "Emphasis": case "StrongEmphasis": case "Strikethrough": case "InlineCode": {
-          const cls = { Emphasis: "cm-md-em", StrongEmphasis: "cm-md-strong", Strikethrough: "cm-md-strike", InlineCode: "cm-md-code" }[name];
+        case "Emphasis": case "StrongEmphasis": case "Strikethrough": case "InlineCode": case "Highlight": {
+          const cls = { Emphasis: "cm-md-em", StrongEmphasis: "cm-md-strong", Strikethrough: "cm-md-strike", InlineCode: "cm-md-code", Highlight: "cm-md-highlight" }[name];
           out.push({ t: "mark", from: n.from, to: n.to, cls });
-          if (!touches(n.from, n.to)) {
-            for (const markName of ["EmphasisMark", "StrikethroughMark", "CodeMark"]) for (const m of children(n, markName)) out.push({ t: "hide", from: m.from, to: m.to });
+          // Markup shows only on the line being edited.
+          if (!onLines(n.from, n.to)) {
+            for (const markName of ["EmphasisMark", "StrikethroughMark", "CodeMark", "HighlightMark"]) for (const m of children(n, markName)) out.push({ t: "hide", from: m.from, to: m.to });
           }
           return name === "InlineCode" ? false : undefined;
         }
@@ -95,11 +122,35 @@ export function previewSpecs(state: EditorState, opts: PreviewOptions): Spec[] {
           if (marks.length >= 2 && marks[0].from === n.from && text(marks[0].from, marks[0].to) === "[") {
             const href = url ? text(url.from, url.to) : "";
             out.push({ t: "mark", from: marks[0].to, to: marks[1].from, cls: "cm-md-link", attrs: href ? { "data-href": href } : undefined });
-            if (!touches(n.from, n.to)) {
+            if (!onLines(n.from, n.to)) {
               out.push({ t: "hide", from: n.from, to: marks[0].to });
               out.push({ t: "hide", from: marks[1].from, to: n.to });
             }
           }
+          return false;
+        }
+        case "Image": {
+          const marks = children(n, "LinkMark");
+          const url = n.getChild("URL");
+          if (!url || marks.length < 2) return false;
+          if (onLines(n.from, n.to)) out.push({ t: "mark", from: n.from, to: n.to, cls: "cm-md-imgraw" });
+          else out.push({ t: "image", from: n.from, to: n.to, src: text(url.from, url.to).replace(/^<|>$/g, ""), alt: text(marks[0].to, marks[1].from), wiki: false });
+          return false;
+        }
+        case "Embed": {
+          const l = parseWikiLink(text(n.from + 1, n.to), n.from + 1);
+          if (!l) return false;
+          if (onLines(n.from, n.to)) { out.push({ t: "mark", from: n.from, to: n.to, cls: "cm-md-wikiraw" }); return false; }
+          if (IMAGE_RE.test(l.target)) out.push({ t: "image", from: n.from, to: n.to, src: l.target, alt: l.label === l.target ? "" : l.label, wiki: true });
+          else out.push({ t: "embed", from: n.from, to: n.to, target: l.target, label: l.label });
+          return false;
+        }
+        case "FootnoteRef": {
+          const label = text(n.from + 2, n.to - 1);
+          const line = lineOf(n.from);
+          if (n.from === line.from && state.sliceDoc(n.to, n.to + 1) === ":") return false; // a definition
+          if (!onLines(n.from, n.to)) out.push({ t: "footref", from: n.from, to: n.to, label, text: footnotes.get(label) ?? "" });
+          else out.push({ t: "mark", from: n.from, to: n.to, cls: "cm-md-footraw" });
           return false;
         }
         case "URL":
@@ -108,7 +159,7 @@ export function previewSpecs(state: EditorState, opts: PreviewOptions): Spec[] {
         case "WikiLink": {
           const l = parseWikiLink(text(n.from, n.to), n.from);
           if (!l) return false;
-          if (touches(n.from, n.to)) out.push({ t: "mark", from: n.from, to: n.to, cls: "cm-md-wikiraw" });
+          if (onLines(n.from, n.to)) out.push({ t: "mark", from: n.from, to: n.to, cls: "cm-md-wikiraw" });
           else out.push({ t: "link", from: n.from, to: n.to, label: l.label, href: linkHref(l, opts.resolver), kind: l.kind });
           return false;
         }
@@ -160,12 +211,23 @@ export function previewSpecs(state: EditorState, opts: PreviewOptions): Spec[] {
           return false;
         case "FencedCode": case "CodeBlock": {
           const first = lineOf(n.from), last = lineOf(n.to);
+          const lang = n.getChild("CodeInfo");
+          const away = !onLines(n.from, n.to);
+          if (name === "FencedCode" && lang && /^mermaid$/i.test(text(lang.from, lang.to).trim()) && away) {
+            const marks = children(n, "CodeMark");
+            const closeLine = marks.length > 1 ? lineOf(marks[marks.length - 1].from).number : last.number + 1;
+            const body: string[] = [];
+            for (let ln = first.number + 1; ln < closeLine && ln <= last.number; ln++) body.push(doc.line(ln).text);
+            const code = body.join("\n");
+            out.push({ t: "mermaid", from: first.from, to: last.to, code });
+            return false;
+          }
           for (let ln = first.number; ln <= last.number; ln++) {
             out.push({ t: "line", at: doc.line(ln).from, cls: `cm-md-codeblock${ln === first.number ? " cm-md-codeblock-first" : ""}${ln === last.number ? " cm-md-codeblock-last" : ""}` });
           }
-          for (const m of children(n, "CodeMark")) out.push({ t: "mark", from: m.from, to: m.to, cls: "cm-md-fence" });
-          const info = n.getChild("CodeInfo");
-          if (info) out.push({ t: "mark", from: info.from, to: info.to, cls: "cm-md-fence" });
+          // Fences show only while the cursor is in the block; the language stays as a label.
+          for (const m of children(n, "CodeMark")) out.push(away ? { t: "hide", from: m.from, to: m.to } : { t: "mark", from: m.from, to: m.to, cls: "cm-md-fence" });
+          if (lang) out.push({ t: "mark", from: lang.from, to: lang.to, cls: away ? "cm-md-fence cm-md-codelang" : "cm-md-fence" });
           return false;
         }
         case "Table": {

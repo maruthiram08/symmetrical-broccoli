@@ -11,9 +11,13 @@ import type { LinkTarget } from "@/lib/editor/commands";
 import { ASSIST_LABELS, ASSIST_MODES, type AssistMode } from "@/lib/editor/assist";
 import { parseWikiLink } from "@/lib/editor/links";
 import { editorExtensions } from "@/lib/editor/setup";
+import { defaultAsset } from "@/lib/editor/preview";
+import { vaultEmbedAction } from "@/app/vault-actions";
 import { localLine } from "@/lib/editor/slash";
 import { addItemFromNoteAction, assistAction, assistEstimateAction, createNoteAction, linkTargetsAction, setItemDoneFromNoteAction } from "@/app/notes-actions";
 import { clearDraft, readDraft, useAutosave, type Draft, type SaveFn } from "./useAutosave";
+import { structureExtensions } from "@/lib/structure/editor";
+import { createTypedNoteAction, noteTypesAction } from "@/app/structure-actions";
 
 export interface MarkdownEditorProps {
   /** Unique per document, for the offline draft ("note:q4-plan", "day:2026-11-26"). */
@@ -30,6 +34,12 @@ export interface MarkdownEditorProps {
   autoFocus?: boolean;
   /** Note titles, so [[Untyped]] links resolve to notes. */
   notes?: Array<{ slug: string; title: string }>;
+  /** Handle a link inside the app yourself (tabs); return true when handled. */
+  onNavigate?: (href: string, newTab: boolean) => boolean;
+  /** The note's folder, relative to the notes folder, for images like ![](pic.png). */
+  assetBase?: string;
+  /** Shown, never changed (a file that isn't plain UTF-8). */
+  readOnly?: boolean;
 }
 
 type Bubble = { from: number; to: number; text: string; top: number; left: number };
@@ -44,6 +54,7 @@ export function MarkdownEditor(p: MarkdownEditorProps) {
   const view = useRef<EditorView | null>(null);
   const targets = useRef<LinkTarget[]>([]);
   const targetsAt = useRef(0);
+  const noteTypes = useRef<Array<{ id: string; name: string }>>([]);
   const bubbleRef = useRef<HTMLDivElement>(null);
   const [bubble, setBubble] = useState<Bubble | null>(null);
   const [estimate, setEstimate] = useState<string | null>(null);
@@ -60,6 +71,7 @@ export function MarkdownEditor(p: MarkdownEditorProps) {
     if (!force && Date.now() - targetsAt.current < 60_000) return;
     targetsAt.current = Date.now();
     try { targets.current = await linkTargetsAction(); } catch { /* offline: keep the last list */ }
+    if (!noteTypes.current.length) noteTypes.current = await noteTypesAction().catch(() => []);
   }, []);
 
   const onSelection = useCallback((v: EditorView) => {
@@ -107,7 +119,9 @@ export function MarkdownEditor(p: MarkdownEditorProps) {
           },
           preview: {
             resolver: () => ({ notes: props.current.notes }),
-            navigate: (href, newTab) => { void auto.current.flush(); if (newTab) window.open(href, "_blank"); else router.push(href); },
+            navigate: (href, newTab) => { void auto.current.flush(); if (props.current.onNavigate?.(href, newTab)) return; if (newTab) window.open(href, "_blank"); else router.push(href); },
+            asset: (src, wiki) => defaultAsset(src, wiki, props.current.assetBase ?? ""),
+            embed: (target) => vaultEmbedAction(target),
             onTask: (line, checked) => {
               const m = line.match(/\[\[item:[^\]]+\]\]/);
               const l = m ? parseWikiLink(m[0]) : null;
@@ -120,7 +134,16 @@ export function MarkdownEditor(p: MarkdownEditorProps) {
           ],
           onChange: (text) => auto.current.change(text),
           onSelection,
-        }),
+          ...structureExtensions({
+            types: () => { if (!noteTypes.current.length) void noteTypesAction().then((t) => { noteTypes.current = t; }).catch(() => {}); return noteTypes.current; },
+            create: async (typeId, title) => {
+              const r = await createTypedNoteAction(typeId, title).catch(() => null);
+              setNotice(r?.ok ? `Made “${r.title}”` : r?.error ?? "Couldn't reach Daily brief.");
+              if (r?.ok) void loadTargets(true);
+              return r?.ok ? r : null;
+            },
+          }),
+        }).concat(p.readOnly ? [EditorState.readOnly.of(true), EditorView.editable.of(false)] : []),
       }),
     });
     view.current = v;

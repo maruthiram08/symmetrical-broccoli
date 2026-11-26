@@ -1,42 +1,40 @@
 import type { Metadata } from "next";
-import Link from "next/link";
-import { notFound, redirect } from "next/navigation";
-import { Backlinks } from "@/components/Backlinks";
 import { ExportMenu } from "@/components/ExportMenu";
 import { LocalGraph } from "@/components/graph/LocalGraph";
-import { NoteEditor } from "@/components/editor/NoteEditor";
-import { Shell } from "@/components/Shell";
+import { FrontOnly } from "@/components/vault/FrontOnly";
+import { VaultNotePage, safeDecode } from "@/components/vault/VaultNotePage";
 import { me } from "@/server/local/app";
+import { notesDir } from "@/server/local/paths";
+import { noteName, resolveNotePath } from "@/server/local/vault";
 import { readPage } from "@/server/local/pages";
-import { deleteNoteAction } from "../../notes-actions";
-import { openCountFor, pastDays } from "../../_lib/days";
-import { editorContext } from "../../_lib/editor";
+import { ProjectSection } from "@/components/structure/ProjectSection";
+import { readProperties } from "@/lib/structure/frontmatter";
+import { PROJECT_TYPE, typeOf } from "@/lib/structure/note-types";
+import { loadNoteTypes } from "@/server/structure/note-types";
 
 export const dynamic = "force-dynamic";
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
-  const page = readPage(decodeURIComponent((await params).slug));
-  return { title: page?.title ?? "Note" };
+  const slug = safeDecode((await params).slug);
+  const page = readPage(slug);
+  if (page) return { title: page.title };
+  const path = resolveNotePath(notesDir(), slug);
+  return { title: path ? noteName(path) : "Note" };
 }
 
-// One free-form note: the editor, then what links here.
+// One note, in the notes workbench: a page in notes/ by its slug ("/notes/q4-plan"), or any .md
+// file in the workspace folder by its path ("/notes/Projects%2FAlpha.md", "/notes/Inbox.md").
+// A page in notes/ also gets its export menu and local graph, while it is the note in front.
 export default async function Note({ params }: { params: Promise<{ slug: string }> }) {
-  const slug = decodeURIComponent((await params).slug);
-  const user = await me();
-  if (!user) redirect("/setup");
+  const slug = safeDecode((await params).slug);
   const page = readPage(slug);
-  if (!page) notFound();
-  return (
-    <Shell days={await pastDays(user.id, "")} current="notes" openCount={await openCountFor(user.id)}>
-      <div className="db-crumb ex-crumb"><Link className="db-link" href="/notes">Notes</Link><ExportMenu type="note" id={page.slug} /></div>
-      <NoteEditor slug={page.slug} initial={page.markdown} hash={page.hash} {...await editorContext(user)} />
-      <Backlinks note={{ slug: page.slug, title: page.title }} />
+  const user = page ? await me() : null;
+  const after = page && user ? (
+    <FrontOnly path={`notes/${page.slug}.md`}>
+      <div className="db-crumb ex-crumb"><ExportMenu type="note" id={page.slug} /></div>
+      {typeOf(readProperties(page.markdown), loadNoteTypes().types)?.id === PROJECT_TYPE ? <ProjectSection user={user} slug={page.slug} title={page.title} /> : null}
       <LocalGraph user={user} center={`note:${page.slug}`} />
-      <form className="db-notes-delete" action={deleteNoteAction}>
-        <input type="hidden" name="slug" value={page.slug} />
-        <span className="db-mono">notes/{page.slug}.md</span>
-        <button className="db-act db-act--danger" type="submit">Delete note</button>
-      </form>
-    </Shell>
-  );
+    </FrontOnly>
+  ) : null;
+  return <VaultNotePage path={slug} after={after} />;
 }

@@ -3,16 +3,20 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { checkMeetingsNow } from "@/app/actions";
+import { createDayAction } from "@/app/vault-actions";
 import { fold, terms } from "@/lib/search";
 import { Highlight } from "./Highlight";
 import { SearchIcon } from "./SearchIcon";
 import { OPEN_CAPTURE, type CaptureDetail } from "./QuickCapture";
+import { useStructureRows } from "./structure/usePalette";
 
 interface Nav {
   people: Array<{ name: string; slug: string; youOwe: number; theyOwe: number }>;
   days: Array<{ date: string; label: string }>;
 }
 interface Result { type: "item" | "meeting"; id: string; kind: string; status: string; text: string; sub: string; href: string }
+interface NoteResult { path: string; title: string; snippet: string; href: string }
+interface DayResult { date: string; label: string; exists: boolean; href: string }
 
 interface Row {
   id: string;
@@ -50,8 +54,9 @@ export function CommandPalette() {
   const [q, setQ] = useState("");
   const [sel, setSel] = useState(0);
   const [nav, setNav] = useState<Nav>({ people: [], days: [] });
-  const [results, setResults] = useState<{ q: string; rows: Result[] }>({ q: "", rows: [] });
+  const [results, setResults] = useState<{ q: string; rows: Result[]; notes?: NoteResult[]; day?: DayResult | null }>({ q: "", rows: [] });
   const [, startTransition] = useTransition();
+  const structure = useStructureRows(open, q);
   const input = useRef<HTMLInputElement>(null);
   const list = useRef<HTMLDivElement>(null);
   const restore = useRef<HTMLElement | null>(null);
@@ -86,9 +91,9 @@ export function CommandPalette() {
     const ctl = new AbortController();
     fetch(`/api/search?q=${encodeURIComponent(q)}`, { signal: ctl.signal })
       .then((r) => r.json())
-      .then((d: Nav & { results: Result[] }) => {
+      .then((d: Nav & { results: Result[]; notes?: NoteResult[]; day?: DayResult | null }) => {
         if (!q) setNav({ people: d.people, days: d.days });
-        setResults({ q, rows: d.results });
+        setResults({ q, rows: d.results, notes: d.notes ?? [], day: d.day ?? null });
       })
       .catch(() => {});
     return () => ctl.abort();
@@ -129,12 +134,25 @@ export function CommandPalette() {
       ? { id: "act-ask", group: "Actions", label: `Ask “${q.trim().slice(0, 120)}”`, sub: "Claude answers from your items", href: `/ask?q=${encodeURIComponent(q.trim().slice(0, 500))}` }
       : { id: "act-ask", group: "Actions", label: "Ask…", sub: "a question about your meetings", href: "/ask" };
     if (addFirst) out.push(add);
+    // "last tuesday", "3 days ago", "25 nov": that day's page, or make it.
+    const day = results.q === q ? results.day : null;
+    if (day && ws.length) {
+      out.push(day.exists
+        ? { id: `day-${day.date}`, group: "Go to", label: day.label, sub: day.date, href: day.href }
+        : { id: `day-${day.date}`, group: "Go to", label: `Create ${day.label}`, sub: "no page for that day yet", run: () => { void createDayAction(day.date).then((r) => { if (r.ok && r.href) router.push(r.href); }); } });
+    }
     out.push(...goRows);
     if (!ws.length || matches(check.label, ws)) out.push(check);
     if (!ws.length) out.push(add);
     if (!addFirst) out.push(asking);
     out.push(...people, ...days);
+    // Views, tags and "New note of type…" (src/lib/structure/palette.ts).
+    if (/^new\b/i.test(q.trim())) out.unshift(...structure.filter((r) => r.group === "New note"));
+    out.push(...structure.filter((r) => !/^new\b/i.test(q.trim()) || r.group !== "New note"));
     if (ws.length) {
+      for (const n of results.notes ?? []) {
+        out.push({ id: `n-${n.path}`, group: "Notes", label: n.title, sub: n.snippet || n.path, href: n.href, hl: true, mark: "note" });
+      }
       for (const r of results.rows) {
         out.push({
           id: `r-${r.id}`, group: "Results", label: r.text, sub: r.sub, href: r.href, hl: true,
@@ -145,7 +163,7 @@ export function CommandPalette() {
       if (!addFirst) out.push({ ...add, group: "Add" });
     }
     return out;
-  }, [q, nav, results]);
+  }, [q, nav, results, router, structure]);
 
   useEffect(() => { setSel((s) => Math.min(s, Math.max(0, rows.length - 1))); }, [rows.length]);
   useEffect(() => {

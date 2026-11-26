@@ -16,8 +16,11 @@ export function starredFirst<T extends { starred?: boolean }>(xs: T[]): T[] {
 }
 
 /** The BriefLine fields for your own items, stars and editing. Spread into any line built from an item. */
-export function lineExtras(i: Item): Pick<BriefLine, "manual" | "note" | "starred" | "dueAt"> {
-  return { manual: isManual(i) || undefined, note: i.note ?? null, starred: !!i.starred || undefined, dueAt: i.dueAt };
+export function lineExtras(i: Item): Pick<BriefLine, "manual" | "note" | "starred" | "dueAt" | "tags" | "project"> {
+  return {
+    manual: isManual(i) || undefined, note: i.note ?? null, starred: !!i.starred || undefined, dueAt: i.dueAt,
+    ...(i.tags?.length ? { tags: i.tags } : {}), ...(i.project ? { project: i.project } : {}),
+  };
 }
 
 /** Items stored before manual items existed have no source: they came from meetings. */
@@ -33,6 +36,9 @@ export interface ManualInput {
   note?: string | null;
   /** Lands in the Inbox (status "inbox") instead of the lists, to be triaged later. */
   inbox?: boolean;
+  /** Tags and project (quick capture's #tag and +project). */
+  tags?: string[];
+  project?: string | null;
 }
 
 /** Quick-captured with neither a person nor a due date: it goes to the Inbox. */
@@ -45,5 +51,6 @@ export function manualItem(id: string, userId: string, input: ManualInput, at: s
     quote: "", meetingId: MANUAL_MEETING_ID, dueAt: input.dueAt, status: input.inbox ? "inbox" : "open",
     closedByMeetingId: null, closeQuote: null, createdAt: at, closedAt: null,
     source: "manual", note: input.note?.trim() || null, starred: false, snoozedUntil: null,
+    ...(input.tags?.length ? { tags: [...new Set(input.tags)] } : {}), ...(input.project ? { project: input.project } : {}),
   };
 }

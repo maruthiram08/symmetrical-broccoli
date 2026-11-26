@@ -156,7 +156,7 @@ export class MemoryStore implements Store {
     return item;
   }
   /** Change an item's own fields: text, person, due and note (manual items), star and snooze (any). */
-  async updateItem(itemId: string, patch: Partial<Pick<Item, "kind" | "text" | "person" | "dueAt" | "note" | "starred" | "snoozedUntil">>): Promise<Item | null> {
+  async updateItem(itemId: string, patch: Partial<Pick<Item, "kind" | "text" | "person" | "dueAt" | "note" | "starred" | "snoozedUntil" | "tags" | "project">>): Promise<Item | null> {
     const it = this.items.get(itemId);
     if (!it) return null;
     Object.assign(it, patch);

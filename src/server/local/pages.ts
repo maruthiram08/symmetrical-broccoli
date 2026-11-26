@@ -3,7 +3,7 @@
 // open it. The title is the first "# " heading, else the slug.
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { noteSlug, type LinkSource } from "@/lib/editor/links";
 import { splitNotes } from "@/lib/capture/notes";
 import { notesDir } from "./paths";
@@ -50,8 +50,31 @@ export function readPage(slug: string, dir = notesDir()): { slug: string; title:
 
 function writeAtomic(path: string, text: string) {
   const tmp = `${path}.tmp-${process.pid}`;
-  writeFileSync(tmp, text);
+  let mode: number | undefined;
+  try { mode = statSync(path).mode & 0o777; } catch { mode = undefined; }
+  writeFileSync(tmp, text, mode === undefined ? undefined : { mode });
   renameSync(tmp, path);
+}
+
+/**
+ * Write a note file exactly as given. `base` is the hash of the text the editor started from: when
+ * the file changed on disk since (edited in another app), that version is kept next to it as
+ * <name>.conflict-<time>.md instead of being lost. A file that already holds these exact bytes is
+ * left alone, so nothing is rewritten that you didn't change.
+ */
+export function writeKeepingConflict(path: string, markdown: string, base: string | null, now = new Date()): { hash: string; conflict?: string; written: boolean } {
+  let conflict: string | undefined;
+  if (existsSync(path)) {
+    const bytes = readFileSync(path);
+    if (bytes.equals(Buffer.from(markdown, "utf8"))) return { hash: hashOf(markdown), written: false };
+    const disk = bytes.toString("utf8");
+    if (base && hashOf(disk) !== base && disk !== markdown) {
+      conflict = `${basename(path).replace(/\.md$/i, "")}.conflict-${now.toISOString().replace(/[:.]/g, "-")}.md`;
+      writeAtomic(join(dirname(path), conflict), disk);
+    }
+  }
+  writeAtomic(path, markdown);
+  return { hash: hashOf(markdown), conflict, written: true };
 }
 
 /** A new page from a title, with a free slug ("q4-plan", "q4-plan-2"...). */
@@ -75,18 +98,8 @@ export function savePage(slug: string, markdown: string, base: string | null, di
   if (!validSlug(slug)) return { ok: false, error: "That page name isn't valid." };
   if (markdown.length > 1_000_000) return { ok: false, error: "That page is too long to save." };
   mkdirSync(pagesDir(dir), { recursive: true });
-  const path = pagePath(slug, dir);
-  let conflict: string | undefined;
-  if (existsSync(path)) {
-    const disk = readFileSync(path, "utf8");
-    const h = hashOf(disk);
-    if (base && h !== base && disk !== markdown) {
-      conflict = `${slug}.conflict-${now.toISOString().replace(/[:.]/g, "-")}.md`;
-      writeAtomic(join(pagesDir(dir), conflict), disk);
-    }
-  }
-  writeAtomic(path, markdown);
-  return { ok: true, hash: hashOf(markdown), conflict };
+  const { hash, conflict } = writeKeepingConflict(pagePath(slug, dir), markdown, base, now);
+  return { ok: true, hash, conflict };
 }
 
 export function deletePage(slug: string, dir = notesDir()): boolean {

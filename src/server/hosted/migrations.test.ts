@@ -9,7 +9,7 @@ const tables = [...sql.matchAll(/create table (\w+)/g)].map((m) => m[1]);
 
 describe("migrations", () => {
   it("are numbered in order", () => {
-    expect(all).toEqual(["0001_schema.sql", "0002_billing_teams.sql", "0003_security.sql", "0004_local_parity.sql"]);
+    expect(all).toEqual(["0001_schema.sql", "0002_billing_teams.sql", "0003_security.sql", "0004_local_parity.sql", "0005_structure.sql", "0006_structure_security.sql"]);
   });
 
   it("turn on row-level security for every table", () => {
@@ -18,7 +18,7 @@ describe("migrations", () => {
   });
 
   it("give every per-user table a policy on auth.uid(), and secrets none", () => {
-    for (const t of ["meetings", "items", "briefs", "events", "looks", "marks", "caches", "health", "ai_state", "subscriptions"]) {
+    for (const t of ["meetings", "items", "briefs", "events", "looks", "marks", "caches", "health", "ai_state", "subscriptions", "views"]) {
       expect(sql, t).toMatch(new RegExp(`create policy \\w+ on ${t} [^;]*auth\\.uid\\(\\)`));
     }
     for (const t of ["connections", "oauth_clients", "billing_events", "prep_notified"]) {

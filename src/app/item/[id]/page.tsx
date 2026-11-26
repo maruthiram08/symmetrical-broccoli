@@ -14,6 +14,8 @@ import { me } from "@/server/local/app";
 import { pastDays } from "../../_lib/days";
 import { TicketLabel, TicketSend } from "@/components/integrations/TicketSlot";
 import { loadAll, shortDate } from "../../_lib/lines";
+import { ItemStructure } from "@/components/structure/ItemStructure";
+import { allTags, loadStructure } from "../../_lib/structure";
 
 export const dynamic = "force-dynamic";
 
@@ -38,6 +40,7 @@ export default async function ItemPage({ params }: { params: Promise<{ id: strin
   const self = [user.name, ...user.aliases];
   const events = timeline(item, items, meetings, now, self);
   const related = relatedItems(item, items, meetings, self);
+  const structure = item.status !== "wrong" ? await loadStructure(user) : null;
   const openCount = items.filter((i) => i.status === "open" && i.kind !== "decision").length;
   const tz = user.timeZone;
   const when = (iso: string) => `${shortDate(iso, tz)}, ${formatTime(iso, tz)}`;
@@ -59,6 +62,7 @@ export default async function ItemPage({ params }: { params: Promise<{ id: strin
         <TicketLabel itemId={item.id} lead="" />
       </p>
       <ShareToTeam itemId={item.id} />
+      {structure ? <ItemStructure itemId={item.id} project={item.project ?? null} tags={item.tags ?? []} projects={structure.projects} known={allTags(structure)} /> : null}
       {item.kind !== "decision" && item.status === "open" ? <div className="int-page-send"><TicketSend itemId={item.id} variant="row" /></div> : null}
 
       <Section title="Timeline">

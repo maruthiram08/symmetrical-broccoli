@@ -130,7 +130,7 @@ function snippetAt(md: string, at: number): string {
   const endRaw = md.indexOf("\n", at);
   const line = md.slice(start, endRaw < 0 ? md.length : endRaw);
   return line
-    .replace(/\[\[([^[\]\n]+)\]\]/g, (_m, inner: string) => parseWikiLink(inner)?.label ?? inner)
+    .replace(/!?\[\[([^[\]\n]+)\]\]/g, (_m, inner: string) => parseWikiLink(inner)?.label ?? inner)
     .replace(/^\s*(?:[-*+]|\d+[.)])\s+\[[ xX]\]\s+/, "")
     .replace(/^\s*(?:>\s*)+(?:\[![a-z]+\]\s*)?/i, "")
     .replace(/^\s*(?:#{1,6}|[-*+]|\d+[.)])\s+/, "")
