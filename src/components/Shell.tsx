@@ -39,7 +39,7 @@ const navCounts = cache(async () => {
 
 const LABELS: Record<string, string> = {
   today: "Today", wrap: "Wrap", week: "This week", open: "All open", item: "Item", people: "People", projects: "Projects",
-  series: "Recurring", routines: "Routines", review: "Review", crosscheck: "Cross-check", ask: "Ask", notes: "Notes", graph: "Graph",
+  series: "Recurring", routines: "Routines", review: "Review", crosscheck: "Cross-check", ask: "Ask", notes: "Notes",
   meeting: "Meeting", canvas: "Canvas", tags: "Tags", views: "Views", inbox: "Inbox", search: "Search", settings: "Settings", "note-types": "Note types",
 };
 
@@ -72,7 +72,6 @@ async function Sidebar({ current, footer, query }: { current: string; footer?: R
       {isHosted() ? null : <Nav href="/crosscheck" on={is("crosscheck")} sub><span>Cross-check</span></Nav>}
       <Nav href="/ask" on={is("ask")}><span>Ask</span></Nav>
       <Nav href="/notes" on={is("notes")}><span>Notes</span></Nav>
-      <Nav href="/graph" on={is("graph", "meeting")}><span>Graph</span></Nav>
       <Nav href="/canvas" on={is("canvas")}><span>Canvas</span></Nav>
       <Nav href="/tags" on={is("tags")}><span>Tags</span></Nav>
       <Nav href="/views" on={is("views")}><span>Views</span></Nav>

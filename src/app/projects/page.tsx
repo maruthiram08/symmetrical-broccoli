@@ -17,7 +17,12 @@ import { Bar, CrumbLine, EmptyDetail, ItemDetail } from "@/components/reading/It
 import { ListHeader } from "@/components/reading/ListPane";
 import { ProjectDetail } from "@/components/reading/ProjectDetail";
 import { ProjectList } from "@/components/reading/ProjectList";
-import { projectLine, projectSummaries } from "@/lib/reading/model";
+import { projectLine, projectSummaries, shortDay } from "@/lib/reading/model";
+import { ThreadDetail } from "@/components/reading/ThreadDetail";
+import { HiddenFlash } from "@/components/reading/MetActions";
+import { getAiStore } from "@/server/local/ai-store";
+import { readThreads } from "@/server/local/threads";
+import { loadThreads } from "../_lib/threads";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Projects" };
@@ -30,13 +35,13 @@ const newestFirst = (a: Item, b: Item) => b.createdAt.localeCompare(a.createdAt)
 // that fed it. Filing: your projects, what was filed into them on its own, what still needs a project, and projects worth
 // making from the topics your meetings share. Filing runs on load, so a project you just made in a
 // note, or new keywords, take effect here.
-export default async function Projects({ searchParams }: { searchParams: Promise<{ view?: string; project?: string; item?: string; undo?: string; was?: string }> }) {
+export default async function Projects({ searchParams }: { searchParams: Promise<{ view?: string; project?: string; item?: string; undo?: string; was?: string; hidden?: string }> }) {
   const sp = await searchParams;
   const view = sp.view === "filing" ? "filing" : "board";
   const user = await me();
   if (!user) redirect("/setup");
   await autoFileProjects(getFileStore(), user.id).catch(() => undefined);
-  const { items, meetings } = await loadAll(user);
+  const { items, meetings, people } = await loadAll(user);
   const now = new Date();
   const byId = new Map(meetings.map((m) => [m.id, m]));
   const live = items.filter((i) => i.status !== "wrong" && i.status !== "inbox");
@@ -57,19 +62,59 @@ export default async function Projects({ searchParams }: { searchParams: Promise
   const ctx = readingCtx(user, meetings, now);
   const summaries = projectSummaries(rows.map((r) => ({ slug: r.slug, title: r.title })), live, meetings);
   const statusOf = (slug: string) => { const st = rows.find((r) => r.slug === slug)?.props.status; return typeof st === "string" ? st : null; };
-  const pick = view === "board" ? summaries.find((x) => x.slug === sp.project) ?? summaries[0] : summaries.find((x) => x.slug === sp.project);
-  const listRows = summaries.map((x) => ({
-    slug: x.slug, title: x.title, line: projectLine(x), open: x.owe.length + x.waiting.length,
-    last: x.meetings[0] ? `${x.meetings[0].title || "Meeting"}, ${shortDate(x.meetings[0].startedAt, user.timeZone)}` : "",
-  }));
+  // Threads found across your meetings: suggestions only, listed under yours, never filed until Keep.
+  const threads = loadThreads(user, items, meetings, people, now);
+  const tid = (id: string) => `thread:${id}`;
+  const ids = [...summaries.map((x) => x.slug), ...threads.map((t) => tid(t.id))];
+  const wanted = sp.project ?? (view === "board" ? ids[0] : undefined);
+  const pickThread = wanted?.startsWith("thread:") ? threads.find((t) => tid(t.id) === wanted) : undefined;
+  const pick = pickThread ? undefined : summaries.find((x) => x.slug === wanted) ?? (view === "board" && !sp.project ? summaries[0] : undefined);
+  const day = (iso: string) => shortDay(iso, user.timeZone);
+  const groups = [
+    {
+      key: "yours", label: "Yours", empty: "No projects yet. Keep a found one, or make one under Filing.",
+      rows: summaries.map((x) => ({
+        slug: x.slug, title: x.title, line: projectLine(x), open: x.owe.length + x.waiting.length,
+        last: x.meetings[0] ? `${x.meetings[0].title || "Meeting"}, ${shortDate(x.meetings[0].startedAt, user.timeZone)}` : "",
+      })),
+    },
+    {
+      key: "found", label: "Found in your meetings", empty: "Nothing yet. A thread shows up once four meetings with two or more people share it.",
+      rows: threads.map((t) => {
+        const lastM = t.meetings[t.meetings.length - 1];
+        return {
+          slug: tid(t.id), title: t.name, found: true, open: t.open.length,
+          line: t.state === "wrapped" ? `All ${t.kept} kept · ${t.meetings.length} meetings` : `${t.open.length} open · ${t.decisions.length} ${t.decisions.length === 1 ? "decision" : "decisions"} · ${t.meetings.length} meetings`,
+          last: t.state === "stalled" ? `Stalled since ${day(`${t.lastItem}T12:00:00Z`)}` : `${lastM.title || "Meeting"}, ${day(lastM.startedAt)}`,
+          lastLate: t.state === "stalled",
+        };
+      }),
+    },
+  ];
   const list = (
     <>
-      <ListHeader title="Projects" count={String(rows.length)} add={false} tabs={tabs} />
+      <ListHeader title="Projects" count={`${rows.length} yours · ${threads.length} found`} add={false} tabs={tabs} />
       <PaneAlerts />
-      <ProjectList rows={listRows} />
+      {sp.hidden && /^t-[a-z0-9-]+$/.test(sp.hidden) ? <HiddenFlash id={sp.hidden} /> : null}
+      <ProjectList groups={groups} foot="Found ones are never filed for you. They sit here until you keep one (it becomes a project) or say it isn't one thread." />
     </>
   );
-  const reading = { groups: [{ key: "projects", ids: summaries.map((x) => x.slug) }], param: "project", selected: pick?.slug ?? null, auto: !sp.project, clear: ["item", "view", "undo", "was"] };
+  const reading = { groups: [{ key: "yours", ids: summaries.map((x) => x.slug) }, { key: "found", ids: threads.map((t) => tid(t.id)) }], param: "project", selected: pickThread ? tid(pickThread.id) : pick?.slug ?? null, auto: !sp.project, clear: ["item", "view", "undo", "was", "hidden"] };
+  if (view === "board" && pickThread) {
+    const base = `/projects?project=${encodeURIComponent(tid(pickThread.id))}`;
+    const href = (id: string) => `${base}&item=${encodeURIComponent(id)}`;
+    const item = sp.item ? pickThread.items.find((i) => i.id === sp.item) : undefined;
+    const stands = readThreads().stands[pickThread.id] ?? null;
+    return (
+      <Shell days={await pastDays(user.id, "")} current="projects" reading={reading} list={list}
+        detail={item ? (
+          <ItemDetail item={item} items={items} meetings={meetings} user={user} now={now}
+            crumb={{ page: "Projects", group: pickThread.name }} back={{ href: base, label: pickThread.name }}
+            selfHref={href(item.id)} itemHref={href} />
+        ) : <ThreadDetail t={pickThread} ctx={ctx} changes={getAiStore().contradictions()} stands={stands} href={href} pos={{ n: ids.indexOf(tid(pickThread.id)) + 1, of: ids.length }} />}
+      />
+    );
+  }
   if (view === "board") {
     const item = pick && sp.item ? items.find((i) => i.id === sp.item) : undefined;
     const base = pick ? `/projects?project=${encodeURIComponent(pick.slug)}` : "/projects";

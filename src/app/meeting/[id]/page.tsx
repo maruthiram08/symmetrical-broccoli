@@ -3,7 +3,6 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { BriefItem, ClosedItem, Section } from "@/components/BriefList";
 import { Shell } from "@/components/Shell";
-import { LocalGraph } from "@/components/graph/LocalGraph";
 import { isSpeakerLabel } from "@/lib/directory/speakers";
 import { personSlug } from "@/lib/people";
 import { getFileStore, getStore, me } from "@/server/local/app";
@@ -43,7 +42,7 @@ export default async function MeetingPage({ params }: { params: Promise<{ id: st
   const time = new Intl.DateTimeFormat("en-US", { timeZone: user.timeZone, hour: "numeric", minute: "2-digit" }).format(new Date(m.startedAt));
   return (
     <Shell days={await pastDays(user.id, "")} current="meeting" openCount={await openCountFor(user.id)}>
-      <p className="db-crumb"><Link className="db-link" href="/graph">Graph</Link></p>
+      <p className="db-crumb"><Link className="db-link" href="/day">Daily briefs</Link></p>
       <h1 className="db-title">{m.title || "Meeting"}</h1>
       <p className="db-subtitle">
         {shortDate(m.startedAt, user.timeZone)}, {time}
@@ -72,7 +71,6 @@ export default async function MeetingPage({ params }: { params: Promise<{ id: st
         </Section>
       ) : null}
       {isHosted() ? null : <MeetingCrossCheck rec={await getFileStore().getCrossCheck(m.id)} />}
-      <LocalGraph user={user} center={`meeting:${m.id}`} />
     </Shell>
   );
 }

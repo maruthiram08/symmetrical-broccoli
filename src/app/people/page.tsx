@@ -8,19 +8,27 @@ import { namesToCheck } from "@/lib/directory/review";
 import { me } from "@/server/local/app";
 import { pastDays } from "../_lib/days";
 import { loadAll, shortDate } from "../_lib/lines";
+import { MetPeople } from "./_met";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "People" };
 
-// Everyone named on an item, busiest first.
-export default async function People({ searchParams }: { searchParams: Promise<{ all?: string }> }) {
+// People: who you keep meeting while something is still open (src/app/people/_met.tsx), and the
+// old table of everyone at ?view=all.
+export default async function People({ searchParams }: { searchParams: Promise<{ all?: string; view?: string; p?: string }> }) {
+  const sp = await searchParams;
+  if (sp.view !== "all") return <MetPeople pick={sp.p ?? null} />;
+  return <Everyone all={sp.all} />;
+}
+
+async function Everyone({ all }: { all?: string }) {
   const user = await me();
   if (!user) redirect("/setup");
   const now = new Date();
   const { items, meetings, people: dir } = await loadAll(user);
   const self = [user.name, ...user.aliases];
   const everyone = listPeople({ items, meetings, now, self, people: dir });
-  const showAll = (await searchParams).all === "1";
+  const showAll = all === "1";
   const active = everyone.filter((p) => isActive(p, now));
   const quiet = everyone.length - active.length;
   const people = showAll ? everyone : active;
@@ -30,7 +38,8 @@ export default async function People({ searchParams }: { searchParams: Promise<{
   return (
     <Shell days={await pastDays(user.id, "")} current="people" openCount={openCount}>
       <div className="nr-titlebar">
-        <h1 className="db-title">People</h1>
+        <h1 className="db-title">Everyone</h1>
+        <Link className="db-link" href="/people">Back to People</Link>
         {toCheck ? (
           <Link className="nr-badge" href="/people/review">
             <span className="nr-badge__n">{toCheck}</span> {toCheck === 1 ? "name" : "names"} to check
@@ -75,8 +84,8 @@ export default async function People({ searchParams }: { searchParams: Promise<{
       {quiet ? (
         <p className="nr-more">
           {showAll
-            ? <Link className="db-link" href="/people">Show only recent</Link>
-            : <Link className="db-link" href="/people?all=1">Show everyone ({everyone.length})</Link>}
+            ? <Link className="db-link" href="/people?view=all">Show only recent</Link>
+            : <Link className="db-link" href="/people?view=all&all=1">Show everyone ({everyone.length})</Link>}
         </p>
       ) : null}
     </Shell>

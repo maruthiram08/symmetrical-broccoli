@@ -24,7 +24,6 @@ import { QuickCapture } from "@/components/QuickCapture";
 import { ItemKeys } from "@/components/ItemKeys";
 import "./platforms.css";
 import "./ai.css";
-import "./graph.css";
 import "./canvas.css";
 import "./structure.css";
 import "./routines.css";
