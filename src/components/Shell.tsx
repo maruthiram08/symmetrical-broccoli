@@ -7,7 +7,7 @@ import { HostedLinks } from "./HostedLinks";
 import { InboxLink, WorkspaceSwitch } from "./WorkspaceNav";
 
 /** Sidebar and reading column. `days` are past daily notes, newest first. */
-export function Shell({ days, current, children, footer, openCount, query }: { days: Array<{ date: string; label: string }>; current: string; children: ReactNode; footer?: ReactNode; openCount?: number; query?: string }) {
+export function Shell({ days, current, children, footer, openCount, query, wide }: { days: Array<{ date: string; label: string }>; current: string; children: ReactNode; footer?: ReactNode; openCount?: number; query?: string; wide?: boolean }) {
   return (
     <div className="db-shell">
       <SideNav brand={<span><i aria-hidden="true" />Daily brief</span>}>
@@ -26,6 +26,7 @@ export function Shell({ days, current, children, footer, openCount, query }: { d
         <Link className="db-nav" href="/series" aria-current={current === "series" ? "page" : undefined}>Recurring</Link>
         <Link className="db-nav" href="/review" aria-current={current === "review" ? "page" : undefined}>Review</Link>
         <Link className="db-nav" href="/ask" aria-current={current === "ask" ? "page" : undefined}>Ask</Link>
+        <Link className="db-nav" href="/notes" aria-current={current === "notes" ? "page" : undefined}>Notes</Link>
         {days.length ? <div className="db-side__group">Earlier</div> : null}
         {days.map((d) => (
           <Link key={d.date} className="db-nav" href={`/day/${d.date}`} aria-current={current === d.date ? "page" : undefined}>
@@ -39,7 +40,7 @@ export function Shell({ days, current, children, footer, openCount, query }: { d
         </div>
       </SideNav>
       <main className="db-main">
-        <div className="db-main__col"><Progress />{children}</div>
+        <div className={wide ? "db-main__col db-main__col--wide" : "db-main__col"}><Progress />{children}</div>
       </main>
     </div>
   );

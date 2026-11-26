@@ -18,6 +18,7 @@ import "./integrations.css";
 import "./channels.css";
 import "./sources.css";
 import "./review.css";
+import "./editor.css";
 import { QuickCapture } from "@/components/QuickCapture";
 import { ItemKeys } from "@/components/ItemKeys";
 import "./platforms.css";

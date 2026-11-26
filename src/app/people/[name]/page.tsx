@@ -4,6 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import { BriefItem, ClosedItem, Section } from "@/components/BriefList";
 import { Mark } from "@/components/Mark";
 import { Shell } from "@/components/Shell";
+import { Backlinks } from "@/components/Backlinks";
 import { initials, listPeople, normalizeName, ownsItem, personDetail } from "@/lib/people";
 import { getStore, me } from "@/server/local/app";
 import { PersonManage, type ManageTarget } from "@/components/PersonManage";
@@ -128,6 +129,7 @@ export default async function Person({ params, searchParams }: { params: Promise
         targets={targets}
         undo={undo ? { changeId: undo.id, label: undo.label } : null}
       />
+      <Backlinks person={d.person} />
     </Shell>
   );
 }
