@@ -14,7 +14,7 @@ export function safeDecode(s: string): string {
 }
 
 /** /notes and /notes/<path>: the workbench, with `path` (any .md in the workspace folder) in front. */
-export async function VaultNotePage({ path, children }: { path: string | null; children?: ReactNode }) {
+export async function VaultNotePage({ path, children, after }: { path: string | null; children?: ReactNode; after?: ReactNode }) {
   const user = await me();
   if (!user) redirect("/setup");
   let resolved: string | null = null;
@@ -26,6 +26,7 @@ export async function VaultNotePage({ path, children }: { path: string | null; c
   return (
     <Shell days={await pastDays(user.id, "")} current="notes" openCount={await openCountFor(user.id)} wide>
       <VaultWorkbench ctx={ctx} initialPath={resolved}>{children}</VaultWorkbench>
+      {after}
     </Shell>
   );
 }

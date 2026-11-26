@@ -20,6 +20,8 @@ import { SyncSettings } from "@/components/SyncSettings";
 import { IntegrationsSettings } from "@/components/integrations/IntegrationsSettings";
 import { SourcesSection } from "@/components/SourcesSection";
 import { sourceStatuses } from "@/server/recorders/status";
+import { AppearanceSettings } from "@/components/AppearanceSettings";
+import { readThemes } from "@/server/local/themes";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Setup" };
@@ -165,6 +167,7 @@ export default async function Setup({ searchParams }: { searchParams: Promise<{ 
       <SyncSettings syncError={sync} gitError={git} />
       <IntegrationsSettings flash={integ} timeZone={tz} />
       <PlatformSettings remote={remote} timeZone={tz} modelError={model === "bad"} />
+      {isHosted() ? null : <AppearanceSettings initial={readThemes()} />}
       {health ? (
         <section className="db-stack db-subsection" aria-labelledby="health">
           <h2 className="db-section__title" id="health">Health</h2>

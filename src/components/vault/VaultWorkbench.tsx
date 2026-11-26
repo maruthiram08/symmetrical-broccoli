@@ -8,7 +8,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { resolveNoteAction, restoreVaultEntryAction, vaultTreeAction, createVaultNoteAction } from "@/app/vault-actions";
 import { FOCUS_EVENT, readFocusConf, toggleFocusMode, type FocusConf } from "@/lib/editor/focus-conf";
 import {
-  activate, activePath, closeTab, cycleTab, emptyLayout, focusPane, loadLayout, newTab, noteHref, openPath, openToSide,
+  FRONT_EVENT, activate, activePath, closeTab, cycleTab, emptyLayout, focusPane, loadLayout, newTab, noteHref, openPath, openToSide,
   pathFromHref, removePath, renamePath, saveLayout, toggleSplit, type Layout,
 } from "@/lib/vault/layout";
 import type { TreeNode } from "@/server/local/vault";
@@ -68,6 +68,7 @@ export function VaultWorkbench({ ctx, initialPath, children }: { ctx: WorkbenchC
     const href = current ? noteHref(current) : "/notes";
     if (window.location.pathname !== href) window.history.replaceState(window.history.state, "", href);
     document.title = `${current ? tabName(current) : "Notes"} · Daily brief`;
+    window.dispatchEvent(new CustomEvent<string | null>(FRONT_EVENT, { detail: current }));
   }, [current, ready]);
 
   const refreshTree = useCallback(async () => {

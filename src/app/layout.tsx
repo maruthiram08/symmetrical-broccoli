@@ -23,6 +23,7 @@ import "./vault.css";
 import { QuickCapture } from "@/components/QuickCapture";
 import { ItemKeys } from "@/components/ItemKeys";
 import "./platforms.css";
+import "./graph.css";
 import { PwaRegister } from "@/components/PwaRegister";
 
 const sans = Instrument_Sans({ subsets: ["latin"], weight: ["400", "500", "600"], variable: "--font-instrument-sans", display: "swap" });
@@ -46,6 +47,9 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="en" className={`${sans.variable} ${mono.variable}`}>
       <body>
+        {/* Settings › Appearance: the theme is read per request, so it can change without a rebuild. */}
+        {/* eslint-disable-next-line @next/next/no-css-tags */}
+        <link rel="stylesheet" href="/api/theme-css" precedence="theme" />
         {children}
         <CommandPalette />
         <Keys />

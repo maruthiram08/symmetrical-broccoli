@@ -7,6 +7,8 @@ export interface Pane { tabs: string[]; active: number }
 export interface Layout { panes: Pane[]; focus: number }
 
 export const MAX_TABS = 20;
+/** Fired on window with the path of the note in front (or null), as it changes. */
+export const FRONT_EVENT = "db:vault-front";
 export const emptyLayout = (): Layout => ({ panes: [{ tabs: [], active: -1 }], focus: 0 });
 
 const clone = (l: Layout): Layout => ({ focus: l.focus, panes: l.panes.map((p) => ({ tabs: [...p.tabs], active: p.active })) });

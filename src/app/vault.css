@@ -148,3 +148,4 @@
 .db-ed .cm-focus-on .cm-md-mermaid, .db-ed .cm-focus-on .cm-md-tablewrap { opacity: 0.28; }
 /* ⌘K: a note result. */
 .db-palette .db-mark--note { display: inline-block; flex: none; width: 9px; height: 11px; border: 1.25px solid var(--border-strong); border-radius: 2px; background: none; }
+.db-vault__after { margin-top: var(--space-8); }

@@ -197,7 +197,7 @@ class EmbedWidget extends WidgetType {
       head.dataset.href = c.href;
       const lines = embedLines(c.markdown);
       // The title is already on the chip.
-      if (lines[0]?.cls === "h1" && lines[0].text.trim().toLowerCase() === c.title.trim().toLowerCase()) { lines.shift(); if (lines[0]?.cls === "gap") lines.shift(); }
+      if (lines[0]?.cls === "h1" && lines[0].text.trim().toLowerCase() === c.title.trim().toLowerCase()) { lines.shift(); if ((lines[0]?.cls as string | undefined) === "gap") lines.shift(); }
       if (!lines.length) { body.textContent = "Empty note"; body.classList.add("cm-md-embed__body--empty"); }
       for (const l of lines) {
         const row = document.createElement("span");
