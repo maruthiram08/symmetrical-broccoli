@@ -4,4 +4,7 @@ export async function register() {
   await loadSecrets();
   const { startScheduler } = await import("./server/local/scheduler");
   startScheduler();
+  // Phone access (off by default): the LAN door for paired phones, see src/server/local/phone-proxy.ts.
+  const { syncPhoneAccess } = await import("./server/local/phone-proxy");
+  await syncPhoneAccess();
 }

@@ -7,8 +7,12 @@ import { join } from "node:path";
  * so it can be rotated from inside the server with copy-then-truncate (the writer's next line lands
  * at the start of the emptied file). DAILY_BRIEF_LOG overrides it (tests, other setups).
  */
-export function logPath(): string {
-  return process.env.DAILY_BRIEF_LOG ?? join(homedir(), "Library", "Logs", "daily-brief.log");
+export function logPath(env: Record<string, string | undefined> = process.env, platform: NodeJS.Platform = process.platform, home = homedir()): string {
+  if (env.DAILY_BRIEF_LOG) return env.DAILY_BRIEF_LOG;
+  // The same places the desktop app uses (src-tauri/src/main.rs, log_path).
+  if (platform === "win32") return join(env.LOCALAPPDATA ?? join(home, "AppData", "Local"), "Daily Brief", "daily-brief.log");
+  if (platform === "linux") return join(env.XDG_STATE_HOME ?? join(home, ".local", "state"), "daily-brief", "daily-brief.log");
+  return join(home, "Library", "Logs", "daily-brief.log");
 }
 
 export const LOG_MAX_BYTES = 5 * 1024 * 1024;

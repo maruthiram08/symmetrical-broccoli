@@ -17,7 +17,7 @@ export async function publishLocal(
   _user: User,
   model: BriefModel,
   markdown: string,
-  notify: (title: string, body: string) => void = macNotify,
+  notify: Notify = osNotify,
   week?: WeekNote,
 ): Promise<{ id: string }> {
   mkdirSync(dir, { recursive: true });
@@ -46,9 +46,49 @@ export function notificationBody(m: BriefModel): string {
   return first ? `${first.text}${first.lateLabel ? ` (${first.lateLabel})` : ""}` : "Open Daily brief to see your day.";
 }
 
-/** macOS notification through osascript. Does nothing on other systems. Never throws. */
-export function macNotify(title: string, body: string): void {
-  if (process.platform !== "darwin") return;
-  const q = (s: string) => JSON.stringify(s.slice(0, 200)); // AppleScript strings use double quotes and backslash escapes
-  execFile("osascript", ["-e", `display notification ${q(body)} with title "Daily brief" subtitle ${q(title)}`], () => {});
+export type Notify = (title: string, body: string) => void;
+type Run = (cmd: string, args: string[], opts: { env?: NodeJS.ProcessEnv; windowsHide?: boolean; timeout?: number }, cb: () => void) => unknown;
+
+const clip = (s: string) => s.slice(0, 200);
+
+/** Windows toast through PowerShell's WinRT bridge. Title and body come in through env, never the script text. */
+export const WINDOWS_TOAST_SCRIPT = [
+  "$ErrorActionPreference='Stop'",
+  "[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] > $null",
+  "$x = [Windows.UI.Notifications.ToastNotificationManager]::GetTemplateContent([Windows.UI.Notifications.ToastTemplateType]::ToastText02)",
+  "$t = $x.GetElementsByTagName('text')",
+  "$t.Item(0).AppendChild($x.CreateTextNode($env:DB_NOTIFY_TITLE)) > $null",
+  "$t.Item(1).AppendChild($x.CreateTextNode($env:DB_NOTIFY_BODY)) > $null",
+  "$app = '{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\\WindowsPowerShell\\v1.0\\powershell.exe'",
+  "[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier($app).Show([Windows.UI.Notifications.ToastNotification]::new($x))",
+].join("; ");
+
+/**
+ * A desktop notification on this computer. Never throws, never waits.
+ * - macOS: osascript (Notification Center).
+ * - Linux: notify-send (libnotify; most desktops have it).
+ * - Windows: a toast through PowerShell.
+ * Other systems: nothing.
+ */
+export function osNotify(title: string, body: string, platform: NodeJS.Platform = process.platform, run: Run = execFile as unknown as Run): void {
+  try {
+    if (platform === "darwin") {
+      const q = (s: string) => JSON.stringify(clip(s)); // AppleScript strings use double quotes and backslash escapes
+      run("osascript", ["-e", `display notification ${q(body)} with title "Daily brief" subtitle ${q(title)}`], {}, () => {});
+    } else if (platform === "linux") {
+      run("notify-send", ["--app-name=Daily brief", clip(title), clip(body)], { timeout: 10_000 }, () => {});
+    } else if (platform === "win32") {
+      run(
+        "powershell.exe",
+        ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-Command", WINDOWS_TOAST_SCRIPT],
+        { env: { ...process.env, DB_NOTIFY_TITLE: clip(title), DB_NOTIFY_BODY: clip(body) }, windowsHide: true, timeout: 20_000 },
+        () => {},
+      );
+    }
+  } catch {
+    /* no notifier installed: the brief is still written */
+  }
 }
+
+/** Kept for older imports: notifications now go through osNotify on every system. */
+export const macNotify: Notify = (title, body) => osNotify(title, body);

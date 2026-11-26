@@ -1,11 +1,11 @@
 import { randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { keychainMode, macKeychain, type Env, type Keychain } from "./keychain";
+import { keychainMode, osKeychain, type Env, type Keychain } from "./keychain";
 import { dataDir } from "./paths";
 
 /** Non-secret settings the app reads from <data>/settings.env, since it has no .env.local. */
-const SETTINGS = ["EXTRACTION_MODEL", "WISPR_MCP_URL"] as const;
+const SETTINGS = ["EXTRACTION_MODEL", "WISPR_MCP_URL", "PHONE_BIND", "PHONE_PORT", "PHONE_HOSTNAME", "PHONE_TLS_CERT", "PHONE_TLS_KEY"] as const;
 
 export function settingsPath(): string {
   return join(dataDir(), "settings.env");
@@ -28,10 +28,11 @@ function loadSettings(env: Env): void {
  *   missing from both falls back to the Keychain, so dev keeps working after the move.
  * Never logs a value. Returns where each one came from, for tests.
  */
-export async function loadSecrets(kc: Keychain = macKeychain, env: Env = process.env): Promise<Record<string, string>> {
+export async function loadSecrets(kc: Keychain = osKeychain(), env: Env = process.env): Promise<Record<string, string>> {
   const from: Record<string, string> = {};
   const app = keychainMode(kc, env);
-  if (app) loadSettings(env);
+  // The desktop app has no .env.local: settings.env holds its settings even where no keyring is available.
+  if (app || env.DAILY_BRIEF_KEYCHAIN === "1") loadSettings(env);
 
   if (env.ANTHROPIC_API_KEY) from.ANTHROPIC_API_KEY = "env";
   else if (kc.available()) {

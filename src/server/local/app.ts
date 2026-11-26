@@ -4,8 +4,6 @@ import { join } from "node:path";
 import { env } from "@/lib/env";
 import { buildBrief } from "@/lib/brief/build";
 import { renderMarkdown } from "@/lib/brief/markdown";
-import { extractMeeting } from "@/lib/extract/extract";
-import { costInr } from "@/lib/extract/cost";
 import type { User } from "@/lib/types";
 import type { Deps } from "@/server/jobs/types";
 import { McpWisprClient } from "@/server/wispr/client";
@@ -14,6 +12,8 @@ import { FileStore } from "./file-store";
 import { appUrl, dataDir, notesDir } from "./paths";
 import { publishLocal } from "./publish";
 import { withTomorrow } from "./calendar";
+import { extractWithPrefs, extractionCostInr } from "./extract-local";
+import { extractionModelName } from "./prefs";
 
 /** A random key kept next to the data, used to seal the short-lived OAuth state cookie. */
 function ensureLocalKey(): void {
@@ -58,9 +58,10 @@ export function buildDeps(): Deps {
   return {
     store: getStore(),
     wispr: (userId) => new McpWisprClient(wisprAuthContext(userId, now)),
-    extract: (input) => extractMeeting(input),
-    costInr,
-    model: env.extractionModel,
+    // Claude by default; Settings can switch reading to a local Ollama model.
+    extract: (input) => extractWithPrefs(input),
+    costInr: extractionCostInr,
+    model: extractionModelName(),
     buildBrief: async (store, user, at) => withTomorrow(store, user, at, await buildBrief(store, user, at)),
     renderMarkdown,
     publish: (user, model, markdown, week) => publishLocal(notesDir(), user, model, markdown, undefined, week),
