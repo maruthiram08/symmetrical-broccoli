@@ -48,6 +48,7 @@ class FakeCache {
   m = new Map<string, Response>();
   key = (r: string | Request) => (typeof r === "string" ? new URL(r, "http://mac.local").pathname : new URL(r.url).pathname);
   async add(u: string) { const r = await globalThis.fetch(new Request(new URL(u, "http://mac.local"))); if (!r.ok) throw new Error("bad"); this.m.set(this.key(u), r); }
+  has(k: string) { return this.m.has(k); }
   async put(k: string | Request, r: Response) { this.m.set(this.key(k), r); }
   async match(k: string | Request) { const r = this.m.get(this.key(k)); return r ? r.clone() : undefined; }
 }
@@ -77,6 +78,8 @@ async function dispatch(handlers: Record<string, Handler>, type: string, request
   return responded ? await responded : undefined;
 }
 
+const pathOf = (r: Request | string) => new URL(typeof r === "string" ? r : r.url, "http://mac.local").pathname;
+
 function navigate(path: string): Request {
   const r = new Request(`http://mac.local${path}`);
   Object.defineProperty(r, "mode", { value: "navigate" });
@@ -86,21 +89,23 @@ function navigate(path: string): Request {
 describe("service worker", () => {
   const cfg: SwConfig = { ...SW_CONFIG, version: "t1", timeoutMs: 50 };
 
-  it("pre-caches Today, All open, People and the offline page at install", async () => {
+  it("pre-caches Today, All open and People, with their scripts and styles, at install", async () => {
     const f = fakeSelf();
-    vi.stubGlobal("fetch", vi.fn(async (r: Request) => new Response(`page ${new URL(r.url).pathname}`)));
+    vi.stubGlobal("fetch", vi.fn(async (r: Request | string) =>
+      new Response(`<script src="/_next/static/chunks/${pathOf(r).slice(1) || "home"}.js"></script><link href="/_next/static/css/a.css">`)));
     swMain(f.self, cfg);
     await dispatch(f.handlers, "install");
-    expect([...f.caches.get("db-pages-t1")!.m.keys()].sort()).toEqual(["/", "/offline", "/open", "/people"]);
+    expect([...f.caches.get("db-pages-t1")!.m.keys()].sort()).toEqual(["/", "/open", "/people"]);
+    expect([...f.caches.get("db-static-t1")!.m.keys()].sort()).toEqual(["/_next/static/chunks/home.js", "/_next/static/chunks/open.js", "/_next/static/chunks/people.js", "/_next/static/css/a.css"]);
     vi.unstubAllGlobals();
   });
 
   it("serves the saved Today when the network is gone, and the offline page for pages never saved", async () => {
     const f = fakeSelf();
     let online = true;
-    vi.stubGlobal("fetch", vi.fn(async (r: Request) => {
+    vi.stubGlobal("fetch", vi.fn(async (r: Request | string) => {
       if (!online) throw new TypeError("Failed to fetch");
-      return new Response(`fresh ${new URL(r.url).pathname}`);
+      return new Response(`fresh ${pathOf(r)}`);
     }));
     swMain(f.self, cfg);
     await dispatch(f.handlers, "install");
@@ -108,13 +113,15 @@ describe("service worker", () => {
     online = false;
     expect(await (await dispatch(f.handlers, "fetch", navigate("/?undo=1")))!.text()).toBe("fresh /");
     expect(await (await dispatch(f.handlers, "fetch", navigate("/people/nitin")))!.text()).toBe("fresh /people/nitin");
-    expect(await (await dispatch(f.handlers, "fetch", navigate("/ask")))!.text()).toBe("fresh /offline");
+    const off = (await dispatch(f.handlers, "fetch", navigate("/ask")))!;
+    expect(off.status).toBe(503);
+    expect(await off.text()).toContain("You're offline");
     vi.unstubAllGlobals();
   });
 
   it("falls back to the saved copy when the Mac is slow", async () => {
     const f = fakeSelf();
-    vi.stubGlobal("fetch", vi.fn(async (r: Request) => new Response(`v1 ${new URL(r.url).pathname}`)));
+    vi.stubGlobal("fetch", vi.fn(async (r: Request | string) => new Response(`v1 ${pathOf(r)}`)));
     swMain(f.self, cfg);
     await dispatch(f.handlers, "install");
     vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>((res) => setTimeout(() => res(new Response("v2")), 200))));
@@ -144,6 +151,11 @@ describe("service worker", () => {
     swMain(f.self, cfg);
     await dispatch(f.handlers, "activate");
     expect([...f.caches.keys()]).toEqual(["someone-else"]);
+  });
+
+  it("has an offline page that needs nothing from the network", () => {
+    expect(SW_CONFIG.offlineHtml).not.toMatch(/<script|<link|src=/);
+    expect(SW_CONFIG.offlineHtml).toContain('href="/open"');
   });
 
   it("serves as one self-contained script", () => {

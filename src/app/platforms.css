@@ -1,11 +1,6 @@
 /* Phone (PWA), phone access, widget and local model settings. */
 .db-offline-pill{position:fixed;left:50%;bottom:calc(16px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:60;display:inline-flex;align-items:center;gap:8px;padding:8px 14px;border-radius:var(--radius-full);background:var(--ink);color:var(--on-ink);font-size:13px;line-height:16px;box-shadow:0 4px 16px rgb(0 0 0 / .12)}
 .db-offline-pill i{width:6px;height:6px;border-radius:50%;background:var(--border-strong)}
-.db-offline__list{list-style:none;margin:var(--space-6) 0 0;padding:0;border-top:1px solid var(--border)}
-.db-offline__list li{display:flex;flex-direction:column;gap:2px;padding:var(--space-3) 0;border-bottom:1px solid var(--border)}
-.db-offline__list a{color:var(--ink);font-weight:600;text-decoration:none}
-.db-offline__list a:hover{text-decoration:underline}
-.db-offline__list span{color:var(--ink-muted);font-size:13px}
 
 .db-plat__status{display:flex;align-items:center;gap:8px;font-size:14px;line-height:20px}
 .db-plat__dot{width:8px;height:8px;border-radius:50%;background:var(--border-strong);flex:none}

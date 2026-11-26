@@ -30,11 +30,3 @@ export function PwaRegister() {
     </div>
   );
 }
-
-export function ReloadButton() {
-  return (
-    <button type="button" className="db-btn db-btn--primary" onClick={() => location.reload()}>
-      Try again
-    </button>
-  );
-}
