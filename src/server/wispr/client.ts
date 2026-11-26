@@ -31,6 +31,8 @@ export interface WisprClient {
   listMeetingsSince(sinceIso: string, opts?: ListOptions): Promise<WisprMeeting[]>;
   /** Full plaintext transcript ("" when there is none). Never store or log it. */
   getTranscript(providerMeetingId: string): Promise<string>;
+  /** The Flow Summary markdown (null when Wispr Flow has none). Never asks for the transcript. Optional: older fakes lack it. */
+  getSummary?(providerMeetingId: string): Promise<string | null>;
   /** Calendar events starting in the next `windowHours`, soonest first. Optional: older fakes lack it. */
   listUpcoming?(windowHours: number): Promise<UpcomingMeeting[]>;
   /** Timed calendar events starting in [sinceIso, untilIso), soonest first. Optional (calendar.ts). */
@@ -68,6 +70,11 @@ export const WISPR_TOOLS = {
       view_transcript: { start_char: startChar, char_limit: 40000 },
       view_content: { char_limit: 1 }, // we never use the notes body
     }),
+  },
+  /** get_meeting with no view_transcript: the summary comes back in full, the notes body cut to 1 char. */
+  getSummary: {
+    name: "get_meeting",
+    args: (providerMeetingId: string) => ({ meeting_id: providerMeetingId, view_content: { char_limit: 1 } }),
   },
   /**
    * list_upcoming_meetings: { window_hours (int, >= 1, max 168), limit (max 50), cursor }.
@@ -263,6 +270,27 @@ export function parseTranscriptPage(payload: unknown): { text: string; next: num
   return { text: raw, next: m ? Number(m[1]) : null };
 }
 
+const SummarySchema = z
+  .object({
+    summary: z
+      .union([
+        z.string(),
+        z.object({ markdown: z.string().nullish(), content: z.string().nullish(), text: z.string().nullish() }).passthrough(),
+      ])
+      .nullish()
+      .catch(null),
+  })
+  .passthrough();
+
+/** get_meeting payload -> the Flow Summary markdown, or null when there is none (missing, empty or odd). */
+export function parseSummary(payload: unknown): string | null {
+  const r = SummarySchema.safeParse(payload);
+  if (!r.success) return null;
+  const s = r.data.summary;
+  const text = typeof s === "string" ? s : s ? s.markdown ?? s.content ?? s.text ?? null : null;
+  return text?.trim() ? text : null;
+}
+
 // ---------- the client ----------
 
 export interface ToolCaller {
@@ -345,6 +373,12 @@ export class McpWisprClient implements WisprClient {
       start = next;
     }
     return parts.join("");
+  }
+
+  async getSummary(providerMeetingId: string): Promise<string | null> {
+    const tools = await this.tools();
+    const t = WISPR_TOOLS.getSummary;
+    return parseSummary(toolPayload(await tools.callTool(t.name, t.args(providerMeetingId)), t.name));
   }
 
   async listUpcoming(windowHours: number): Promise<UpcomingMeeting[]> {

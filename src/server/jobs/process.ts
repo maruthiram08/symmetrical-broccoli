@@ -6,6 +6,7 @@ import { localTranscript } from "@/server/recorders";
 import type { WisprClient } from "@/server/wispr/client";
 import { ReconnectRequiredError } from "@/server/wispr/oauth";
 import { logJobError, mapLimit, type Deps } from "./types";
+import { afterExtract } from "./after-extract";
 
 /** Most recent open decisions sent with each read (about 15 tokens each). */
 export const MAX_OPEN_DECISIONS = 40;
@@ -181,6 +182,7 @@ async function processMeetingOnce(
   });
   // A good model call proves the key and the credit are fine again.
   await store.setHealth?.({ lastExtractOkAt: at, ...(usage.inputTokens ? { anthropicProblem: null } : {}) });
+  if (wispr) await afterExtract({ store, wispr: deps.wispr, meetingId: meeting.id, dropped: result.dropped, now: deps.now, client: opts.client }); // Cross-check with Wispr Flow; off by default, never throws
   return { status: "processed", newItems: newItems.length, closes: closes.length };
 }
 

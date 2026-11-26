@@ -6,7 +6,9 @@ import { Shell } from "@/components/Shell";
 import { LocalGraph } from "@/components/graph/LocalGraph";
 import { isSpeakerLabel } from "@/lib/directory/speakers";
 import { personSlug } from "@/lib/people";
-import { getStore, me } from "@/server/local/app";
+import { getFileStore, getStore, me } from "@/server/local/app";
+import { isHosted } from "@/server/mode";
+import { MeetingCrossCheck } from "@/components/crosscheck/CrossCheck";
 import { openCountFor, pastDays } from "../../_lib/days";
 import { loadAll, shortDate, toClosedLine, toLine } from "../../_lib/lines";
 
@@ -61,6 +63,7 @@ export default async function MeetingPage({ params }: { params: Promise<{ id: st
           {closed.map((i) => <ClosedItem key={i.id} line={toClosedLine(i, byId, user)} />)}
         </Section>
       ) : null}
+      {isHosted() ? null : <MeetingCrossCheck rec={await getFileStore().getCrossCheck(m.id)} />}
       <LocalGraph user={user} center={`meeting:${m.id}`} />
     </Shell>
   );

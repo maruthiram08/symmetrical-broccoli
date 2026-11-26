@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Section } from "@/components/BriefList";
 import { Stats } from "@/components/CloseWrap";
 import { Mark } from "@/components/Mark";
+import { isHosted } from "@/server/mode";
 import { personSlug } from "@/lib/people";
 import { durationLabel, keptRate, type Review, type ReviewItem } from "@/lib/review/review";
 
@@ -43,6 +44,7 @@ export function ReviewView({ r, tz, quotes, base, current }: { r: Review; tz: st
         <Link className="cw-pill" href={`/review/month/${current.month}`} aria-current={r.period.kind === "month" ? "page" : undefined}>Month</Link>
         <Link className="cw-pill" href={`/review/year/${r.period.kind === "year" ? r.period.key : r.period.key.slice(0, 4)}`} aria-current={r.period.kind === "year" ? "page" : undefined}>Year</Link>
         <span className="rv-bar__gap" />
+        {isHosted() ? null : <Link className="cw-pill" href="/crosscheck">Wispr cross-check</Link>}
         <Link className="cw-pill" href={`${base}${quotes ? "" : "?quotes=1"}`} title="Quotes are left out of the page and the download unless you include them">
           {quotes ? "Hide quotes" : "Include quotes"}
         </Link>
