@@ -10,6 +10,7 @@ import { dataDir } from "./paths";
 import { notifyPrep } from "./prep";
 import { notifyFreshMeetings } from "./fresh";
 import { afterJobs } from "@/server/ai";
+import { importAllSources } from "@/server/recorders";
 
 export const TICK_MS = 5 * 60_000;
 export const POLL_EVERY_MS = 30 * 60_000;
@@ -49,12 +50,17 @@ export async function runTick(
   st.lastTickAt = nowMs;
   if ((await deps.store.listUsers()).length === 0) return { polled: false, delivered: [] };
   let polled = false;
+  // Local recorders (Granola, Zoom, the inbox folder) are checked every tick: unchanged files aren't read.
+  const imported = await importAllSources(deps.store, deps.now());
   if (nowMs - st.lastPoll >= POLL_EVERY_MS) {
     polled = true;
     const results = await pollAll(deps, { waitForFirstRead: true });
     const failed = results.some((r) => !r.ok);
     st.lastPoll = failed ? nowMs - POLL_EVERY_MS + POLL_RETRY_MS : nowMs;
     st.pollFailingSince = failed ? st.pollFailingSince ?? nowMs : null;
+    await processAllPending(deps, { deadline: nowMs + 10 * 60_000 });
+    await opts.afterProcess?.();
+  } else if (imported.created > imported.duplicates) {
     await processAllPending(deps, { deadline: nowMs + 10 * 60_000 });
     await opts.afterProcess?.();
   }
@@ -163,11 +169,24 @@ export async function checkNow(): Promise<void> {
   await runExclusive(async () => {
     const deps = buildDeps();
     await pollAll(deps, { waitForFirstRead: true });
+    await importAllSources(deps.store, deps.now());
     await processAllPending(deps, { deadline: Date.now() + 10 * 60_000 });
     await notifyFreshMeetings(getStore(), deps.now());
     await afterJobs({ nudges: false });
     if (g.__dbScheduler) g.__dbScheduler.tick.lastPoll = Date.now();
   });
+}
+
+/** Settings: a recorder was turned on or a transcript uploaded. Bring it in and read it now, in the background. */
+export function importNow(): void {
+  void runExclusive(async () => {
+    const deps = buildDeps();
+    const r = await importAllSources(deps.store, deps.now());
+    if (r.created > r.duplicates) {
+      await processAllPending(deps, { deadline: Date.now() + 10 * 60_000 });
+      await notifyFreshMeetings(getStore(), deps.now());
+    }
+  }).catch((e) => console.error(`[sources] ${errLine(e, { message: false })}`));
 }
 
 export function pullState(): PullState | null {

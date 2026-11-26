@@ -67,6 +67,24 @@ These use your Anthropic key and the same model as extraction (`EXTRACTION_MODEL
 
 A Claude skill for the MCP tools is in `skills/daily-brief/SKILL.md` (meeting prep, weekly review, and how to quote evidence).
 
+## Other recorders: Granola, Zoom, Google Meet, phone calls
+
+Settings > Other recorders reads meetings recorded outside Wispr Flow. Each source is off until you turn it on, everything is read on this Mac, and transcripts are read from their files when a meeting is read, never copied into the app's data.
+
+| Source | What it reads | Where |
+| --- | --- | --- |
+| Granola | Meetings and transcripts in Granola's local cache | `~/Library/Application Support/Granola/cache-v*.json` (the newest version) |
+| Zoom recordings | `.vtt` transcripts and saved closed captions, one meeting per recording folder | `~/Documents/Zoom` (change it in Settings) |
+| Google Meet and transcript files | Any `.docx`, `.txt`, `.vtt`, `.srt` or `.md` dropped in the inbox, or uploaded in Settings. For Meet: open the transcript in Google Docs, File > Download > Microsoft Word | `~/Daily Brief/inbox/` |
+| Phone calls | Call transcripts as text (iOS Notes, Just Press Record) | `~/Daily Brief/inbox/phone/`, or a name like "Call with Ravi.txt" |
+
+- Turning Granola or Zoom on reads the last 7 days, not the whole history (each meeting is one AI read, about ₹3.50). Settings shows how many it found first.
+- A meeting's title comes from its title line or heading, else the file name; its time from the contents, else the file name ("2026-11-24 10.00.00 …", "GMT20261124-043000"), else the file's modified time less the recording's length.
+- The same meeting recorded twice (say Wispr Flow and Granola: starts within 10 minutes and alike titles) is read once.
+- Files are checked every 5 minutes by modified time; a file that changed in the last minute waits for the next check.
+- Granola's cache is not a public format. The shape we expect is written down in `src/server/recorders/granola.ts`; if it changes, Settings says it couldn't read it and nothing else happens.
+- Google Meet straight from Google Drive (without downloading) needs Google sign-in, which isn't built yet.
+
 ## The Mac app
 
 `Daily Brief.app` is a small Tauri window and menu bar item around the same server. It starts the server with your Node.js (Homebrew's is fine, 18.18 or later), or reuses one already running on port 4242, and stops the one it started when you quit. Closing the window keeps it in the menu bar, where you also find **Check meetings now**, **Open in browser** and **Launch at login**.

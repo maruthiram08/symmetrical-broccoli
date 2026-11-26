@@ -1,0 +1,26 @@
+/* Settings > Other recorders (src/components/SourcesSection.tsx) */
+.db-sources__lead{margin-top:0}
+.db-sources{list-style:none;margin:0;padding:0;border:1px solid var(--border);border-radius:var(--radius-md)}
+.db-source{display:flex;flex-direction:column;gap:var(--space-2);padding:var(--space-4);min-width:0}
+.db-source + .db-source{border-top:1px solid var(--border)}
+.db-source__head{display:flex;flex-direction:column;gap:var(--space-2)}
+.db-source__status{display:flex;align-items:center;gap:var(--space-2);margin:0 0 0 calc(34px + var(--space-3));font:400 13px/18px var(--font-sans);color:var(--ink-muted)}
+.db-source__dot{flex:none;width:6px;height:6px;border-radius:50%;background:var(--border-strong)}
+.db-source__dot[data-state="found"]{background:var(--ink)}
+.db-source[data-on] .db-source__dot[data-state="found"]{background:var(--ink);box-shadow:0 0 0 3px var(--highlight)}
+.db-source__dot[data-state="error"]{background:var(--overdue)}
+.db-source__path,.db-source__folder{margin:0 0 0 calc(34px + var(--space-3));font-size:12px;line-height:16px;color:var(--ink-faint);min-width:0}
+.db-source__folder summary{display:flex;align-items:center;gap:var(--space-2);cursor:pointer;list-style:none;min-width:0}
+.db-source__folder summary::-webkit-details-marker{display:none}
+.db-source__folder summary .db-mono{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.db-source__change{flex:none;font:500 12px/16px var(--font-sans);color:var(--ink-muted);text-decoration:underline;text-underline-offset:2px}
+.db-source__folder[open] .db-source__change{display:none}
+.db-source__pathform{margin-top:var(--space-2);flex-wrap:nowrap}
+.db-source__pathform .db-input{flex:1;min-width:0;height:36px;font-size:12px}
+.db-source__upload .db-row{align-items:center;flex-wrap:wrap}
+.db-source__file{flex:1 1 200px;min-width:0;font:400 13px/18px var(--font-sans);color:var(--ink-muted)}
+.db-source__file::file-selector-button{margin-right:var(--space-2);padding:6px 12px;border:1px solid var(--border-strong);border-radius:var(--radius-full);background:var(--surface-100);color:var(--ink);font:500 13px/18px var(--font-sans);cursor:pointer}
+.db-source__kind{width:auto;height:36px}
+@media (max-width:520px){
+  .db-source__status,.db-source__path,.db-source__folder{margin-left:0}
+}
