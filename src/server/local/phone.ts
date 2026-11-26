@@ -5,7 +5,7 @@
 // valid for 10 minutes and 5 tries, and is used up by the first phone that enters it.
 import { createHash, randomBytes, randomInt, randomUUID, timingSafeEqual } from "node:crypto";
 import { join } from "node:path";
-import { dataDir } from "./paths";
+import { homeDataDir as dataDir } from "./workspaces";
 import { readJson, writeJson } from "./json-file";
 
 export type DeviceKind = "phone" | "widget";

@@ -15,19 +15,21 @@ import { BRIEF_TIMES, formatBriefTime, timeZones, todayIn } from "../_lib/time";
 import { headers } from "next/headers";
 import { PlatformSettings } from "@/components/PlatformSettings";
 import { isRemote } from "@/server/local/phone-proxy";
+import { SyncSettings } from "@/components/SyncSettings";
+import { IntegrationsSettings } from "@/components/integrations/IntegrationsSettings";
 import { SourcesSection } from "@/components/SourcesSection";
 import { sourceStatuses } from "@/server/recorders/status";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Setup" };
 
-export default async function Setup({ searchParams }: { searchParams: Promise<{ error?: string; pull?: string; shared?: string; upload?: string; source?: string; which?: string; ch?: string; saved?: string; test?: string; err?: string; removed?: string; model?: string }> }) {
+export default async function Setup({ searchParams }: { searchParams: Promise<{ error?: string; pull?: string; shared?: string; upload?: string; source?: string; which?: string; integ?: string; ch?: string; saved?: string; test?: string; err?: string; removed?: string; sync?: string; git?: string; model?: string }> }) {
   const user = await me();
   const conn = user ? await getStore().getConnection(user.id) : null;
   // First run happens on /welcome; Settings is for changing things afterwards.
   if (!user || !conn) redirect("/welcome");
   const connected = conn?.status === "active";
-  const { error, pull, shared, upload, source, which, model, ...flash } = await searchParams;
+  const { error, pull, shared, upload, source, which, integ, sync, git, model, ...flash } = await searchParams;
   const remote = isRemote(await headers());
   const pulling = pullState()?.running ?? false;
   const tz = user?.timeZone ?? "Asia/Kolkata";
@@ -159,6 +161,8 @@ export default async function Setup({ searchParams }: { searchParams: Promise<{ 
         </form>
       ) : null}
       <ChannelSettings flash={flash} timeZone={tz} />
+      <SyncSettings syncError={sync} gitError={git} />
+      <IntegrationsSettings flash={integ} timeZone={tz} />
       <PlatformSettings remote={remote} timeZone={tz} modelError={model === "bad"} />
       {health ? (
         <section className="db-stack db-subsection" aria-labelledby="health">

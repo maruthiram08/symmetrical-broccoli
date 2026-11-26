@@ -1,7 +1,8 @@
 // Shared domain types. Every module imports from here; keep it the single source of truth.
 
 export type ItemKind = "owe" | "waiting" | "decision";
-export type ItemStatus = "open" | "done" | "wrong";
+/** "inbox": captured by you without a person or due date, waiting in the Inbox to be triaged. */
+export type ItemStatus = "open" | "done" | "wrong" | "inbox";
 
 export interface User {
   id: string;
@@ -140,6 +141,22 @@ export interface Item {
   starred?: boolean;
   /** Local date "YYYY-MM-DD": hidden from lists until that day. */
   snoozedUntil?: string | null;
+  /** A ticket made from this item in Jira, Linear, Notion or Todoist (src/server/integrations). */
+  ticket?: ItemTicket | null;
+  /** Why it closed when neither a meeting nor you closed it: "Closed in Linear". */
+  closeReason?: string | null;
+}
+
+export type TicketProvider = "jira" | "linear" | "notion" | "todoist";
+
+export interface ItemTicket {
+  provider: TicketProvider;
+  /** The provider's own id (Jira issue id, Linear issue id, Notion page id, Todoist task id). */
+  id: string;
+  /** What we show: "LIN-123", "OPS-7", "Notion", "Todoist". */
+  key: string;
+  url: string;
+  createdAt: string;
 }
 
 /** "extracted" from a meeting, or "manual": added by you. */

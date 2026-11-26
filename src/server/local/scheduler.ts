@@ -6,10 +6,11 @@ import { logJobError, type Deps } from "@/server/jobs/types";
 import { buildDeps, getStore } from "./app";
 import { SchedulerLock } from "./lock";
 import { errLine, rotateLog } from "./log";
-import { dataDir } from "./paths";
+import { currentWorkspace, homeDataDir, listWorkspaces, withWorkspace, type Workspace } from "./workspaces";
 import { notifyPrep } from "./prep";
 import { notifyFreshMeetings } from "./fresh";
 import { afterJobs } from "@/server/ai";
+import { startIntegrations } from "@/server/integrations/runtime";
 import { pollRepliesLocal } from "@/server/channels/local";
 import { importAllSources } from "@/server/recorders";
 
@@ -73,6 +74,8 @@ export async function runTick(
 
 /** Progress of the last "Pull meetings since" run, shown on Settings. Lives only in this process. */
 export interface PullState {
+  /** The workspace the run reads into. */
+  workspaceId?: string;
   /** "pull": new meetings since a date. "rebuild": every meeting read again, oldest first. */
   mode: "pull" | "rebuild";
   /** The date the user picked, YYYY-MM-DD. */
@@ -87,7 +90,7 @@ export interface PullState {
 }
 
 const g = globalThis as unknown as {
-  __dbScheduler?: { timer: NodeJS.Timeout; beat: NodeJS.Timeout; tick: TickState; running: boolean; owner: boolean | null; lock: SchedulerLock };
+  __dbScheduler?: { timer: NodeJS.Timeout; beat: NodeJS.Timeout; ticks: Map<string, TickState>; running: boolean; owner: boolean | null; lock: SchedulerLock };
   __dbJobChain?: Promise<unknown>;
   __dbPull?: PullState;
 };
@@ -98,7 +101,9 @@ const g = globalThis as unknown as {
  */
 export function runExclusive<T>(fn: () => Promise<T>): Promise<T> {
   const prev = g.__dbJobChain ?? Promise.resolve();
-  const next = prev.catch(() => undefined).then(fn);
+  // A queued job runs for the workspace it was queued in, even if you switch meanwhile.
+  const ws = currentWorkspace();
+  const next = prev.catch(() => undefined).then(() => withWorkspace(ws, fn));
   g.__dbJobChain = next.catch(() => undefined);
   return next;
 }
@@ -111,11 +116,12 @@ export function runExclusive<T>(fn: () => Promise<T>): Promise<T> {
  */
 export function startScheduler(): void {
   if (g.__dbScheduler) return;
-  const lock = new SchedulerLock(join(dataDir(), "scheduler.lock"));
+  // One lock for every workspace, in the home folder, so one process runs all of them.
+  const lock = new SchedulerLock(join(homeDataDir(), "scheduler.lock"));
   const st = {
     timer: setInterval(() => void tick(), TICK_MS),
     beat: setInterval(() => checkLock(), HEARTBEAT_MS),
-    tick: newTickState(),
+    ticks: new Map<string, TickState>(), // per workspace id
     running: false,
     owner: null as boolean | null, // null until the first check, so the first state is logged
     lock,
@@ -127,6 +133,7 @@ export function startScheduler(): void {
   rotateLog();
   checkLock();
   setTimeout(() => void tick(), 5_000).unref?.();
+  startIntegrations(() => st.owner === true); // tickets closed elsewhere, webhooks (off by default)
 
   function checkLock(): boolean {
     const owner = lock.tryAcquire();
@@ -143,18 +150,34 @@ export function startScheduler(): void {
     st.running = true;
     try {
       rotateLog();
-      await runExclusive(() => runTick(buildDeps(), st.tick, {
-        afterDeliver: async () => {
-          await notifyPrep(getStore(), new Date());
-          await afterJobs(); // contradiction check on new decisions; nudges once a day after the brief
-          await pollRepliesLocal(); // Telegram "/done 3" replies, when turned on
-        },
-        afterProcess: () => notifyFreshMeetings(getStore(), new Date()),
-      }));
+      // Each workspace in turn: its own meetings, brief and notes. A failure in one doesn't stop the next.
+      await forEachWorkspace(async (ws) => {
+        const tickState = st.ticks.get(ws.id) ?? newTickState();
+        st.ticks.set(ws.id, tickState);
+        await runExclusive(() => runTick(buildDeps(), tickState, {
+          afterDeliver: async () => {
+            await notifyPrep(getStore(), new Date());
+            await afterJobs(); // contradiction check on new decisions; nudges once a day after the brief
+            await pollRepliesLocal(); // Telegram "/done 3" replies, when turned on
+          },
+          afterProcess: () => notifyFreshMeetings(getStore(), new Date()),
+        }));
+      });
     } catch (e) {
       console.error(`[scheduler] ${errLine(e)}`);
     } finally {
       st.running = false;
+    }
+  }
+}
+
+/** Run `fn` for each workspace in turn, pinned to it. One workspace failing doesn't stop the next. */
+export async function forEachWorkspace(fn: (ws: Workspace) => Promise<unknown>): Promise<void> {
+  for (const ws of listWorkspaces()) {
+    try {
+      await withWorkspace(ws, () => fn(ws));
+    } catch (e) {
+      console.error(`[scheduler] workspace ${ws.id}: ${errLine(e)}`);
     }
   }
 }
@@ -175,7 +198,8 @@ export async function checkNow(): Promise<void> {
     await processAllPending(deps, { deadline: Date.now() + 10 * 60_000 });
     await notifyFreshMeetings(getStore(), deps.now());
     await afterJobs({ nudges: false });
-    if (g.__dbScheduler) g.__dbScheduler.tick.lastPoll = Date.now();
+    const t = g.__dbScheduler?.ticks.get(currentWorkspace().id);
+    if (t) t.lastPoll = Date.now();
   });
 }
 
@@ -192,7 +216,9 @@ export function importNow(): void {
 }
 
 export function pullState(): PullState | null {
-  return g.__dbPull ?? null;
+  const p = g.__dbPull ?? null;
+  // Another workspace's run isn't this one's progress.
+  return p && (!p.workspaceId || p.workspaceId === currentWorkspace().id) ? p : null;
 }
 
 /**
@@ -202,7 +228,7 @@ export function pullState(): PullState | null {
  */
 export function startPullSince(userId: string, date: string, sinceIso: string): boolean {
   if (g.__dbPull?.running) return false;
-  const state: PullState = { mode: "pull", date, startedAt: new Date().toISOString(), running: true, found: null, processed: 0, failed: 0, error: null };
+  const state: PullState = { workspaceId: currentWorkspace().id, mode: "pull", date, startedAt: new Date().toISOString(), running: true, found: null, processed: 0, failed: 0, error: null };
   g.__dbPull = state;
   void runExclusive(async () => {
     const deps = buildDeps();
@@ -238,7 +264,7 @@ export function startPullSince(userId: string, date: string, sinceIso: string): 
  */
 export function startRebuild(userId: string): boolean {
   if (g.__dbPull?.running) return false;
-  const state: PullState = { mode: "rebuild", date: "", startedAt: new Date().toISOString(), running: true, found: null, processed: 0, failed: 0, error: null };
+  const state: PullState = { workspaceId: currentWorkspace().id, mode: "rebuild", date: "", startedAt: new Date().toISOString(), running: true, found: null, processed: 0, failed: 0, error: null };
   g.__dbPull = state;
   void runExclusive(async () => {
     const deps = buildDeps();

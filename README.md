@@ -102,6 +102,15 @@ models miss more promises, close fewer items and handle Hinglish worse. If Ollam
 meeting waits and is tried again later. Claude stays the default; Ask, nudges and changed-decision
 checks keep using Claude when a key is set.
 
+## Workspaces, templates, links and sync
+
+- **Workspaces** (Settings › Workspace, or `/workspaces`): each workspace is a notes folder with its own items, daily notes, `.daily-brief/` data and Wispr Flow connection. The first one is always `~/Daily Brief` (or `DAILY_BRIEF_DIR`); the list lives in its `.daily-brief/workspaces.json`, and the one you pick is remembered. Switch from the sidebar once there are two. Background checks and briefs run for every workspace. Removing a workspace only takes it off the list; its folder is left alone. The Anthropic key, `settings.env` and the token key are shared.
+- **Inbox** (`/inbox`): anything you add with **c** that names no person and no day lands here instead of on your lists. Give it You owe or Waiting on, a person and a date and move it, or delete it.
+- **Automatic links** (on by default, Settings › Notes, links and sync): notes link people (`[[Nitin]]`), meetings (`[[2026-11-25 Standup|Standup]]`) and decisions (`[[decisions#^d-1a2b3c4d|decision log]]`), and the brief writes `people/<Name>.md` and `meetings/<date> <title>.md` so backlinks work in Obsidian. Decisions logged before links were on have no block id. Turn it off for the plain notes.
+- **Templates** (Settings › Edit templates): the daily note, weekly recap and meeting note use `{{field}}`, `{{#if}}…{{else}}…{{/if}}`, `{{#each}}…{{/each}}` templates with a live preview, kept in `.daily-brief/templates/`. The defaults write exactly the notes as before. A broken template never stops a brief: the default is used and Settings says why.
+- **Folder sync** (off by default): after each brief, daily notes, `decisions.md`, weekly recaps and `people/`, `meetings/` pages are copied one way into `<folder>/daily-brief/` (an iCloud Drive folder or an Obsidian vault). Writes are atomic and skipped when unchanged; only files it put in `daily-brief/` are ever removed.
+- **Git**: if the notes folder is a git repo (`git init` in it), each brief commits the notes it wrote as “Daily brief 2026-11-26” with your git name and email. **Then push** is off by default and pushes to a named remote (default `origin`) with your own git credentials; the app never stores a URL or token, and git is never allowed to prompt, so a push that needs a password is skipped and reported in Settings.
+
 ## Delivery: email, Slack, Telegram, WhatsApp
 
 The brief is always written to `~/Daily Brief` with a Mac notification. **Settings › Delivery** can also send it where you already are. Every channel is off until you turn it on, and each one chooses what it gets: the **Daily brief**, the **Evening wrap** (the day's promises made, kept and late), and the **Friday recap**. They go out at your brief time, after the note is written. Each channel works on its own: if Slack fails, email still goes, the brief is still marked sent, and **Settings › Health › Delivery** shows the failure (the error is logged with tokens removed). Nothing is sent twice for the same day. **Send test** saves the form and sends today's brief (or wrap, or recap) marked "Test".
@@ -142,6 +151,26 @@ These use your Anthropic key and the same model as extraction (`EXTRACTION_MODEL
 - **Changed decisions**: a new decision is compared with earlier ones on the same topic (word overlap, locally); only when one is similar does Claude get one small call to judge it. Today then shows "This may change the decision from 20 Nov: …" with *Keep both* or *Mark old as replaced*. About ₹0.2-0.5 per similar decision (at most 10 calls a run); decisions from before you turned this on are never checked.
 
 A Claude skill for the MCP tools is in `skills/daily-brief/SKILL.md` (meeting prep, weekly review, and how to quote evidence).
+
+## Send to Jira, Linear, Notion or Todoist
+
+Settings › **Send to** connects each service with your own token. All four are off until you add one. Tokens are kept in the macOS Keychain (service `app.dailybrief`); outside the Mac app, in `.daily-brief/secrets.json` (0600). **Save and test** checks the token and switches the service on only when it works.
+
+| Service | You need | Where tickets go |
+| --- | --- | --- |
+| Jira Cloud | site, your Atlassian email, an API token (id.atlassian.com › Security), project key | an issue of the type you pick (Task by default) |
+| Linear | a personal API key (Settings › Security & access), team key | an issue in that team |
+| Notion | an internal integration secret (notion.so/profile/integrations), a database shared with it | a page in that database |
+| Todoist | the API token (Settings › Integrations › Developer), optionally a project id | a task (Inbox by default) |
+
+Then every open item has **Send to …** in its actions (under **…** on a phone), in the **Start this** panel and on its History page. The ticket gets the item as its title, the quote, the meeting and date, the due date and a link back to the item on this Mac, and is assigned to the person when exactly one user there has that name (you, for things you owe). The item then shows **Ticket: LIN-123**. When the ticket is closed there, the item closes here with "Closed in Linear": checked every 30 minutes, only for open items with a ticket.
+
+## Local API and webhooks
+
+- **Local API:** Settings › Local API › **Create a token** turns on a REST API at `http://localhost:4242/api/v1` (`/items`, `/decisions`, `/people`, `/meetings`, `POST /items`, `PATCH /items/:id`). Only localhost, 120 requests a minute, other websites refused. See [docs/API.md](docs/API.md) for curl examples.
+- **Webhooks:** Settings › Webhooks posts signed JSON (HMAC-SHA256) to your URLs when an item is created or closed, or a decision is made. Off by default; failed deliveries are retried for about 7 hours. Verifying the signature is in [docs/API.md](docs/API.md#webhooks).
+
+Non-secret settings for these live in `.daily-brief/integrations.json`.
 
 ## Other recorders: Granola, Zoom, Google Meet, phone calls
 

@@ -6,7 +6,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { KEYCHAIN_SERVICE, osKeychain } from "../src/server/local/keychain";
-import { dataDir } from "../src/server/local/paths";
+import { homeDataDir as dataDir } from "../src/server/local/workspaces";
 import { settingsPath } from "../src/server/local/secrets";
 
 function parseEnv(text: string): Record<string, string> {

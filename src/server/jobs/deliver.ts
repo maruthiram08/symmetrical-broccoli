@@ -65,7 +65,7 @@ export async function deliverUser(deps: Deps, user: User, now: Date): Promise<De
     await processPending(deps, user.id);
 
     const model = await deps.buildBrief(deps.store, user, now);
-    const markdown = deps.renderMarkdown(model);
+    const markdown = await deps.renderMarkdown(model);
     const week = isRecapDay(date) ? await weekNote(deps, user, now) : undefined;
     const { id } = await deps.publish(user, model, markdown, week);
     const sentAt = deps.now().toISOString();
@@ -83,7 +83,7 @@ export async function deliverUser(deps: Deps, user: User, now: Date): Promise<De
 async function weekNote(deps: Deps, user: User, now: Date): Promise<{ key: string; markdown: string } | undefined> {
   try {
     const w = buildWeek(await loadBriefData(deps.store, user.id), now, user.timeZone);
-    return { key: w.key, markdown: renderWeekMarkdown(w) };
+    return { key: w.key, markdown: deps.renderWeek ? await deps.renderWeek(user, w) : renderWeekMarkdown(w) };
   } catch (e) {
     await logJobError(deps, user.id, "week", e);
     return undefined;

@@ -3,7 +3,7 @@
 // "Start this": the button sits with Done/Wrong; the panel and the "Started in ..." line sit
 // below the item. They share open/closed state through a tiny per-item store.
 // Nothing is sent from here: the user copies a draft or opens Slack, Mail or Claude and sends it.
-import { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore, useTransition } from "react";
+import { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore, useTransition, type ReactNode } from "react";
 import { draftHandoffAction, markStartedAction } from "@/app/handoff-actions";
 import { SLACK_URL, claudeUrl, mailtoUrl } from "@/lib/handoff/links";
 import type { Drafts, HandoffTarget } from "@/lib/handoff/types";
@@ -71,7 +71,7 @@ const TABS: Array<{ id: HandoffTarget; label: string }> = [
   { id: "claude", label: "Claude" },
 ];
 
-export function HandoffPanel({ itemId, kind, person, started }: { itemId: string; kind: "owe" | "waiting"; person: string | null; started: string | null }) {
+export function HandoffPanel({ itemId, kind, person, started, extra }: { itemId: string; kind: "owe" | "waiting"; person: string | null; started: string | null; extra?: ReactNode }) {
   const open = useOpen(itemId);
   const [tab, setTab] = useState<HandoffTarget>("slack");
   const [drafts, setDrafts] = useState<Drafts | null>(null);
@@ -227,6 +227,7 @@ export function HandoffPanel({ itemId, kind, person, started }: { itemId: string
             )}
           </div>
 
+          {extra}
           <p className="db-handoff__foot" aria-live="polite">
             {flash ?? (source === "template" ? "Template draft. Edit it before you send." : "Nothing is sent from here. You send it.")}
           </p>

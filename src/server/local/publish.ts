@@ -19,15 +19,18 @@ export async function publishLocal(
   markdown: string,
   notify: Notify = osNotify,
   week?: WeekNote,
+  /** decisions.md lines to append (linked ones from the workspace's settings); defaults to the plain ones. */
+  decisionLines?: string,
 ): Promise<{ id: string }> {
   mkdirSync(dir, { recursive: true });
   const notePath = join(dir, `${model.date}.md`);
   // Your notes section (written from the day page) survives the brief being written again.
   writeFileSync(notePath, carryNotes(markdown, existsSync(notePath) ? readFileSync(notePath, "utf8") : null));
 
-  const decisions = renderDecisionsAppend(model);
+  const decisions = decisionLines ?? renderDecisionsAppend(model);
   const decisionsPath = join(dir, "decisions.md");
-  const already = existsSync(decisionsPath) && readFileSync(decisionsPath, "utf8").includes(`- ${model.date} · `);
+  const log = existsSync(decisionsPath) ? readFileSync(decisionsPath, "utf8") : "";
+  const already = log.includes(`- ${model.date} · `) || log.includes(`- [[${model.date}]] · `);
   if (decisions && !already) {
     if (!existsSync(decisionsPath)) writeFileSync(decisionsPath, "# Decisions\n\n");
     appendFileSync(decisionsPath, decisions);

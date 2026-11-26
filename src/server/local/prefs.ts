@@ -2,7 +2,7 @@
 // which model reads meetings. Kept in <data>/prefs.json (0600).
 import { join } from "node:path";
 import { env } from "@/lib/env";
-import { dataDir } from "./paths";
+import { homeDataDir as dataDir } from "./workspaces";
 import { readJson, writeJson } from "./json-file";
 
 export type ExtractionProvider = "claude" | "ollama";
