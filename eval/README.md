@@ -8,7 +8,13 @@ npm run eval -- dividend      # only fixtures whose file name contains "dividend
 npm run eval -- --verbose     # also print matched items and items dropped by quote checks
 npm run eval -- --rescore     # re-score the last run against the current fixtures, no API calls
 npm run eval -- --rescore=run1.out.json   # re-score a saved run (a file in eval/fixtures/)
+npm run eval -- 02,06,07      # several name filters, comma-separated
+npm run eval -- --repeat 2    # read every meeting twice and report how stable the output is
+npm run eval -- --only decisions   # score only decisions (also owe, waiting, items, closes); free with --rescore
+npm run eval -- --prompt baseline  # run the previous prompt (eval/baseline-prompt.ts) on the same harness
 ```
+
+With `--repeat N` (at most 5) each meeting is read N times in a row. The second and later reads reuse the cached request (prompt caching, 5-minute cache), so their input is billed at a twentieth of the usual price; output (with thinking) is not cached, so a later read costs roughly 40% of a first read, and the first read about 15% more for writing the cache. The printed ₹ use the cache prices. The headline numbers and PASS/FAIL use read 1, so they compare with single runs; each later read gets its own totals. `--rescore` of a saved repeat run scores every saved read again.
 
 Each live run saves the full model output to `eval/fixtures/last-run.out.json` (gitignored, like the fixtures, because it holds transcript quotes). Copy it to another `*.out.json` name to keep it; `--rescore` lets you fix a label and see the effect without paying for another run.
 
@@ -60,3 +66,6 @@ See `eval/score.ts` (unit-tested in `eval/score.test.ts`).
 - Matching is one-to-one, best pairs first: all matching (expected, actual) pairs are ranked by overlap and taken greedily, with required and optional items in one ranking. Unmatched required items are **missed**; actual items matching nothing are **wrong**; matches to optional items are not counted.
 - Closes are compared by id: **wrong closes** were closed but shouldn't be (and aren't optional), **missed closes** should have been closed.
 - Precision and recall are computed over items and closes together; both must be at least 90%. They are also printed separately for items and for closes.
+- **Attribution** (who made each promise): every required owe/waiting item is matched to an actual owe/waiting item on text alone, ignoring kind and person. A match is right when the kind (owe vs waiting) and the person are both right. "Send Asha the deck" recorded as waiting on Asha is wrong, and so is the right promise with the wrong person. Reported as right/matched, split by the model's own `attribution` field (`label`: the speaker labels showed it, `content`: transcript cues decided it, `none`: not given, as in runs saved before the field existed). Each wrong one is listed as `misattributed`. Items found by text but with the wrong kind or person are still counted as missed + wrong in precision and recall, as before.
+- **Stability** (with `--repeat`): for every pair of reads of one meeting, the items found in both reads over the items found in either (one-to-one, same matching rules as above, person ignored for decisions), pooled over meetings. Reported for decisions and for owe+waiting. Decisions found in only one read are listed.
+- Fixture `openItems` of kind `decision` are sent as earlier decisions (the app sends the 40 most recent open decisions), not as open items, so a fixture can test that a repeated decision isn't recorded again.

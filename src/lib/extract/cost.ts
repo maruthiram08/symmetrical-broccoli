@@ -27,6 +27,28 @@ export function costInr(model: string, usage: ExtractionResult["usage"]): number
   return costUsd(model, usage) * USD_TO_INR;
 }
 
+/** Cache-read price where it isn't the usual 10% of input. Cache writes (5-minute TTL) are 1.25x input. */
+const CACHE_READ_USD_PER_MTOK: Record<string, number> = { "claude-sonnet-5-5": 0.1 };
+
+/**
+ * Rupees for a call that used the prompt cache. usage.inputTokens includes the cache tokens
+ * (as extract.ts counts them); they are re-priced here at the cache rates.
+ */
+export function costInrWithCache(
+  model: string,
+  usage: ExtractionResult["usage"],
+  cache: { readTokens: number; writeTokens: number },
+): number {
+  const price = PRICES_USD_PER_MTOK[model];
+  if (!price) return costInr(model, usage); // throws the usual "No price" error
+  const plain = Math.max(0, usage.inputTokens - cache.readTokens - cache.writeTokens);
+  const read = CACHE_READ_USD_PER_MTOK[model] ?? price.input * 0.1;
+  const usd =
+    (plain * price.input + cache.writeTokens * price.input * 1.25 + cache.readTokens * read + usage.outputTokens * price.output) /
+    1_000_000;
+  return usd * USD_TO_INR;
+}
+
 /**
  * What one meeting's read costs on average, in rupees, for estimates shown before reading
  * ("about ₹3.50 per meeting" in Settings). Measured on the eval meetings; long ones cost more.

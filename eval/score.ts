@@ -234,3 +234,160 @@ export const THRESHOLD = { precision: 0.9, recall: 0.9 };
 export function passes(t: Totals): boolean {
   return t.precision >= THRESHOLD.precision && t.recall >= THRESHOLD.recall;
 }
+
+// ---------- attribution ----------
+
+type ActualItem = ExtractionResult["newItems"][number];
+
+export interface AttributionMatch {
+  expected: ExpectedItem;
+  actual: ActualItem;
+  /** Same kind (owe vs waiting) and an acceptable person. */
+  correct: boolean;
+}
+
+const isPromise = (k: ItemKind) => k === "owe" || k === "waiting";
+
+function personOk(expected: ExpectedItem, actual: ActualItem): boolean {
+  return personList(expected.person).some((p) => personMatches(p, actual.person));
+}
+
+/**
+ * Attribution: who made each promise. Required owe/waiting items are matched to actual owe/waiting
+ * items on text alone (kind and person ignored), one-to-one. Pairs that also have the right kind and
+ * person go first, so a correct item is never paired with a lookalike. A match is correct when the
+ * kind and the person are right; "Send Asha the deck" recorded as waiting on Asha is wrong.
+ */
+export function attributionScore(expected: Expected, actual: Pick<ExtractionResult, "newItems">): AttributionMatch[] {
+  const exp = expected.newItems.filter((e) => isPromise(e.kind));
+  const act = actual.newItems.filter((a) => isPromise(a.kind));
+  const pairs: Array<{ e: number; a: number; s: number }> = [];
+  exp.forEach((e, ei) =>
+    act.forEach((a, ai) => {
+      if (!textMatches(e, a.text)) return;
+      const correct = e.kind === a.kind && personOk(e, a);
+      pairs.push({ e: ei, a: ai, s: (correct ? 1 : 0) + tokenOverlap(e.text, a.text) });
+    }),
+  );
+  pairs.sort((x, y) => y.s - x.s || x.e - y.e || x.a - y.a);
+  const usedE = new Set<number>();
+  const usedA = new Set<number>();
+  const out: AttributionMatch[] = [];
+  for (const p of pairs) {
+    if (usedE.has(p.e) || usedA.has(p.a)) continue;
+    usedE.add(p.e);
+    usedA.add(p.a);
+    const e = exp[p.e];
+    const a = act[p.a];
+    out.push({ expected: e, actual: a, correct: e.kind === a.kind && personOk(e, a) });
+  }
+  return out;
+}
+
+export interface AttributionTotals {
+  matched: number;
+  correct: number;
+  accuracy: number;
+  /** By the model's own attribution field: "label", "content", or "none" when it left it out. */
+  bySource: Record<"label" | "content" | "none", { matched: number; correct: number }>;
+}
+
+export function attributionTotals(matches: AttributionMatch[]): AttributionTotals {
+  const bySource: AttributionTotals["bySource"] = {
+    label: { matched: 0, correct: 0 },
+    content: { matched: 0, correct: 0 },
+    none: { matched: 0, correct: 0 },
+  };
+  for (const m of matches) {
+    const b = bySource[m.actual.attribution ?? "none"];
+    b.matched++;
+    if (m.correct) b.correct++;
+  }
+  const correct = matches.filter((m) => m.correct).length;
+  return { matched: matches.length, correct, accuracy: ratio(correct, matches.length), bySource };
+}
+
+// ---------- stability across repeated reads ----------
+
+/** Two actual items from different reads of one meeting are the same item. */
+export function sameItem(a: ActualItem, b: ActualItem): boolean {
+  if (a.kind !== b.kind) return false;
+  if (a.kind !== "decision" && !personMatches(a.person, b.person)) return false;
+  if (tokenOverlap(a.text, b.text) >= 0.5) return true;
+  const ka = keyNoun(a.text, a.person);
+  const kb = keyNoun(b.text, b.person);
+  return (ka !== null && tokens(b.text).includes(ka)) || (kb !== null && tokens(a.text).includes(kb));
+}
+
+export interface Overlap {
+  a: number;
+  b: number;
+  matched: number;
+  /** Items in either read: a + b - matched. */
+  union: number;
+  /** matched / union (Jaccard); 1 when both reads are empty. */
+  ratio: number;
+  onlyA: ActualItem[];
+  onlyB: ActualItem[];
+}
+
+/** One-to-one overlap of two reads' items of the given kinds, best pairs first. */
+export function overlap(a: ActualItem[], b: ActualItem[], kinds: ItemKind[]): Overlap {
+  const A = a.filter((i) => kinds.includes(i.kind));
+  const B = b.filter((i) => kinds.includes(i.kind));
+  const pairs: Array<{ x: number; y: number; s: number }> = [];
+  A.forEach((x, xi) => B.forEach((y, yi) => sameItem(x, y) && pairs.push({ x: xi, y: yi, s: tokenOverlap(x.text, y.text) })));
+  pairs.sort((p, q) => q.s - p.s || p.x - q.x || p.y - q.y);
+  const usedA = new Set<number>();
+  const usedB = new Set<number>();
+  for (const p of pairs) {
+    if (usedA.has(p.x) || usedB.has(p.y)) continue;
+    usedA.add(p.x);
+    usedB.add(p.y);
+  }
+  const matched = usedA.size;
+  const union = A.length + B.length - matched;
+  return {
+    a: A.length,
+    b: B.length,
+    matched,
+    union,
+    ratio: ratio(matched, union),
+    onlyA: A.filter((_, i) => !usedA.has(i)),
+    onlyB: B.filter((_, i) => !usedB.has(i)),
+  };
+}
+
+/** Pooled overlap over meetings (and read pairs): sum matched / sum union. */
+export function overlapTotals(os: Overlap[]): { matched: number; union: number; ratio: number } {
+  const matched = os.reduce((n, o) => n + o.matched, 0);
+  const union = os.reduce((n, o) => n + o.union, 0);
+  return { matched, union, ratio: ratio(matched, union) };
+}
+
+// ---------- scoring one kind only ----------
+
+export type Only = "decisions" | "owe" | "waiting" | "items" | "closes";
+export const ONLY_VALUES: Only[] = ["decisions", "owe", "waiting", "items", "closes"];
+
+/** Restricts expected and actual to one kind of thing, so a run can be read for that kind alone. */
+export function restrict<A extends Pick<ExtractionResult, "newItems" | "closes">>(
+  only: Only | null,
+  expected: Expected,
+  actual: A,
+): { expected: Expected; actual: A } {
+  if (!only) return { expected, actual };
+  const keep = (k: ItemKind) =>
+    only === "items" ? true : only === "closes" ? false : only === "decisions" ? k === "decision" : k === only;
+  const items = only !== "closes";
+  const closes = only === "closes";
+  return {
+    expected: {
+      newItems: expected.newItems.filter((i) => keep(i.kind)),
+      optionalItems: expected.optionalItems?.filter((i) => keep(i.kind)),
+      closes: closes ? expected.closes : [],
+      optionalCloses: closes ? expected.optionalCloses : [],
+    },
+    actual: { ...actual, newItems: items ? actual.newItems.filter((i) => keep(i.kind)) : [], closes: closes ? actual.closes : [] },
+  };
+}

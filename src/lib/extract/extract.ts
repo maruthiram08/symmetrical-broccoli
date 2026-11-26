@@ -8,6 +8,9 @@
 //   without the tool call is an ExtractionError.
 // - No `thinking` param is sent. Current models then run adaptive thinking, and thinking tokens
 //   count toward max_tokens, so MAX_TOKENS leaves room above the ~2-3k tokens the JSON needs.
+// - No temperature: claude-sonnet-5-5 returns a 400 for non-default sampling values (temperature,
+//   top_p, top_k), and API version 2026-10-21 rejects them on every model. Decision stability comes
+//   from the prompt (explicit agreement, fixed wording) and from dropping repeats here instead.
 import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import { env } from "../env";
@@ -53,6 +56,11 @@ export const ModelOutputSchema = z.object({
       person: nullableString,
       quote: z.string().min(1),
       dueAt: nullableString,
+      attribution: z
+        .enum(["label", "content"])
+        .nullable()
+        .optional()
+        .transform((v) => v ?? undefined),
     }),
   ),
   closes: z.array(z.object({ itemId: z.string().min(1), quote: z.string().min(1) })),
@@ -85,6 +93,12 @@ export const OUTPUT_JSON_SCHEMA: Anthropic.Tool.InputSchema = {
           dueAt: {
             type: ["string", "null"],
             description: "ISO 8601 UTC timestamp ending in Z, or null when no deadline was given.",
+          },
+          attribution: {
+            type: "string",
+            enum: ["label", "content"],
+            description:
+              'Owe and waiting items: "label" when the speaker labels alone show who promised, "content" when transcript cues (who is addressed, I/you, replies, roles) decided it. Leave out for decisions.',
           },
         },
       },
@@ -207,6 +221,46 @@ function toIsoOrNull(v: string | null): string | null {
 export interface PostProcessReport {
   droppedItems: Array<{ item: ModelOutput["newItems"][number]; reason: string }>;
   droppedCloses: Array<{ close: ModelOutput["closes"][number]; reason: string }>;
+  /** Prompt-cache tokens of the call (already counted in usage.inputTokens), for exact eval costs. */
+  cache?: { readTokens: number; writeTokens: number };
+}
+
+// ---------- decision repeats ----------
+
+const DECISION_STOPWORDS = new Set(
+  "a an the to of for and or in on at by with from as is are be it this that we will let should".split(" "),
+);
+
+/** Words that flip or narrow a choice. Two decisions that differ in these are different decisions. */
+const POLARITY = new Set("not no without never dont don't skip drop remove instead only except exclude".split(" "));
+
+function decisionWords(text: string): Set<string> {
+  return new Set(
+    normalize(text)
+      .replace(/([a-z0-9])-(?=[a-z0-9])/g, "$1")
+      .split(/[^\p{L}\p{N}']+/u)
+      .map((w) => w.replace(/'s$/, ""))
+      .filter((w) => w.length > 1 && !DECISION_STOPWORDS.has(w))
+      .map((w) => (w.length > 3 && w.endsWith("s") && !w.endsWith("ss") ? w.slice(0, -1) : w)),
+  );
+}
+
+/**
+ * Two decision texts say the same thing: equal after normalizing, or sharing at least 80% of their
+ * content words (Dice) with the same negations ("without", "skip", "only"...). Strict on purpose: a changed decision ("web only" -> "web and mobile") must
+ * still get through, because the changed-decision check needs it.
+ */
+export function sameDecision(a: string, b: string): boolean {
+  if (normalize(a) === normalize(b)) return true;
+  const A = decisionWords(a);
+  const B = decisionWords(b);
+  if (A.size < 2 || B.size < 2) return false;
+  // "with the tooltip" and "without the tooltip" share most words but are opposite choices.
+  const polarity = (S: Set<string>) => [...S].filter((w) => POLARITY.has(w)).sort().join(" ");
+  if (polarity(A) !== polarity(B)) return false;
+  let shared = 0;
+  for (const w of A) if (B.has(w)) shared++;
+  return (2 * shared) / (A.size + B.size) >= 0.8;
 }
 
 export function postProcess(
@@ -217,6 +271,7 @@ export function postProcess(
   const { norm, map } = normalizeWithMap(input.transcript);
   const transcript = { raw: input.transcript, norm, map };
   const openIds = new Set(input.openItems.map((i) => i.id));
+  const earlierDecisions = input.openDecisions ?? [];
 
   const newItems: ExtractionResult["newItems"] = [];
   const seen = new Set<string>();
@@ -232,6 +287,16 @@ export function postProcess(
       report.droppedItems.push({ item, reason: "duplicate" });
       continue;
     }
+    if (item.kind === "decision") {
+      if (earlierDecisions.some((d) => sameDecision(d.text, item.text))) {
+        report.droppedItems.push({ item, reason: "repeats an earlier decision" });
+        continue;
+      }
+      if (newItems.some((n) => n.kind === "decision" && sameDecision(n.text, item.text))) {
+        report.droppedItems.push({ item, reason: "duplicate" });
+        continue;
+      }
+    }
     seen.add(key);
     newItems.push({
       kind: item.kind,
@@ -239,6 +304,7 @@ export function postProcess(
       person,
       quote: truncateQuote(verbatim),
       dueAt: toIsoOrNull(item.dueAt),
+      ...(item.kind !== "decision" && item.attribution ? { attribution: item.attribution } : {}),
     });
   }
 
@@ -276,16 +342,31 @@ function getDefaultClient(): Anthropic {
 
 export async function extractMeeting(
   input: ExtractionInput,
-  deps: { client?: AnthropicLike; model?: string; report?: PostProcessReport; retry?: RetryOpts } = {},
+  deps: {
+    client?: AnthropicLike;
+    model?: string;
+    report?: PostProcessReport;
+    retry?: RetryOpts;
+    /** Eval only: another system prompt (the baseline, to compare prompts on the same harness). */
+    system?: string;
+    /** Eval only: cache the whole request, for reading the same meeting again within 5 minutes. */
+    cacheRequest?: boolean;
+  } = {},
 ): Promise<ExtractionResult> {
   const model = deps.model ?? env.extractionModel;
+  const text = buildUserMessage(input);
   const body: Anthropic.MessageCreateParamsNonStreaming = {
     model,
     max_tokens: MAX_TOKENS,
-    system: SYSTEM_PROMPT,
+    system: deps.system ?? SYSTEM_PROMPT,
     tools: [TOOL],
     tool_choice: { type: "auto", disable_parallel_tool_use: true },
-    messages: [{ role: "user", content: buildUserMessage(input) }],
+    messages: [
+      {
+        role: "user",
+        content: deps.cacheRequest ? [{ type: "text", text, cache_control: { type: "ephemeral" } }] : text,
+      },
+    ],
   };
   // A missing key surfaces as an auth failure, like a rejected one.
   const response = await withAnthropicRetry(() => {
@@ -305,6 +386,11 @@ export async function extractMeeting(
       (response.usage.cache_read_input_tokens ?? 0),
     outputTokens: response.usage.output_tokens,
   };
+  if (deps.report)
+    deps.report.cache = {
+      readTokens: response.usage.cache_read_input_tokens ?? 0,
+      writeTokens: response.usage.cache_creation_input_tokens ?? 0,
+    };
 
   const stop = response.stop_reason as string | null;
   if (stop === "max_tokens") {

@@ -176,10 +176,14 @@ export interface ExtractionResult {
     person: string | null;
     quote: string;
     dueAt: string | null;
+    /** Owe/waiting: "label" when the speaker labels alone showed who promised, "content" when transcript cues decided it. Missing when the model didn't say. */
+    attribution?: Attribution;
   }>;
   closes: Array<{ itemId: string; quote: string }>;
   usage: { inputTokens: number; outputTokens: number };
 }
+
+export type Attribution = "label" | "content";
 
 export interface ExtractionInput {
   transcript: string;
@@ -188,6 +192,8 @@ export interface ExtractionInput {
   openItems: Array<Pick<Item, "id" | "kind" | "text" | "person">>;
   /** People the user confirmed, with their other spellings, so names come back as the known spelling. */
   knownPeople?: Array<{ name: string; aliases: string[] }>;
+  /** Open decisions from earlier meetings, so a repeated decision isn't recorded again. */
+  openDecisions?: Array<{ text: string }>;
 }
 
 export interface Brief {

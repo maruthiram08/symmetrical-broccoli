@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+  attributionScore,
+  attributionTotals,
   itemMatches,
+  overlap,
+  overlapTotals,
+  restrict,
+  sameItem,
   keyNoun,
   passes,
   personMatches,
@@ -153,5 +159,98 @@ describe("scoreMeeting / totals", () => {
 
   it("null in a person list allows an item with no person", () => {
     expect(itemMatches({ kind: "owe", text: "Confirm the fill type", person: [null, "Ravi"] }, item("owe", "Confirm fill type", null))).toBe(true);
+  });
+});
+
+describe("attribution", () => {
+  const expected: Expected = {
+    newItems: [
+      { kind: "owe", text: "Send Asha the pricing deck", person: "Asha" },
+      { kind: "waiting", text: "Share the API spec", person: ["Ravi", "Ravi K"] },
+      { kind: "waiting", text: "Fix the login crash", person: "Bo" },
+      { kind: "decision", text: "Use one alert flow", person: null },
+    ],
+    closes: [],
+  };
+
+  it("matches on text alone and checks kind and person", () => {
+    const actual = {
+      newItems: [
+        { ...item("waiting", "Send the pricing deck", "Asha"), attribution: "content" as const }, // user's promise read as Asha's
+        { ...item("waiting", "Share the API spec", "Ravi"), attribution: "label" as const },
+        item("waiting", "Fix the login crash", "Priya"), // wrong person
+        item("decision", "Use one alert flow", null), // decisions are not counted
+        item("owe", "Write release notes", null), // matches nothing: not counted here
+      ],
+    };
+    const m = attributionScore(expected, actual);
+    expect(m.map((x) => [x.expected.text, x.correct])).toEqual([
+      ["Share the API spec", true],
+      ["Fix the login crash", false],
+      ["Send Asha the pricing deck", false],
+    ]);
+    const t = attributionTotals(m);
+    expect(t).toMatchObject({ matched: 3, correct: 1 });
+    expect(t.accuracy).toBeCloseTo(1 / 3);
+    expect(t.bySource).toEqual({ label: { matched: 1, correct: 1 }, content: { matched: 1, correct: 0 }, none: { matched: 1, correct: 0 } });
+  });
+
+  it("prefers a correct pair over a lookalike with the same words", () => {
+    const actual = { newItems: [item("waiting", "Send Asha the pricing deck", "Asha"), item("owe", "Send Asha the pricing deck", "Asha")] };
+    const m = attributionScore(expected, actual);
+    expect(m).toHaveLength(1);
+    expect(m[0].correct).toBe(true);
+    expect(m[0].actual.kind).toBe("owe");
+  });
+
+  it("is 100% with nothing matched", () => {
+    expect(attributionTotals([]).accuracy).toBe(1);
+  });
+});
+
+describe("stability", () => {
+  it("sameItem ignores person for decisions and needs it for promises", () => {
+    expect(sameItem(item("decision", "Use one alert flow for web", null), item("decision", "Keep a single alert flow for web", null))).toBe(true);
+    expect(sameItem(item("owe", "Send the deck", "Asha"), item("owe", "Send the deck", "Ravi"))).toBe(false);
+    expect(sameItem(item("owe", "Send the deck", "Asha"), item("waiting", "Send the deck", "Asha"))).toBe(false);
+  });
+
+  it("overlap is one-to-one Jaccard over the chosen kinds", () => {
+    const a = [item("decision", "Ship the banner without tooltip", null), item("decision", "Skip referral banner", null), item("owe", "Send deck", "Asha")];
+    const b = [item("decision", "Ship the dividend banner without the tooltip", null), item("decision", "Move launch to Monday", null)];
+    const o = overlap(a, b, ["decision"]);
+    expect(o).toMatchObject({ a: 2, b: 2, matched: 1, union: 3 });
+    expect(o.onlyA.map((i) => i.text)).toEqual(["Skip referral banner"]);
+    expect(o.onlyB.map((i) => i.text)).toEqual(["Move launch to Monday"]);
+    expect(overlap([], [], ["decision"]).ratio).toBe(1);
+    expect(overlapTotals([o, overlap([], [], ["decision"])])).toEqual({ matched: 1, union: 3, ratio: 1 / 3 });
+  });
+});
+
+describe("restrict", () => {
+  const expected: Expected = {
+    newItems: [{ kind: "owe", text: "Send deck", person: "Asha" }, { kind: "decision", text: "Ship it", person: null }],
+    optionalItems: [{ kind: "decision", text: "Maybe", person: null }],
+    closes: ["x"],
+  };
+  const actual = { newItems: [item("owe", "Send deck", "Asha"), item("decision", "Ship it", null)], closes: [{ itemId: "x", quote: "q" }] };
+
+  it("keeps one kind and drops closes", () => {
+    const r = restrict("decisions", expected, actual);
+    expect(r.expected.newItems.map((i) => i.kind)).toEqual(["decision"]);
+    expect(r.expected.optionalItems).toHaveLength(1);
+    expect(r.expected.closes).toEqual([]);
+    expect(r.actual.newItems.map((i) => i.kind)).toEqual(["decision"]);
+    expect(r.actual.closes).toEqual([]);
+    const s = totals([scoreMeeting(r.expected, r.actual)]);
+    expect(s).toMatchObject({ correct: 1, wrong: 0, missed: 0, correctCloses: 0 });
+  });
+
+  it("closes only, or everything", () => {
+    const c = restrict("closes", expected, actual);
+    expect(c.expected.newItems).toEqual([]);
+    expect(c.actual.closes).toHaveLength(1);
+    expect(restrict(null, expected, actual)).toEqual({ expected, actual });
+    expect(restrict("items", expected, actual).actual.newItems).toHaveLength(2);
   });
 });

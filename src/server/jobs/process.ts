@@ -7,6 +7,9 @@ import type { WisprClient } from "@/server/wispr/client";
 import { ReconnectRequiredError } from "@/server/wispr/oauth";
 import { logJobError, mapLimit, type Deps } from "./types";
 
+/** Most recent open decisions sent with each read (about 15 tokens each). */
+export const MAX_OPEN_DECISIONS = 40;
+
 export type ProcessResult =
   | { status: "processed"; newItems: number; closes: number }
   | { status: "skipped"; reason: "not_found" | "already_processed" | "no_user" };
@@ -105,13 +108,19 @@ async function processMeetingOnce(
     }
 
     // Only promises made before this meeting can be closed by it, and decisions are never "open work".
+    // Earlier open decisions go along as context only, so a repeated decision isn't recorded twice.
     const startOf = new Map<string, string>();
     const open: Item[] = [];
+    const decisions: Item[] = [];
     for (const i of await store.listItems(meeting.userId, { status: "open" })) {
-      if (i.kind === "decision") continue;
       if (!startOf.has(i.meetingId)) startOf.set(i.meetingId, (await store.getMeeting(i.meetingId))?.startedAt ?? "");
-      if (startOf.get(i.meetingId)! < meeting.startedAt) open.push(i);
+      if (startOf.get(i.meetingId)! >= meeting.startedAt) continue;
+      (i.kind === "decision" ? decisions : open).push(i);
     }
+    const openDecisions = decisions
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .slice(0, MAX_OPEN_DECISIONS)
+      .map((d) => ({ text: d.text }));
     openIds = new Set(open.map((i) => i.id));
     if (!transcript.trim()) {
       result = nothing();
@@ -130,6 +139,7 @@ async function processMeetingOnce(
           },
           openItems: open.map((i) => ({ id: i.id, kind: i.kind, text: i.text, person: i.person })),
           ...(known.length ? { knownPeople: known } : {}),
+          ...(openDecisions.length ? { openDecisions } : {}),
         });
       } catch (e) {
         throw new ProcessError("extract", e instanceof Error ? e.name : "Error", extractFailure(e));
