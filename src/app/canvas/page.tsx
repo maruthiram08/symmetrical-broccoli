@@ -10,7 +10,8 @@ import { isSpeakerLabel } from "@/lib/directory/speakers";
 import { getStore, me } from "@/server/local/app";
 import { currentAi } from "@/server/ai-state";
 import { canvasCtx, openWindowCounts } from "@/server/canvas/data";
-import { openCountFor, pastDays } from "../_lib/days";
+import { DetailBar } from "@/components/reading/Frame";
+import { CanvasList, type BoardKey } from "./_shared";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Canvas" };
@@ -18,7 +19,10 @@ export const metadata: Metadata = { title: "Canvas" };
 const short = (iso: string, tz: string) => new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: tz });
 
 // Five ways to see your meetings as a canvas. Each one is drawn from what the meetings said.
-export default async function CanvasHome() {
+export default async function CanvasHome({ searchParams }: { searchParams: Promise<{ pick?: string }> }) {
+  const pickQ = (await searchParams).pick;
+  const pick: BoardKey = pickQ === "prep" || pickQ === "map" || pickQ === "combine" || pickQ === "start" ? pickQ : "home";
+  const show = (k: BoardKey) => pick === "home" || pick === k;
   const user = await me();
   if (!user) redirect("/setup");
   const c = await canvasCtx(user);
@@ -40,16 +44,21 @@ export default async function CanvasHome() {
   const monday = mondayOf(localDate(c.now, tz));
 
   return (
-    <Shell days={await pastDays(user.id, "")} current="canvas" openCount={await openCountFor(user.id)} wide>
-      <h1 className="db-title">Canvas</h1>
-      <p className="db-subtitle">Your meetings, drawn as a canvas. Each view builds itself from what was said, so there is nothing to set up or keep tidy.</p>
+    <Shell current="canvas" list={<CanvasList sel={pick} />} show={pick === "home" ? "list" : "detail"} detail={
+      <div className="rp-wrap">
+      <DetailBar crumb={[{ label: "Canvas", href: "/canvas" }, { label: pick === "home" ? "Pick a board" : "Pick what to draw" }]} listHref="/canvas" />
+      <div className="rp-board rp-board--home">
+      <p className="rp-board__sub">Your meetings, drawn as a canvas. Each view builds itself from what was said, so there is nothing to set up or keep tidy.</p>
       <div className="cv-home">
+        {show("map") ? (
         <section className="cv-card">
           <h2><span className="cv-num">1</span>Project map</h2>
           <p>Every meeting about one topic on one canvas, with what came out of each and what closed it.</p>
           {topics.length ? <ul className="cv-list">{topics.map((t) => <li key={t.key}><Link href={`/canvas/map?topic=${encodeURIComponent(t.key)}`}>{t.label}</Link><span>{t.meetingIds.length} meetings · last {short(t.last, tz)}</span></li>)}</ul> : <p className="cv-none">No topic has come up in two meetings yet.</p>}
           <form action="/canvas/map" className="cv-form"><input id="cv-topic" name="topic" className="db-input" placeholder="Or type a topic, like dividend" aria-label="Topic" /><button className="cv-btn cv-btn--p">Map it</button></form>
         </section>
+        ) : null}
+        {show("prep") ? (
         <section className="cv-card">
           <h2><span className="cv-num">2</span>Meeting prep</h2>
           <p>Your last meetings and everything open, with Ask reading only what you leave plugged in.</p>
@@ -60,11 +69,15 @@ export default async function CanvasHome() {
           </ul>
           {!upcoming.length && !slots.length && !topPeople.length ? <p className="cv-none">Nothing to prep yet.</p> : null}
         </section>
+        ) : null}
+        {show("start") ? (
         <section className="cv-card">
           <h2><span className="cv-num">3</span>Start in a new window</h2>
           <p>Open Claude, Claude Code or a draft that already has the quote, the meeting and what was decided.</p>
           {owe.length ? <ul className="cv-list">{owe.map((i) => <li key={i.id}><Link href={`/canvas/start/${encodeURIComponent(i.id)}`}>{i.text}</Link><span>{running.get(i.id) ? `${running.get(i.id)} window${running.get(i.id) === 1 ? "" : "s"} open` : i.person && !isSpeakerLabel(i.person) ? `for ${i.person}` : ""}</span></li>)}</ul> : <p className="cv-none">Nothing open that you owe.</p>}
         </section>
+        ) : null}
+        {show("combine") ? (
         <section className="cv-card">
           <h2><span className="cv-num">4</span>Combine threads</h2>
           <p>Two meetings side by side. Decisions that disagree are found for you.</p>
@@ -75,6 +88,8 @@ export default async function CanvasHome() {
             <button className="cv-btn cv-btn--p">Combine</button>
           </form>
         </section>
+        ) : null}
+        {show("week") ? (
         <section className="cv-card">
           <h2><span className="cv-num">5</span>Friday review</h2>
           <p>The week: what was decided, what’s still open, what’s stuck. Drag anything into next week.</p>
@@ -83,8 +98,11 @@ export default async function CanvasHome() {
             <li><Link href={`/canvas/week?w=${addDays(monday, -7)}`}>Last week</Link><span>from {short(`${addDays(monday, -7)}T12:00:00Z`, "UTC")}</span></li>
           </ul>
         </section>
+        ) : null}
       </div>
       <p className="cv-foot">{recent.length} meetings in the last 30 days.</p>
-    </Shell>
+      </div>
+      </div>
+    } />
   );
 }

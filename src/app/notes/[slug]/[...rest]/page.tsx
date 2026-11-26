@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
-import { VaultNotePage, safeDecode } from "@/components/vault/VaultNotePage";
-import { noteName } from "@/server/local/vault";
+import { notFound } from "next/navigation";
+import { safeDecode } from "@/components/vault/VaultNotePage";
+import { notesDir } from "@/server/local/paths";
+import { noteName, resolveNotePath } from "@/server/local/vault";
+import { NotesPanes } from "../../_notes";
 
 export const dynamic = "force-dynamic";
 
@@ -13,5 +16,7 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
 
 // A note in a folder of the workspace: /notes/Projects/Alpha.md (or without the .md).
 export default async function NoteInFolder({ params }: { params: Params }) {
-  return <VaultNotePage path={await pathOf(params)} />;
+  const path = resolveNotePath(notesDir(), await pathOf(params));
+  if (!path) notFound();
+  return <NotesPanes path={path} />;
 }

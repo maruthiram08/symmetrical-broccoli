@@ -5,8 +5,7 @@ import { Shell } from "@/components/Shell";
 import { PROVIDERS } from "@/lib/ai/providers";
 import { aiPrefs, clientForTask, resolveTask } from "@/server/ai-config";
 import { conversationRows, readThreads, viewOf } from "@/server/ask-threads";
-import { me, getStore } from "@/server/local/app";
-import { pastDays } from "../_lib/days";
+import { me } from "@/server/local/app";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Ask" };
@@ -18,7 +17,6 @@ export default async function Ask({ searchParams }: { searchParams: Promise<{ q?
   if (!user) redirect("/setup");
   const sp = await searchParams;
   const q = (sp.q ?? "").slice(0, 500).trim();
-  const openCount = (await getStore().listItems(user.id, { status: "open" })).filter((i) => i.kind !== "decision").length;
   const state = readThreads();
   const view = sp.t && /^[A-Za-z0-9-]{1,80}$/.test(sp.t) ? viewOf(state, sp.t) : null;
   const t = resolveTask("ask");
@@ -31,10 +29,6 @@ export default async function Ask({ searchParams }: { searchParams: Promise<{ q?
       ? "Searches on this Mac and answers with Ollama on this computer. Nothing leaves it."
       : `${local ? "Searches on this Mac" : "Searches with your settings"}, then sends ${who} the question and only the top passages.`;
   return (
-    <Shell days={await pastDays(user.id, "")} current="ask" openCount={openCount}>
-      <h1 className="db-title">Ask</h1>
-      <p className="db-subtitle">Ask about what was promised, decided and said. Answers come only from your meetings and notes, with the source behind each one.</p>
-      <AskBox initial={q} ready={ready} hint={hint} conversations={conversationRows(state)} view={view} />
-    </Shell>
+    <Shell current="ask" raw={<AskBox initial={q} ready={ready} hint={hint} conversations={conversationRows(state)} view={view} panes={{ model: who === "Claude" ? "Anthropic API" : who }} />} />
   );
 }

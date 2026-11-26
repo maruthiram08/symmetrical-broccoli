@@ -1,9 +1,13 @@
 import type { Metadata } from "next";
 import { Button } from "@/components/Button";
 import { Field } from "@/components/Field";
+import Link from "next/link";
 import { Shell } from "@/components/Shell";
+import { Detail, DetailBar, Head, Kv, LinkGroups, ListBar, MList, Sec, type LinkGroup } from "@/components/reading/Frame";
+import { SettingsHash } from "@/components/reading/SettingsHash";
+import { SETTINGS_SECTIONS, settingsSection, type SettingsKey } from "@/lib/reading/library";
+import { notesDir } from "@/server/local/paths";
 import { WorkspaceBadge } from "@/components/WorkspaceNav";
-import { pastDays } from "../_lib/days";
 import { TimeZoneSelect } from "@/components/TimeZoneSelect";
 import { getFileStore, getStore, me } from "@/server/local/app";
 import { redirect } from "next/navigation";
@@ -30,13 +34,16 @@ import { readThemes } from "@/server/local/themes";
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Setup" };
 
-export default async function Setup({ searchParams }: { searchParams: Promise<{ error?: string; pull?: string; shared?: string; upload?: string; source?: string; which?: string; integ?: string; ch?: string; saved?: string; test?: string; err?: string; removed?: string; sync?: string; git?: string; model?: string; ai?: string; p?: string }> }) {
+export default async function Setup({ searchParams }: { searchParams: Promise<{ error?: string; pull?: string; shared?: string; upload?: string; source?: string; which?: string; integ?: string; ch?: string; saved?: string; test?: string; err?: string; removed?: string; sync?: string; git?: string; model?: string; ai?: string; p?: string; section?: string; remote?: string }> }) {
   const user = await me();
   const conn = user ? await getStore().getConnection(user.id) : null;
   // First run happens on /welcome; Settings is for changing things afterwards.
   if (!user || !conn) redirect("/welcome");
   const connected = conn?.status === "active";
-  const { error, pull, shared, upload, source, which, integ, sync, git, model, ai, p: aiProvider, ...flash } = await searchParams;
+  const sp = await searchParams;
+  const { error, pull, shared, upload, source, which, integ, sync, git, model, ai, p: aiProvider, ...rest } = sp;
+  const flash = Object.fromEntries(Object.entries(rest).filter(([k]) => k !== "section"));
+  const sec = settingsSection(sp);
   const remote = isRemote(await headers());
   const pulling = pullState()?.running ?? false;
   const tz = user?.timeZone ?? "Asia/Kolkata";
@@ -55,12 +62,54 @@ export default async function Setup({ searchParams }: { searchParams: Promise<{ 
     const d = localDate(new Date(iso), tz);
     return `${d === today ? "Today" : d}, ${formatTime(iso, tz)}`;
   };
-  return (
-    <Shell days={await pastDays(user.id, today)} current="settings" title="Settings">
-      <div className="rp-settings">
-      <WorkspaceBadge />
-      <h1 className="db-title">Set up your brief</h1>
-      <p className="db-lead">{connected ? "Change your details. Your meetings stay connected." : (isHosted() ? "A few things, then connect your meetings. Your brief arrives by email." : "A few things, then connect your meetings. Everything stays on this Mac.")}</p>
+  const meetingsRead = [...getFileStore().meetings.values()].filter((m) => m.userId === user.id).length;
+  const mode = parseMode((await cookies()).get(MODE_COOKIE)?.value);
+  const rows: Record<SettingsKey, { sub: string; mark: string; badge?: string }> = {
+    you: { sub: `${user.name || "Your name"} · ${tz} · brief at ${formatBriefTime(user.briefTime ?? "18:00")}`, mark: "dot" },
+    meetings: { sub: connected ? `Wispr Flow connected · ${meetingsRead} read` : "Not connected", mark: connected ? "ok" : "off", badge: connected ? "" : "Off" },
+    ai: { sub: "Who reads meetings, answers Ask and drafts", mark: "dot" },
+    delivery: { sub: "Email, Slack, Telegram, WhatsApp", mark: "dot" },
+    tools: { sub: "Jira, Linear, Notion, Todoist, webhooks", mark: "dot" },
+    sync: { sub: notesDir().replace(/^\/Users\/[^/]+/, "~"), mark: "dot" },
+    access: { sub: "Phone, widget, local API and models", mark: "dot" },
+    appearance: { sub: mode === "dark" ? "Dark" : mode === "light" ? "Light" : "Follows the system", mark: "dot" },
+    health: { sub: health ? (health.errors24h ? `${health.errors24h} error${health.errors24h === 1 ? "" : "s"} in 24 hours` : `All good · last check ${at(health.lastPollOkAt)}`) : "", mark: health?.errors24h ? "late" : "ok" },
+  };
+  const visible = SETTINGS_SECTIONS.filter((x) => !(isHosted() && (x.key === "ai" || x.key === "appearance")));
+  const groups: LinkGroup[] = [{ key: "settings", label: "Settings", rows: visible.map((x) => ({ key: x.key, href: `/setup?section=${x.key}`, title: x.label, bold: true, sub: rows[x.key].sub, mark: rows[x.key].mark, badge: rows[x.key].badge })) }];
+  const label = SETTINGS_SECTIONS.find((x) => x.key === sec)?.label ?? "You";
+  const S = ({ k, children }: { k: SettingsKey; children: React.ReactNode }) => <section className="rp-setsec" data-sec={k} hidden={k !== sec || undefined} aria-label={SETTINGS_SECTIONS.find((x) => x.key === k)?.label}>{children}</section>;
+  const list = (
+    <>
+      <ListBar title="Settings" />
+      <div className="rp-scroll">
+        <WorkspaceBadge />
+        <LinkGroups groups={groups} sel={sec} limit={20} />
+      </div>
+    </>
+  );
+  const detail = (
+    <Detail
+      bar={<DetailBar crumb={[{ label: "Settings", href: "/setup" }, { label }]} listHref="/setup" acts={<Link className="rp-btn" href="/setup/compare">Compare models on a meeting</Link>} />}
+      rail={<>
+        {health ? (
+          <Sec title="Health">
+            <Kv rows={[["Meetings", at(health.lastPollOkAt)], ["Reading", at(health.lastExtractOkAt)], ["Brief", at(health.lastBriefAt)], ["Errors", health.errors24h ? `${health.errors24h} in 24 hours` : "None"]]} />
+          </Sec>
+        ) : null}
+        <Sec title="Also here">
+          <MList rows={[{ key: "t", label: "Note templates", href: "/setup/templates" }, { key: "c", label: "Compare models", href: "/setup/compare" }, { key: "n", label: "Note types", href: "/note-types" }]} />
+        </Sec>
+        <p className="rp-note">Saved as you change it. Everything stays on this Mac unless a section says otherwise.</p>
+      </>}
+    >
+      <SettingsHash />
+      <div className="rp-setmain">
+        <Head kind={sec === "you" && !connected ? "Set up" : "Saved as you change it"} title={label}
+          lede={sec === "you" ? (connected ? "Change your details. Your meetings stay connected." : (isHosted() ? "A few things, then connect your meetings. Your brief arrives by email." : "A few things, then connect your meetings. Everything stays on this Mac.")) : undefined} />
+      </div>
+      <div className="rp-setmain rp-settings">
+      <S k="you">
       <form action={saveSetup} className="db-stack">
         <Field id="name" name="name" label="Your name" hint="So we know which promises are yours." defaultValue={user?.name ?? ""} autoComplete="name" required />
         <Field id="aliases" name="aliases" label="Other names people call you" hint="Comma separated, like Maru, MR. Optional." defaultValue={user?.aliases.join(", ") ?? ""} />
@@ -98,6 +147,8 @@ export default async function Setup({ searchParams }: { searchParams: Promise<{ 
           </p>
         ) : null}
       </form>
+      </S>
+      <S k="meetings">
       {connected ? (
         <form action={pullMeetingsSince} className="db-stack db-subsection">
           <h2 className="db-section__title">Pull in older meetings</h2>
@@ -170,12 +221,14 @@ export default async function Setup({ searchParams }: { searchParams: Promise<{ 
           </div>
         </form>
       ) : null}
-      <ChannelSettings flash={flash} timeZone={tz} />
-      <SyncSettings syncError={sync} gitError={git} />
-      <IntegrationsSettings flash={integ} timeZone={tz} />
-      <PlatformSettings remote={remote} timeZone={tz} modelError={model === "bad"} />
-      {isHosted() ? null : <AiSettings remote={remote} flash={{ ai, p: aiProvider }} />}
-      {isHosted() ? null : <AppearanceSettings initial={readThemes()} mode={parseMode((await cookies()).get(MODE_COOKIE)?.value)} />}
+      </S>
+      <S k="delivery"><ChannelSettings flash={flash} timeZone={tz} /></S>
+      <S k="sync"><SyncSettings syncError={sync} gitError={git} /></S>
+      <S k="tools"><IntegrationsSettings flash={integ} timeZone={tz} /></S>
+      <S k="access"><PlatformSettings remote={remote} timeZone={tz} modelError={model === "bad"} /></S>
+      {isHosted() ? null : <S k="ai"><AiSettings remote={remote} flash={{ ai, p: aiProvider }} /></S>}
+      {isHosted() ? null : <S k="appearance"><AppearanceSettings initial={readThemes()} mode={mode} /></S>}
+      <S k="health">
       {health ? (
         <section className="db-stack db-subsection" aria-labelledby="health">
           <h2 className="db-section__title" id="health">Health</h2>
@@ -203,7 +256,9 @@ export default async function Setup({ searchParams }: { searchParams: Promise<{ 
           </dl>
         </section>
       ) : null}
+      </S>
       </div>
-    </Shell>
+    </Detail>
   );
+  return <Shell current="settings" list={list} detail={detail} show={sp.section ? "detail" : "list"} />;
 }

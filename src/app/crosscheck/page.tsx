@@ -2,19 +2,17 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { AutoRefresh } from "@/components/AutoRefresh";
-import { Stats } from "@/components/CloseWrap";
-import { Mark } from "@/components/Mark";
 import { Shell } from "@/components/Shell";
-import { MissedRow } from "@/components/crosscheck/CrossCheck";
-import { localDate } from "@/lib/brief/time";
-import { openMissed, totals } from "@/lib/crosscheck/compare";
+import { AddAllMissed } from "@/components/reading/AddAllMissed";
+import { Chips, Detail, DetailBar, Head, Kv, LinkGroups, ListBar, MList, Sec, Stats, type LinkGroup } from "@/components/reading/Frame";
+import { formatTime, localDate } from "@/lib/brief/time";
+import { openMissed, totals, type CrossCheckRecord } from "@/lib/crosscheck/compare";
+import { dayName, shortDay } from "@/lib/reading/model";
 import { crossAllState } from "@/server/crosscheck/all";
 import { crosscheckEnabled } from "@/server/crosscheck/core";
 import { getFileStore, me } from "@/server/local/app";
 import { isHosted } from "@/server/mode";
-import { crossCheckAllAction } from "../crosscheck-actions";
-import { openCountFor, pastDays } from "../_lib/days";
-import { shortDate } from "../_lib/lines";
+import { addFromCrossCheckAction, crossCheckAllAction, ignoreCrossCheckAction } from "../crosscheck-actions";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Cross-check with Wispr Flow" };
@@ -24,10 +22,15 @@ const STATUS: Record<string, string> = {
   no_actions: "Wispr Flow's summary lists no next steps.",
 };
 
-export default async function CrossCheckPage() {
+// Cross-check, side by side per meeting: the meetings where Wispr Flow noted something Daily brief
+// doesn't have, newest first; the picked one as a table of Wispr Flow's line, Daily brief's item and
+// a verdict, with Add on each missed line.
+export default async function CrossCheckPage({ searchParams }: { searchParams: Promise<{ m?: string; show?: string }> }) {
   if (isHosted()) notFound();
   const user = await me();
   if (!user) redirect("/setup");
+  const q = await searchParams;
+  const tz = user.timeZone;
   const store = getFileStore();
   const records = (await store.listCrossChecks(user.id)).filter((r) => store.meetings.has(r.meetingId));
   const meetings = new Map([...store.meetings.values()].map((m) => [m.id, m]));
@@ -36,95 +39,151 @@ export default async function CrossCheckPage() {
   const t = totals(records);
   const run = crossAllState();
   const on = crosscheckEnabled();
-  const withMissed = byNewest.filter((r) => openMissed(r).length);
-  const only = byNewest.flatMap((r) => r.onlyInApp.map((id) => ({ r, item: items.get(id) }))).filter((x) => x.item && x.item.status !== "wrong");
-  const errors = byNewest.filter((r) => r.status === "error");
-  const quiet = byNewest.filter((r) => STATUS[r.status]);
+  const withGaps = byNewest.filter((r) => openMissed(r).length);
+  const allMatch = byNewest.filter((r) => !openMissed(r).length && (r.status === "ok" || r.status === "no_actions"));
+  const notCompared = byNewest.filter((r) => r.status === "error" || STATUS[r.status]);
+  const show = q.show === "match" ? "match" : q.show === "skipped" ? "skipped" : "gaps";
+  const shown = show === "match" ? allMatch : show === "skipped" ? notCompared : withGaps;
   const title = (id: string) => meetings.get(id)?.title || "Meeting";
-  const when = (id: string) => { const m = meetings.get(id); return m ? shortDate(m.startedAt, user.timeZone) : ""; };
+  const when = (id: string) => { const m = meetings.get(id); return m ? shortDay(m.startedAt, tz) : ""; };
+  const base = (m?: string) => `/crosscheck?${new URLSearchParams({ ...(show !== "gaps" ? { show } : {}), ...(m ? { m } : {}) })}`.replace(/\?$/, "");
+  const sel = q.m && records.some((r) => r.meetingId === q.m) ? q.m : shown[0]?.meetingId ?? null;
 
-  return (
-    <Shell days={await pastDays(user.id, localDate(new Date(), user.timeZone))} current="review" openCount={await openCountFor(user.id)}>
-      <p className="db-crumb"><Link className="db-link" href="/review">Review</Link></p>
-      <h1 className="db-title">Cross-check with Wispr Flow</h1>
-      <p className="db-subtitle">
-        Wispr Flow&apos;s own action items next to what Daily brief found.{" "}
-        {records.length ? `${t.meetings} meeting${t.meetings === 1 ? "" : "s"} compared.` : "Nothing compared yet."}
-      </p>
-
-      <div className="xc-bar">
-        <form action={crossCheckAllAction}>
-          <button className="db-act db-act--primary" disabled={run?.running}>{run?.running ? "Cross-checking…" : "Cross-check all meetings"}</button>
-        </form>
-        {run?.running ? (
-          <span className="xc-progress" role="status">
-            <span className="xc-progress__bar" aria-hidden="true"><i style={{ width: `${run.total ? Math.round((run.done / run.total) * 100) : 0}%` }} /></span>
-            <span className="db-mono">{run.done} of {run.total}</span>
-            <AutoRefresh seconds={3} />
-          </span>
-        ) : run?.error ? <span className="xc-progress xc-progress--error" role="alert">{run.error}</span>
-          : run ? <span className="xc-progress db-mono" role="status">Done · {run.done} meeting{run.done === 1 ? "" : "s"}{run.failed ? ` · ${run.failed} couldn't be checked` : ""}</span> : null}
-        <span className="xc-bar__gap" />
-        <Link className="cw-pill" href="/setup#ai-crosscheck">{on ? "After each meeting: on" : "After each meeting: off"}</Link>
-      </div>
-
-      <Stats items={[
-        { label: "Matched", value: t.matched },
-        { label: "Missed by Daily brief", value: t.missed },
-        { label: "Only in Daily brief", value: t.onlyInApp },
-        { label: "Not yours", value: t.notYours },
+  const matchedOf = (r: CrossCheckRecord) => r.entries.filter((e) => e.verdict === "matched" || e.verdict === "matched_wrong").length;
+  const groups: LinkGroup[] = [{
+    key: show, label: "Newest first",
+    rows: shown.map((r) => {
+      const missed = openMissed(r).length;
+      const matched = matchedOf(r);
+      return {
+        key: r.meetingId, href: base(r.meetingId), title: title(r.meetingId), mark: missed ? "late" : r.status === "error" ? "dot" : "done",
+        sub: `${when(r.meetingId)} · ${r.status === "error" ? r.error ?? "Couldn't be checked" : STATUS[r.status] ?? ([missed ? `${missed} missed` : "", matched ? `${matched} matched` : ""].filter(Boolean).join(", ") || "Nothing for you")}`,
+        num: missed ? { n: missed } : undefined,
+      };
+    }),
+    empty: show === "gaps" ? (records.length ? "Nothing Wispr Flow listed for you is missing." : "Nothing compared yet. Cross-check all meetings to start.") : "None.",
+  }];
+  const list = (
+    <>
+      <ListBar title="Cross-check" count={`${withGaps.length} meeting${withGaps.length === 1 ? "" : "s"}`} back={{ href: "/review", label: "Review" }} />
+      <Chips chips={[
+        { label: "With gaps", n: withGaps.length, href: "/crosscheck", on: show === "gaps" },
+        { label: "All match", n: allMatch.length, href: "/crosscheck?show=match", on: show === "match" },
+        ...(notCompared.length ? [{ label: "Not compared", n: notCompared.length, href: "/crosscheck?show=skipped", on: show === "skipped" }] : []),
       ]} />
-      {t.markedWrong ? <p className="rv-more db-mono">{t.markedWrong} matched an item you marked Wrong</p> : null}
-
-      <section className="db-section" aria-labelledby="xc-missed-h">
-        <div className="db-section__head">
-          <h2 className="db-section__title" id="xc-missed-h">Missed by Daily brief</h2>
-          {t.missed ? <span className="db-section__count">{t.missed}</span> : null}
-        </div>
-        {withMissed.length ? withMissed.map((r) => (
-          <div key={r.meetingId} className="xc-group">
-            <h3 className="xc-group__title">
-              <Link className="rv-plain" href={`/meeting/${encodeURIComponent(r.meetingId)}`}>{title(r.meetingId)}</Link>
-              <span className="xc-group__when">{when(r.meetingId)}</span>
-            </h3>
-            <ul className="xc-list">
-              {openMissed(r).map(({ e, i }) => <MissedRow key={i} meetingId={r.meetingId} index={i} e={e} />)}
-            </ul>
-          </div>
-        )) : <p className="db-section__empty">{records.length ? "Nothing Wispr Flow listed for you is missing." : "Turn on the cross-check in Settings › AI, or cross-check all meetings above."}</p>}
-      </section>
-
-      <section className="db-section" aria-labelledby="xc-only-h">
-        <div className="db-section__head">
-          <h2 className="db-section__title" id="xc-only-h">Only in Daily brief</h2>
-          {only.length ? <span className="db-section__count">{only.length}</span> : null}
-        </div>
-        {only.length ? (
-          <ul className="xc-list">
-            {only.map(({ r, item }) => (
-              <li key={item!.id} className="xc-only">
-                <span className="xc-only__mark"><Mark kind={item!.status === "done" ? "done" : item!.kind} /></span>
-                <Link className="xc-only__text rv-plain" href={`/item/${encodeURIComponent(item!.id)}`}>{item!.text}</Link>
-                <span className="xc-only__src">{item!.person ? `${item!.person} · ` : ""}{title(r.meetingId)}, {when(r.meetingId)}</span>
-              </li>
-            ))}
-          </ul>
-        ) : <p className="db-section__empty">Every item Daily brief found is in Wispr Flow&apos;s list too.</p>}
-      </section>
-
-      {errors.length || quiet.length ? (
-        <section className="db-section" aria-labelledby="xc-skip-h">
-          <div className="db-section__head"><h2 className="db-section__title" id="xc-skip-h">Not compared</h2></div>
-          <ul className="xc-list">
-            {[...errors, ...quiet].map((r) => (
-              <li key={r.meetingId} className="xc-skip">
-                <Link className="rv-plain" href={`/meeting/${encodeURIComponent(r.meetingId)}`}>{title(r.meetingId)}</Link>
-                <span className="xc-only__src">{r.status === "error" ? r.error : STATUS[r.status]}</span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
-    </Shell>
+      <LinkGroups groups={groups} sel={sel} limit={30} />
+    </>
   );
+
+  const rec = sel ? records.find((r) => r.meetingId === sel) ?? null : null;
+  const runBar = (
+    <div className="xc-bar">
+      <form action={crossCheckAllAction}>
+        <button className="rp-btn" disabled={run?.running}>{run?.running ? "Cross-checking…" : "Cross-check all meetings"}</button>
+      </form>
+      {run?.running ? (
+        <span className="xc-progress" role="status">
+          <span className="xc-progress__bar" aria-hidden="true"><i style={{ width: `${run.total ? Math.round((run.done / run.total) * 100) : 0}%` }} /></span>
+          <span className="db-mono">{run.done} of {run.total}</span>
+          <AutoRefresh seconds={3} />
+        </span>
+      ) : run?.error ? <span className="xc-progress xc-progress--error" role="alert">{run.error}</span> : null}
+    </div>
+  );
+  const rail = (
+    <>
+      <Sec title="Last run">
+        <Kv rows={[
+          rec ? ["Checked", `${dayName(localDate(new Date(rec.checkedAt), tz))}, ${formatTime(rec.checkedAt, tz)}`] : null,
+          ["Meetings", String(t.meetings)],
+          rec?.model ? ["Model", rec.model] : null,
+          ["After each", <Link key="s" href="/setup?section=ai#ai-crosscheck">{on ? "On" : "Off"}</Link>],
+        ]} />
+      </Sec>
+      <Sec title="Wispr Flow vs Daily brief">
+        <div className="rp-meter" aria-hidden="true">
+          <span className="rp-meter__k" style={{ width: `${(t.matched / Math.max(1, t.matched + t.missed + t.onlyInApp)) * 100}%` }} />
+          <span className="rp-meter__w" style={{ width: `${(t.missed / Math.max(1, t.matched + t.missed + t.onlyInApp)) * 100}%` }} />
+          <span className="rp-meter__o" style={{ width: `${(t.onlyInApp / Math.max(1, t.matched + t.missed + t.onlyInApp)) * 100}%` }} />
+        </div>
+        <div style={{ marginTop: 8 }}>
+          <MList rows={[{ key: "m", label: "Matched", right: t.matched }, { key: "x", label: "Missed by Daily brief", right: t.missed }, { key: "o", label: "Only in Daily brief", right: t.onlyInApp }, { key: "n", label: "Not yours", right: t.notYours }]} />
+        </div>
+      </Sec>
+      <Sec title="Run it again">{runBar}</Sec>
+    </>
+  );
+
+  let detail;
+  if (!rec) {
+    detail = (
+      <Detail bar={<DetailBar crumb={[{ label: "Review", href: "/review" }, { label: "Cross-check" }]} listHref="/crosscheck" />} rail={rail}>
+        <Head kind="Cross-check with Wispr Flow" title="Nothing to compare yet" lede="Wispr Flow's own action items next to what Daily brief found, one meeting at a time." />
+        {runBar}
+      </Detail>
+    );
+  } else {
+    const m = meetings.get(rec.meetingId);
+    const mine = rec.entries.map((e, i) => ({ e, i })).filter(({ e }) => e.verdict !== "not_user");
+    const missed = openMissed(rec);
+    const kept = mine.length - missed.length;
+    const only = rec.onlyInApp.map((id) => items.get(id)).filter((i) => i && i.status !== "wrong");
+    const pos = shown.findIndex((r) => r.meetingId === rec.meetingId) + 1;
+    const people = [...new Set(mine.map(({ e }) => e.person).filter(Boolean))].slice(0, 3) as string[];
+    detail = (
+      <Detail full
+        bar={<DetailBar crumb={[{ label: "Review", href: "/review" }, { label: "Cross-check", href: "/crosscheck" }, { label: title(rec.meetingId) }]} listHref={base()}
+          acts={<>{pos ? <span className="rp-pos">{pos} of {shown.length}</span> : null}<AddAllMissed meetingId={rec.meetingId} rows={missed.map(({ e, i }) => ({ index: i, kind: e.kind ?? "owe" }))} /></>} />}
+      >
+        <Head kind={`Meeting · ${m ? `${dayName(localDate(new Date(m.startedAt), tz))}, ${formatTime(m.startedAt, tz)}` : ""}${people.length ? ` · with ${people.join(", ")}` : ""}`}
+          title={<Link href={`/meeting/${encodeURIComponent(rec.meetingId)}`} className="rp-plain">{title(rec.meetingId)}</Link>}
+          lede={rec.status === "error" ? rec.error ?? "This meeting couldn't be checked." : STATUS[rec.status] ?? `Wispr Flow noted ${mine.length} thing${mine.length === 1 ? "" : "s"} for you. Daily brief has ${kept} of them.${missed.length ? ` The other ${missed.length} ${missed.length === 1 ? "is" : "are"} below in red.` : ""}`} />
+        {mine.length ? (
+          <table className="rp-xt">
+            <colgroup><col style={{ width: "44%" }} /><col style={{ width: "38%" }} /><col style={{ width: "18%" }} /></colgroup>
+            <thead><tr><th>Wispr Flow&apos;s notes</th><th>Daily brief</th><th /></tr></thead>
+            <tbody>
+              {mine.map(({ e, i }) => {
+                const it = e.itemId ? items.get(e.itemId) : e.addedItemId ? items.get(e.addedItemId) : undefined;
+                const isMissed = e.verdict === "missed" && !e.ignored && !e.addedItemId;
+                return (
+                  <tr key={i} className={isMissed ? "rp-xt--miss" : undefined}>
+                    <td>{e.wispr.owner ? `(${e.wispr.owner}) ` : ""}{e.wispr.text}{e.droppedReason ? <small>Daily brief left it out: {e.droppedReason}</small> : null}</td>
+                    {isMissed ? <td className="rp-xt__no">Not in Daily brief</td>
+                      : <td>{it ? <Link className="rp-plain" href={`/item/${encodeURIComponent(it.id)}`}>{it.text}</Link> : e.ignored ? <span className="rp-quiet">Ignored</span> : "—"}</td>}
+                    <td>
+                      {isMissed ? (
+                        <>
+                          <form action={addFromCrossCheckAction}>
+                            <input type="hidden" name="meetingId" value={rec.meetingId} /><input type="hidden" name="index" value={i} /><input type="hidden" name="kind" value={e.kind ?? "owe"} />
+                            <button className="rp-addb" title={e.kind === "waiting" ? "Add as Waiting on" : "Add as You owe"}>Add</button>
+                          </form>
+                          <form action={ignoreCrossCheckAction}>
+                            <input type="hidden" name="meetingId" value={rec.meetingId} /><input type="hidden" name="index" value={i} />
+                            <button className="rp-addb rp-addb--q">Ignore</button>
+                          </form>
+                        </>
+                      ) : e.addedItemId ? <span className="rp-vd rp-vd--ok">Added</span>
+                        : e.verdict === "matched_wrong" ? <span className="rp-vd">Marked wrong</span>
+                          : e.ignored ? <span className="rp-vd">Ignored</span>
+                            : <span className="rp-vd rp-vd--ok">{it?.status === "done" ? "Kept" : "Matched"}</span>}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        ) : null}
+        {only.length ? (
+          <p className="rp-note">Daily brief also heard {only.length === 1 ? "1 thing" : `${only.length} things`} here that Wispr Flow didn&apos;t note: {only.map((i, k) => <span key={i!.id}>{k ? "; " : ""}<Link className="rp-plain" href={`/item/${encodeURIComponent(i!.id)}`}>{i!.text}</Link></span>)}.</p>
+        ) : null}
+        <Sec title={`Across all ${t.meetings} meetings`}>
+          <Stats items={[{ n: t.matched, label: "Matched" }, { n: t.missed, label: "Missed by Daily brief", late: !!t.missed }, { n: t.onlyInApp, label: "Only in Daily brief" }, { n: t.notYours, label: "Not yours" }]} />
+          <div style={{ marginTop: 12 }}>{runBar}</div>
+          <p className="rp-note" style={{ marginTop: 8 }}>{rec.model ? `Checked with ${rec.model}. ` : ""}After each meeting: <Link href="/setup?section=ai#ai-crosscheck">{on ? "on" : "off"}</Link>.</p>
+        </Sec>
+      </Detail>
+    );
+  }
+  return <Shell current="crosscheck" list={list} detail={detail} show={q.m ? "detail" : "list"} />;
 }

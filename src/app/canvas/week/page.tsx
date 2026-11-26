@@ -19,7 +19,7 @@ export default async function WeekPage({ searchParams }: { searchParams: Promise
   const monday = mondayOf(/^\d{4}-\d{2}-\d{2}$/.test(q.w ?? "") ? q.w! : localDate(c.now, user.timeZone));
   const doc = buildWeek(monday, c);
   return (
-    <CanvasFrame user={user} title={doc.title} sub="What was decided, what’s still open and what’s stuck. Drag a card onto Next week to move it there.">
+    <CanvasFrame board="week" title={doc.title} sub="What was decided, what’s still open and what’s stuck. Drag a card onto Next week to move it there.">
       <p className="cv-weeknav"><Link href={`/canvas/week?w=${addDays(monday, -7)}`}>← Week before</Link><Link href={`/canvas/week?w=${addDays(monday, 7)}`}>Week after →</Link></p>
       <Board doc={doc} />
     </CanvasFrame>

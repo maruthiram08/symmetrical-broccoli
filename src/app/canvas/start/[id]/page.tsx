@@ -19,7 +19,7 @@ export default async function StartPage({ params }: { params: Promise<{ id: stri
   const windows = windowsFor(item.id);
   const doc = buildStart(item, windows, c);
   return (
-    <CanvasFrame user={user} title={doc.title} sub="Start the work in a new window. It reads everything linked on the left, and finishing it closes the item.">
+    <CanvasFrame board="start" title={doc.title} sub="Start the work in a new window. It reads everything linked on the left, and finishing it closes the item.">
       <Board doc={doc} windows={windows} />
     </CanvasFrame>
   );

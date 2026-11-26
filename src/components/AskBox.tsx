@@ -37,14 +37,17 @@ const modelName = (q: string) => q.replace(/^[a-z-]+:/, "");
 
 type Live = { question: string; answer: string; sources: Source[]; state: "asking" | "done" | "error"; error: string | null; cost: number | null; est: number | null; model: string; how: string };
 
-export function AskBox({ initial, ready, hint, conversations: initialConvs, view: initialView }: {
+export function AskBox({ initial, ready, hint, conversations: initialConvs, view: initialView, panes }: {
   initial: string;
+  /** The reading pane: conversations in the list, the chat in the detail with a rail. */
+  panes?: { model: string };
   ready: boolean;
   hint: string;
   conversations: ConversationRow[];
   view: ThreadView | null;
 }) {
   const [q, setQ] = useState(initial);
+  const [qNew, setQNew] = useState("");
   const [view, setView] = useState<ThreadView | null>(initialView);
   const [convs, setConvs] = useState(initialConvs);
   const [live, setLive] = useState<Live | null>(null);
@@ -150,6 +153,142 @@ export function AskBox({ initial, ready, hint, conversations: initialConvs, view
   const branchName = view?.quote ? `“${view.quote.slice(0, 60)}${view.quote.length > 60 ? "…" : ""}”` : null;
   const empty = !view && !live;
 
+  if (panes) {
+    const turns = view ? [...view.inherited, ...view.turns] : [];
+    const srcs = turns.flatMap((t) => t.sources as unknown as Source[]).concat(live?.sources ?? []);
+    const read = new Map<string, string>();
+    for (const x of srcs) { const t = isItem(x) ? x.meetingTitle : x.title; const at = isItem(x) ? x.at : x.at; if (t && !read.has(t)) read.set(t, at ? shortDate(at) : ""); }
+    const cost = turns.reduce((a, t) => a + (t.costInr ?? 0), 0) + (live?.cost ?? 0);
+    const cited = new Set(turns.flatMap((t) => citedNumbers(t.answer, (t.sources as unknown[]).length).map((n) => `${t.id}:${n}`))).size;
+    const today = new Date().toDateString();
+    const groups = [
+      { label: "Today", rows: convs.filter((c) => new Date(c.updatedAt).toDateString() === today) },
+      { label: "Earlier", rows: convs.filter((c) => new Date(c.updatedAt).toDateString() !== today) },
+    ].filter((g) => g.rows.length);
+    const asking = live?.state === "asking";
+    const newQ = (e?: React.FormEvent) => { e?.preventDefault(); if (!qNew.trim() || asking) return; const x = qNew; setQNew(""); setView(null); void ask(x, null); };
+    return (
+      <div className="rp-panes" data-show={view || live ? "detail" : "list"}>
+        <section className="rp-list" aria-label="Questions"><div className="rp-wrap">
+          <div className="rp-bar"><h1 className="rp-h1">Ask</h1><span className="rp-n">About your meetings</span></div>
+          <form className="rp-lcomp" onSubmit={newQ}>
+            <div className="rp-composer">
+              <textarea rows={1} maxLength={500} value={qNew} placeholder="Ask anything…" aria-label="New question" onChange={(e) => setQNew(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey || !e.shiftKey)) { e.preventDefault(); newQ(); } }} />
+              <span className="rp-kbd" aria-hidden="true">↵</span>
+              <button className="rp-sendb" type="submit" aria-label="Ask" disabled={!qNew.trim() || asking || !ready}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7" /></svg></button>
+            </div>
+          </form>
+          <div className="rp-scroll">
+            {groups.map((g) => (
+              <section key={g.label} aria-label={g.label}>
+                <h2 className="rp-gh">{g.label}<span className="rp-gh__n">{g.rows.length}</span></h2>
+                {g.rows.map((c) => {
+                  const on = view?.rootId === c.id;
+                  return (
+                    <div key={c.id}>
+                      <div className={`rp-lrow${on ? " rp-row--sel" : ""}`}>
+                        <span className="rp-m rp-m--ring" aria-hidden="true" />
+                        <div className="rp-lrow__body">
+                          <button type="button" className="rp-lrow__t rp-lrow__btn" onClick={() => go(c.id)}>{c.name}</button>
+                          <div className="rp-lrow__s">{c.branches ? `${c.branches} branch${c.branches === 1 ? "" : "es"}` : "One thread"}</div>
+                        </div>
+                        <span className="rp-badge">{shortDate(c.updatedAt)}</span>
+                      </div>
+                      {on && view && view.tree.length > 1 ? view.tree.map((n) => (
+                        <button key={n.id} type="button" className={`rp-tnode${n.id === view.id ? " rp-tnode--on" : ""}`} style={{ paddingLeft: `${46 + n.depth * 14}px` }} onClick={() => go(n.id)} aria-current={n.id === view.id ? "true" : undefined}>
+                          {n.depth ? `↳ ${n.name}` : "Main thread"}<span> · {n.turns}</span>
+                        </button>
+                      )) : null}
+                    </div>
+                  );
+                })}
+              </section>
+            ))}
+            {convs.length ? null : <p className="rp-lfoot">Your questions are kept here, per workspace.</p>}
+          </div>
+        </div></section>
+        <section className="rp-det" aria-label="Answer"><div className="rp-wrap">
+          <div className="rp-bar rp-bar--det">
+            <div className="rp-crumb">
+              <button type="button" className="rp-back rp-back--list" onClick={() => { setLive(null); void go(null); }}>Back</button>
+              <span className="rp-crumb__page">Ask<span aria-hidden="true" className="rp-crumb__sep">›</span></span>
+              {view ? view.crumbs.slice(0, -1).map((c) => <span key={c.id} className="rp-crumb__page"><button type="button" className="rp-crumb__btn" onClick={() => go(c.id)}>{c.name}</button><span aria-hidden="true">›</span></span>) : null}
+              <b>{view ? view.crumbs[view.crumbs.length - 1]?.name : live ? live.question : "New question"}</b>
+            </div>
+            {view ? (
+              <div className="rp-acts">
+                {renaming ? (
+                  <form className="at__rename" onSubmit={(e) => { e.preventDefault(); void doRename(); }}>
+                    <input className="db-input" value={name} onChange={(e) => setName(e.target.value)} maxLength={80} aria-label="Thread name" autoFocus />
+                    <button className="rp-btn" type="submit">Save</button>
+                  </form>
+                ) : (
+                  <>
+                    <button type="button" className="rp-btn" onClick={() => { setName(view.name); setRenaming(true); }}>Rename</button>
+                    <button type="button" className="rp-btn" onClick={doDelete}>{view.parentId ? "Delete branch" : "Delete"}</button>
+                  </>
+                )}
+              </div>
+            ) : null}
+          </div>
+          <div className="rp-chatwrap">
+            <div className="rp-chatcol">
+              <div className="rp-chatscroll">
+                <div className="rp-chat">
+                  {note ? <p className="db-ask__error" role="alert">{note}</p> : null}
+                  {view?.inherited.length ? (
+                    <details className="at__inherited">
+                      <summary>Continues from {view.inherited.length} earlier answer{view.inherited.length === 1 ? "" : "s"} in {view.crumbs[view.crumbs.length - 2]?.name ?? "the main thread"}</summary>
+                      {view.inherited.map((t) => <TurnCard key={t.id} turn={t} onBranch={doBranch} muted chat />)}
+                    </details>
+                  ) : null}
+                  {branchName && !view?.turns.length ? <p className="at__quote">Branched from {branchName}. Ask a follow-up about it.</p> : null}
+                  {view?.turns.map((t) => <TurnCard key={t.id} turn={t} onBranch={doBranch} chat />)}
+                  {live ? <LiveCard live={live} chat /> : null}
+                  {empty ? (
+                    <div className="rp-chat__empty">
+                      <p>Ask about what was promised, decided and said. Answers come only from your meetings and notes, with the source behind each one.</p>
+                      <div className="db-ask__examples">{EXAMPLES.map((x) => <button key={x} type="button" className="rp-btn" onClick={() => { void ask(x, null); }}>{x}</button>)}</div>
+                    </div>
+                  ) : null}
+                  <div ref={end} />
+                </div>
+              </div>
+              <form className="rp-chatfoot" onSubmit={submit}>
+                <div className="rp-composer">
+                  <label className="db-ask__sr" htmlFor="db-ask-q">{view ? "Follow-up question" : "Your question"}</label>
+                  <textarea id="db-ask-q" ref={input} rows={1} maxLength={500} value={q}
+                    placeholder={view ? (branchName ? "Ask about that quote…" : "Ask a follow-up…") : "What did we decide about the dividend banner?"}
+                    onChange={(e) => setQ(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit(); } }} />
+                  <span className="rp-kbd" aria-hidden="true">↵</span>
+                  <button className="rp-sendb" type="submit" aria-label={view ? "Ask follow-up" : "Ask"} disabled={!q.trim() || asking || !ready}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7" /></svg></button>
+                </div>
+                <p className="rp-chathint">{hint}</p>
+              </form>
+            </div>
+            <aside className="rp-rail" aria-label="About this chat">
+              <section className="rp-sec"><h2>Read from</h2>
+                {read.size ? <div className="rp-mlist">{[...read].slice(0, 6).map(([t, d]) => <div key={t}><span>{t}</span><span>{d}</span></div>)}</div> : <p className="rp-quiet">Nothing yet. Each answer reads only the passages it needs.</p>}
+              </section>
+              <section className="rp-sec"><h2>This chat</h2>
+                <dl className="rp-kv">
+                  <div className="rp-kv__r"><dt>Model</dt><dd>{turns.find((t) => t.model)?.model ? modelName(turns.find((t) => t.model)!.model!) : live?.model ? modelName(live.model) : panes.model}</dd></div>
+                  <div className="rp-kv__r"><dt>Cost</dt><dd>{cost ? `About ${inr(cost)}` : "Nothing yet"}</dd></div>
+                  <div className="rp-kv__r"><dt>Items</dt><dd>{cited} cited</dd></div>
+                </dl>
+              </section>
+              <section className="rp-sec"><h2>Try asking</h2>
+                <div className="rp-sugg">{EXAMPLES.map((x) => <button key={x} type="button" onClick={() => { void ask(x, null); }}>{x}</button>)}</div>
+              </section>
+            </aside>
+          </div>
+        </div></section>
+      </div>
+    );
+  }
+
   return (
     <div className="db-ask at">
       <aside className="at__rail" aria-label="Conversations">
@@ -246,9 +385,9 @@ export function AskBox({ initial, ready, hint, conversations: initialConvs, view
   );
 }
 
-function LiveCard({ live }: { live: Live }) {
+function LiveCard({ live, chat }: { live: Live; chat?: boolean }) {
   return (
-    <section className="db-ask__result at__turn" aria-live="polite" aria-busy={live.state === "asking"}>
+    <section className={`db-ask__result at__turn${chat ? " rp-turn" : ""}`} aria-live="polite" aria-busy={live.state === "asking"}>
       <p className="db-ask__q">{live.question}</p>
       {live.answer ? <Answer text={live.answer} sources={live.sources} /> : live.state === "asking" ? (
         <div className="db-ask__loading"><span /><span /><span className="db-ask__sr">Thinking</span></div>
@@ -262,11 +401,11 @@ function LiveCard({ live }: { live: Live }) {
   );
 }
 
-function TurnCard({ turn, onBranch, muted }: { turn: AskTurn; onBranch: (turnId: string, quote: string | null) => void; muted?: boolean }) {
+function TurnCard({ turn, onBranch, muted, chat }: { turn: AskTurn; onBranch: (turnId: string, quote: string | null) => void; muted?: boolean; chat?: boolean }) {
   const sources = turn.sources as unknown as Source[];
   const cited = citedNumbers(turn.answer, sources.length).map((n) => sources[n - 1]).filter(Boolean);
   return (
-    <section className={`db-ask__result at__turn${muted ? " at__turn--muted" : ""}`}>
+    <section className={`db-ask__result at__turn${muted ? " at__turn--muted" : ""}${chat ? " rp-turn" : ""}`}>
       <p className="db-ask__q">{turn.question}</p>
       {turn.answer ? <Answer text={turn.answer} sources={sources} /> : null}
       {turn.error ? <p className="db-ask__error">{turn.error}</p> : null}

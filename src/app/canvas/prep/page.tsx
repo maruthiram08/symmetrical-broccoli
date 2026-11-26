@@ -44,7 +44,7 @@ export default async function PrepPage({ searchParams }: { searchParams: Promise
   if (!t) redirect("/canvas");
   const doc = buildPrep(t, c);
   return (
-    <CanvasFrame user={user} title={doc.title} sub="Lime lines are what Ask reads. Click “In context” on a card to leave it out.">
+    <CanvasFrame board="prep" title={doc.title} sub="Lime lines are what Ask reads. Click “In context” on a card to leave it out.">
       {doc.empty ? <p className="cv-empty">{doc.empty}</p> : <Board doc={doc} />}
     </CanvasFrame>
   );

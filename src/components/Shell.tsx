@@ -47,7 +47,7 @@ function Nav({ href, on, children, sub }: { href: string; on: boolean; children:
   return <Link className={`db-nav rp-ni${sub ? " rp-ni--sub" : ""}`} href={href} aria-current={on ? "page" : undefined}>{children}</Link>;
 }
 
-async function Sidebar({ days, current, footer, query }: { days: Array<{ date: string; label: string }>; current: string; footer?: ReactNode; query?: string }) {
+async function Sidebar({ current, footer, query }: { current: string; footer?: ReactNode; query?: string }) {
   const c = await navCounts();
   const mode = parseMode((await cookies()).get(MODE_COOKIE)?.value);
   const is = (...k: string[]) => k.includes(current);
@@ -65,23 +65,18 @@ async function Sidebar({ days, current, footer, query }: { days: Array<{ date: s
       <Nav href="/projects" on={is("projects")}>{ICONS.projects}<span>Projects</span>{c.projects ? <span className="rp-ni__c">{c.projects}</span> : null}</Nav>
       <InboxLink current={current} />
       <div className="rp-sh">Library</div>
+      <Nav href="/day" on={is("day") || /^\d{4}-\d{2}-\d{2}$/.test(current)}><span>Daily briefs</span></Nav>
       <Nav href="/series" on={is("series")}><span>Recurring</span></Nav>
-      <Nav href="/review" on={is("review")}><span>Review</span></Nav>
-      <Nav href="/routines" on={is("routines")} sub><span>Routines</span></Nav>
+      <Nav href="/routines" on={is("routines")}><span>Routines</span></Nav>
+      <Nav href="/review" on={is("review", "names")}><span>Review</span></Nav>
       {isHosted() ? null : <Nav href="/crosscheck" on={is("crosscheck")} sub><span>Cross-check</span></Nav>}
-      <Nav href="/notes" on={is("notes")}><span>Notes</span></Nav>
       <Nav href="/ask" on={is("ask")}><span>Ask</span></Nav>
+      <Nav href="/notes" on={is("notes")}><span>Notes</span></Nav>
       <Nav href="/graph" on={is("graph", "meeting")}><span>Graph</span></Nav>
       <Nav href="/canvas" on={is("canvas")}><span>Canvas</span></Nav>
       <Nav href="/tags" on={is("tags")}><span>Tags</span></Nav>
       <Nav href="/views" on={is("views")}><span>Views</span></Nav>
       {c.views.map((v) => <Nav key={v.id} href={`/views/${encodeURIComponent(v.id)}`} on={current === `view:${v.id}`} sub><span>{v.name}</span></Nav>)}
-      {days.length ? (
-        <details className="rp-days" open={days.some((d) => d.date === current) || undefined}>
-          <summary className="rp-sh">Earlier</summary>
-          {days.map((d) => <Nav key={d.date} href={`/day/${d.date}`} on={current === d.date}><span>{d.label}</span></Nav>)}
-        </details>
-      ) : null}
       <div className="db-side__foot rp-foot">
         <Nav href="/setup" on={is("settings")}><span>Settings</span></Nav>
         <HostedLinks />
@@ -94,10 +89,11 @@ async function Sidebar({ days, current, footer, query }: { days: Array<{ date: s
 /**
  * The app's frame: the sidebar, then either the reading pane (a list and the selected thing's
  * detail, each scrolling on its own) or one wide pane for pages that aren't lists.
- * `days` are past daily notes, newest first.
+ * `days` are past daily notes, newest first; Daily briefs lists them now, so the sidebar no longer does.
  */
-export function Shell({ days, current, children, footer, query, wide, list, detail, reading, pane, title }: {
-  days: Array<{ date: string; label: string }>; current: string; children?: ReactNode; footer?: ReactNode;
+export function Shell({ current, children, footer, query, wide, list, detail, reading, pane, title, show, raw }: {
+  /** Kept for callers. */
+  days?: Array<{ date: string; label: string }>; current: string; children?: ReactNode; footer?: ReactNode;
   /** Kept for callers; the sidebar counts for itself now. */
   openCount?: number; query?: string; wide?: boolean;
   /** The reading pane: the list (400px) and the detail (the rest). */
@@ -106,8 +102,13 @@ export function Shell({ days, current, children, footer, query, wide, list, deta
   pane?: ReactNode;
   /** The wide pane's header bar. Defaults to the section's name. */
   title?: string;
+  /** Without `reading`: which pane a phone shows, the list or the detail. */
+  show?: "list" | "detail";
+  /** Panes a client component lays out itself (Ask): placed straight after the sidebar. */
+  raw?: ReactNode;
 }) {
-  const side = <Sidebar days={days} current={current} footer={footer} query={query} />;
+  const side = <Sidebar current={current} footer={footer} query={query} />;
+  if (raw !== undefined) return <div className="db-shell rp-shell" data-panes="3">{side}{raw}</div>;
   if (list !== undefined) {
     const panes = (
       <>
@@ -118,7 +119,7 @@ export function Shell({ days, current, children, footer, query, wide, list, deta
     return (
       <div className="db-shell rp-shell" data-panes="3">
         {side}
-        {reading ? <ReadingProvider {...reading}>{panes}</ReadingProvider> : <div className="rp-panes" data-show="list">{panes}</div>}
+        {reading ? <ReadingProvider {...reading}>{panes}</ReadingProvider> : <div className="rp-panes" data-show={show ?? "list"}>{panes}</div>}
       </div>
     );
   }

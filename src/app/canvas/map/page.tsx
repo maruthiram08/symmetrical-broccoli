@@ -16,7 +16,7 @@ export default async function MapPage({ searchParams }: { searchParams: Promise<
   if (!topic) redirect("/canvas");
   const doc = buildMap(topic, await canvasCtx(user));
   return (
-    <CanvasFrame user={user} title={doc.title} sub="Every meeting about this, oldest on the left. Heavy dashed lines are a later meeting that closed something.">
+    <CanvasFrame board="map" title={doc.title} sub="Every meeting about this, oldest on the left. Heavy dashed lines are a later meeting that closed something.">
       {doc.empty ? <p className="cv-empty">{doc.empty}</p> : <Board doc={doc} />}
     </CanvasFrame>
   );

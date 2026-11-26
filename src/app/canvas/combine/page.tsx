@@ -29,7 +29,7 @@ export default async function CombinePage({ searchParams }: { searchParams: Prom
   }
   if (!doc) redirect("/canvas");
   return (
-    <CanvasFrame user={user} title={doc.title} sub={sub}>
+    <CanvasFrame board="combine" title={doc.title} sub={sub}>
       <Board doc={doc} />
     </CanvasFrame>
   );
