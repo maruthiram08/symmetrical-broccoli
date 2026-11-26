@@ -61,6 +61,11 @@ export const ModelOutputSchema = z.object({
         .nullable()
         .optional()
         .transform((v) => v ?? undefined),
+      // Who promised whom. Optional so older outputs still parse; when given, postProcess drops
+      // items between two other people (Maruthi, 2026-11-26: "conversation between two different
+      // people and their tasks are being captured").
+      madeBy: z.enum(["user", "other", "none"]).nullable().optional(),
+      madeTo: z.enum(["user", "other", "room", "none"]).nullable().optional(),
     }),
   ),
   closes: z.array(z.object({ itemId: z.string().min(1), quote: z.string().min(1) })),
@@ -78,9 +83,20 @@ export const OUTPUT_JSON_SCHEMA: Anthropic.Tool.InputSchema = {
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["kind", "text", "person", "quote", "dueAt"],
+        required: ["kind", "madeBy", "madeTo", "text", "person", "quote", "dueAt"],
         properties: {
           kind: { type: "string", enum: ["owe", "waiting", "decision"] },
+          madeBy: {
+            type: "string",
+            enum: ["user", "other", "none"],
+            description: 'Who takes the task on: "user" or "other" (someone else). "none" for decisions.',
+          },
+          madeTo: {
+            type: "string",
+            enum: ["user", "other", "room", "none"],
+            description:
+              'Who the task is promised to or asked by: "user", "other" (a specific person who is not the user), "room" (the group, nobody in particular). "none" for decisions.',
+          },
           text: { type: "string", description: "Verb-first, short, in English." },
           person: {
             type: ["string", "null"],
@@ -263,6 +279,21 @@ export function sameDecision(a: string, b: string): boolean {
   return (2 * shared) / (A.size + B.size) >= 0.8;
 }
 
+/**
+ * Why an owe or waiting item isn't the user's, or null when it is (or the model didn't say).
+ * owe: the user must take it on. waiting: someone else takes it on, for the user or the room;
+ * a promise from one other person to another is theirs, not the user's.
+ */
+export function notTheUsers(item: ModelOutput["newItems"][number]): string | null {
+  const { kind, madeBy, madeTo } = item;
+  if (kind === "decision") return null;
+  if (kind === "owe" && madeBy && madeBy !== "user") return "owe item the user did not take on";
+  if (kind === "owe" && madeTo === "user") return "owe item made to the user";
+  if (kind === "waiting" && madeBy === "user") return "waiting item the user took on";
+  if (kind === "waiting" && madeTo === "other") return "promise between two other people";
+  return null;
+}
+
 export function postProcess(
   output: ModelOutput,
   input: ExtractionInput,
@@ -279,6 +310,11 @@ export function postProcess(
     const verbatim = findVerbatim(transcript, item.quote);
     if (!verbatim) {
       report.droppedItems.push({ item, reason: "quote not found in transcript" });
+      continue;
+    }
+    const notMine = notTheUsers(item);
+    if (notMine) {
+      report.droppedItems.push({ item, reason: notMine });
       continue;
     }
     const person = item.kind === "decision" ? null : item.person;
