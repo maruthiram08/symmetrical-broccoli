@@ -67,6 +67,16 @@ These use your Anthropic key and the same model as extraction (`EXTRACTION_MODEL
 
 A Claude skill for the MCP tools is in `skills/daily-brief/SKILL.md` (meeting prep, weekly review, and how to quote evidence).
 
+## Check names (people directory)
+
+Transcription misspells names ("Mangku", "Mungu", "Munkku") and sometimes guesses a name that is really someone you already know, or someone new. People shows **"N names to check"**: open it (`/people/review`) and say who each name is:
+
+- **Same as …** (keys `1`–`3`, or `p` to pick anyone): the name becomes another spelling of that person. Suggestions are ranked by how the names sound (th/t, ee/i, a/u, doubled letters), spelling, first name and shared meetings.
+- **New person** (`n`, optional email), **Rename** (`r`, fix the spelling), **Not a person** (`i`, transcription noise: its items show no name).
+- `j`/`k` move, `u` undoes the last answer; every answer has its own Undo. Names with no look-alike can be confirmed in one go.
+
+On a person's page, **Merge or split** merges them into someone else, moves selected items to another (or a new) person, and edits name, email and note. Items always keep the name as it was heard; every page, search, the prep card, person hover and the MCP tools show it through the directory. New meetings are read with your confirmed people and their spellings, so names come back as you spell them. People hides anyone with nothing open and nothing in the last 30 days behind **Show everyone**; names not checked yet carry a small "check" mark. No directory (nothing checked yet) means names show exactly as before.
+
 ## The Mac app
 
 `Daily Brief.app` is a small Tauri window and menu bar item around the same server. It starts the server with your Node.js (Homebrew's is fine, 18.18 or later), or reuses one already running on port 4242, and stops the one it started when you quit. Closing the window keeps it in the menu bar, where you also find **Check meetings now**, **Open in browser** and **Launch at login**.

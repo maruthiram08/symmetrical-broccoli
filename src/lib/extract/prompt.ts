@@ -30,7 +30,7 @@ What counts as a commitment
 
 How to write each item
 - text: verb-first, short (ideally under 12 words), in plain English even if the transcript is in Hinglish, Hindi or another mix of languages. Name the concrete thing so the item makes sense on its own a week later, without the transcript: "Move the promo tag next to the price header", not "Make the UI changes"; "Send Ravi the onboarding email copy", not "Send the text". For a decision, state what was decided: "Ship the dividend banner without the tooltip".
-- person: the other person's name as it is said in the transcript (first name is fine). Never the user. null for decisions, or when nobody is named.
+- person: the other person's name as it is said in the transcript (first name is fine). Never the user. null for decisions, or when nobody is named. When the request lists known people and the name is one of them (any of their spellings, or clearly the same name misheard: "Mungu" for "Mangku", "Nithin" for "Nitin"), write the known person's name exactly as listed. A name that is not clearly one of them stays as said: never force a new person onto a known name.
 - quote: copied VERBATIM from the transcript: the same words, in the same language and script, no translation, no paraphrase, no added or fixed words, no ellipses joining separate parts. Pick the shortest span that shows the commitment or decision, at most ${QUOTE_MAX} characters.
 - dueAt: if a deadline is stated or clearly implied, resolve it against the meeting start time given in the request ("in half an hour" at 13:51 local means 14:21 local; "aaj" or "by EOD" means 18:00 local that day; "tomorrow first half" or "tomorrow morning" means 10:00 local the next day; "kal" said about a future task means tomorrow; a weekday means the next such day). Return it as an ISO 8601 UTC timestamp ending in "Z", converting from the user's time zone. Use null when no deadline is given. Do not invent one.
 
@@ -78,10 +78,14 @@ export function buildUserMessage(input: ExtractionInput): string {
           .map((i) => `- id=${i.id} | ${i.kind} | ${i.text}${i.person ? ` | person: ${i.person}` : ""}`)
           .join("\n");
 
+  const known = (input.knownPeople ?? [])
+    .map((p) => (p.aliases.length ? `${p.name} (also ${p.aliases.join(", ")})` : p.name))
+    .join("; ");
+
   return `User: ${user.name}
 Also called: ${aliases.length ? aliases.join(", ") : "(no aliases)"}
 User's time zone: ${user.timeZone}
-
+${known ? `Known people: ${known}\n` : ""}
 Meeting: ${meeting.title}
 Meeting start: ${formatLocal(meeting.startedAt, user.timeZone)} = ${new Date(meeting.startedAt).toISOString()} UTC
 Participants: ${meeting.participants.length ? meeting.participants.join(", ") : "(unknown)"}${

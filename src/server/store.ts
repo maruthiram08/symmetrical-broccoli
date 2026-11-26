@@ -1,5 +1,6 @@
 import type { CalendarCache, Connection, Health, Item, LastLook, Meeting, UpcomingCache, User } from "@/lib/types";
 import { manualItem, type ManualInput } from "@/lib/capture/items";
+import { applyOps, emptyDirectory, resolveItems, resolveMeeting, resolveUpcoming, undoOps, type ChangeCtx, type Directory, type PeopleChange } from "@/lib/directory/directory";
 
 /**
  * Data access used by the jobs. Two implementations:
@@ -44,7 +45,14 @@ export interface Store {
   /** What the app last managed to do. Optional: stores without it show no Health section. */
   getHealth?(): Promise<Health>;
   setHealth?(patch: Partial<Health>): Promise<void>;
+  /**
+   * The people directory (src/lib/directory). Optional: stores without it show names as extracted.
+   * Stores that have it return items, meetings and upcoming attendees already resolved through it.
+   */
+  getPeople?(userId: string): Promise<Directory>;
 }
+
+const MAX_PEOPLE_LOG = 200;
 
 let seq = 0;
 const uid = () => `00000000-0000-4000-8000-${String(++seq).padStart(12, "0")}`;
@@ -66,6 +74,10 @@ export class MemoryStore implements Store {
   /** Calendar cache per user (events, meeting series). */
   calendar = new Map<string, CalendarCache>();
   health: Health = {};
+  /** People directory per user. Items keep the extracted name; reads resolve through this. */
+  people = new Map<string, Directory>();
+  /** Undoable people changes per user, newest last. */
+  peopleLog = new Map<string, PeopleChange[]>();
 
   addUser(u: Partial<User> & { email: string }): User {
     const user: User = { id: this.newId(), name: "", aliases: [], timeZone: "Asia/Kolkata", briefTime: "18:00", createdAt: new Date().toISOString(), ...u };
@@ -87,9 +99,13 @@ export class MemoryStore implements Store {
     return [...this.meetings.values()].filter((m) => m.userId === userId && !m.processedAt).sort((a, b) => a.startedAt.localeCompare(b.startedAt));
   }
   async listMeetingsBetween(userId: string, fromIso: string, toIso: string) {
-    return [...this.meetings.values()].filter((m) => m.userId === userId && m.startedAt >= fromIso && m.startedAt < toIso);
+    const d = this.people.get(userId);
+    return [...this.meetings.values()].filter((m) => m.userId === userId && m.startedAt >= fromIso && m.startedAt < toIso).map((m) => resolveMeeting(m, d));
   }
-  async getMeeting(id: string) { return this.meetings.get(id) ?? null; }
+  async getMeeting(id: string) {
+    const m = this.meetings.get(id);
+    return m ? resolveMeeting(m, this.people.get(m.userId)) : null;
+  }
   async commitExtraction({ meetingId, userId, newItems, closes, at }: Parameters<Store["commitExtraction"]>[0]) {
     for (const n of newItems) {
       const item: Item = { ...n, source: "extracted", id: this.newId(), userId, status: "open", closedByMeetingId: null, closeQuote: null, createdAt: at, closedAt: null };
@@ -116,7 +132,8 @@ export class MemoryStore implements Store {
   async getHealth(): Promise<Health> { return { ...this.health }; }
   async setHealth(patch: Partial<Health>) { this.health = { ...this.health, ...patch }; }
   async listItems(userId: string, filter?: { status?: Item["status"] }) {
-    return [...this.items.values()].filter((i) => i.userId === userId && (!filter?.status || i.status === filter.status));
+    const mine = [...this.items.values()].filter((i) => i.userId === userId && (!filter?.status || i.status === filter.status));
+    return resolveItems(mine, this.people.get(userId));
   }
   async setItemStatus(itemId: string, status: Item["status"], at: string) {
     const it = this.items.get(itemId);
@@ -144,7 +161,44 @@ export class MemoryStore implements Store {
   async getLastLook(userId: string): Promise<LastLook | null> { return this.looks.get(userId) ?? null; }
   async saveLastLook(userId: string, look: LastLook): Promise<void> { this.looks.set(userId, look); }
   async saveUpcoming(userId: string, cache: UpcomingCache) { this.upcoming.set(userId, cache); }
-  async getUpcoming(userId: string) { return this.upcoming.get(userId) ?? null; }
+  async getUpcoming(userId: string) {
+    const c = this.upcoming.get(userId);
+    const d = this.people.get(userId);
+    return c ? (d ? { ...c, meetings: c.meetings.map((m) => resolveUpcoming(m, d)) } : c) : null;
+  }
+  async getPeople(userId: string): Promise<Directory> {
+    const d = this.people.get(userId) ?? emptyDirectory();
+    return { people: d.people.map((p) => ({ ...p, aliases: [...p.aliases] })), moved: { ...d.moved } };
+  }
+  /** Recent people changes, newest first (for Undo). */
+  async listPeopleChanges(userId: string): Promise<PeopleChange[]> {
+    return [...(this.peopleLog.get(userId) ?? [])].reverse();
+  }
+  /**
+   * Make one people change: `plan` gets a copy of the directory and returns the change (or null for
+   * nothing to do); its ops are applied and it is logged for Undo. Throws what `plan` throws.
+   */
+  async changePeople(userId: string, plan: (d: Directory, ctx: ChangeCtx) => PeopleChange | null, at: string): Promise<PeopleChange | null> {
+    const d = await this.getPeople(userId);
+    const change = plan(d, { newId: this.newId, at });
+    if (!change) return null;
+    const cur = this.people.get(userId) ?? emptyDirectory();
+    applyOps(cur, change.ops);
+    this.people.set(userId, cur);
+    this.peopleLog.set(userId, [...(this.peopleLog.get(userId) ?? []), change].slice(-MAX_PEOPLE_LOG));
+    return change;
+  }
+  /** Undo one change, as far as later changes allow. Returns the change, or null when there's nothing to undo. */
+  async undoPeopleChange(userId: string, changeId: string): Promise<PeopleChange | null> {
+    const log = this.peopleLog.get(userId) ?? [];
+    const c = log.find((x) => x.id === changeId);
+    if (!c || c.undone) return null;
+    const cur = this.people.get(userId) ?? emptyDirectory();
+    applyOps(cur, undoOps(cur, c));
+    this.people.set(userId, cur);
+    c.undone = true;
+    return c;
+  }
   async saveCalendar(userId: string, cache: CalendarCache) { this.calendar.set(userId, cache); }
   async getCalendar(userId: string) { return this.calendar.get(userId) ?? null; }
   /** Set (or clear) an open item's due time. Returns false when there is no such item of this user. */
@@ -161,7 +215,7 @@ export class MemoryStore implements Store {
     return true;
   }
   async deleteUser(userId: string) {
-    this.users.delete(userId); this.connections.delete(userId); this.looks.delete(userId); this.upcoming.delete(userId); this.calendar.delete(userId);
+    this.users.delete(userId); this.connections.delete(userId); this.looks.delete(userId); this.upcoming.delete(userId); this.calendar.delete(userId); this.people.delete(userId); this.peopleLog.delete(userId);
     for (const k of this.prepNotified) if (k.startsWith(userId + ":")) this.prepNotified.delete(k);
     for (const [k, m] of this.meetings) if (m.userId === userId) this.meetings.delete(k);
     for (const [k, i] of this.items) if (i.userId === userId) this.items.delete(k);

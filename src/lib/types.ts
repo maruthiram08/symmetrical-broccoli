@@ -107,6 +107,10 @@ export interface Item {
   starred?: boolean;
   /** Local date "YYYY-MM-DD": hidden from lists until that day. */
   snoozedUntil?: string | null;
+  /** Set on read when the people directory resolved `person`: the name as extracted. Never stored. */
+  personRaw?: string | null;
+  /** Set on read: the directory person this item belongs to. Never stored. */
+  personId?: string;
 }
 
 /** "extracted" from a meeting, or "manual": added by you. */
@@ -130,6 +134,8 @@ export interface ExtractionInput {
   user: Pick<User, "name" | "aliases" | "timeZone">;
   meeting: Pick<Meeting, "title" | "startedAt" | "participants"> & Partial<Pick<Meeting, "shared" | "ownerName">>;
   openItems: Array<Pick<Item, "id" | "kind" | "text" | "person">>;
+  /** People the user confirmed, with their other spellings, so names come back as the known spelling. */
+  knownPeople?: Array<{ name: string; aliases: string[] }>;
 }
 
 export interface Brief {
