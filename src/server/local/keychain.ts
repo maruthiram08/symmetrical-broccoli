@@ -8,7 +8,9 @@ import { existsSync } from "node:fs";
 const SECURITY = "/usr/bin/security";
 export const KEYCHAIN_SERVICE = "app.dailybrief";
 /** CHANNEL_* names hold delivery secrets (src/server/channels/secrets.ts), base64url-encoded. */
-export type SecretName = "ANTHROPIC_API_KEY" | "TOKEN_ENCRYPTION_KEY" | `CHANNEL_${string}`;
+export type SecretName = "ANTHROPIC_API_KEY" | "TOKEN_ENCRYPTION_KEY" | `CHANNEL_${string}` | IntegrationSecret;
+/** Integration tokens and the local API / webhook secrets (src/server/integrations/vault.ts). */
+export type IntegrationSecret = "JIRA_API_TOKEN" | "LINEAR_API_KEY" | "NOTION_TOKEN" | "TODOIST_TOKEN" | "LOCAL_API_TOKEN" | "WEBHOOK_SECRET";
 
 /** API keys and base64 keys only. Anything else is refused rather than quoted. */
 const SAFE_VALUE = /^[A-Za-z0-9+/=_.-]{8,512}$/;
@@ -17,7 +19,7 @@ export interface Keychain {
   available(): boolean;
   read(name: SecretName): Promise<string | null>;
   write(name: SecretName, value: string): Promise<boolean>;
-  /** Delete the item. Optional: only channel secrets are ever removed. */
+  /** Delete a secret. Optional: fakes without it can't forget one. */
   remove?(name: SecretName): Promise<boolean>;
 }
 
@@ -52,6 +54,9 @@ export const macKeychain: Keychain = {
     });
   },
 };
+
+/** Whether a value can go in the Keychain (see SAFE_VALUE). */
+export const safeSecret = (value: string) => SAFE_VALUE.test(value);
 
 /** Set by the Mac app when it starts the server: secrets come from the Keychain, not files. */
 export type Env = Record<string, string | undefined>;

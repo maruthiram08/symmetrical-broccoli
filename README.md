@@ -89,6 +89,26 @@ These use your Anthropic key and the same model as extraction (`EXTRACTION_MODEL
 
 A Claude skill for the MCP tools is in `skills/daily-brief/SKILL.md` (meeting prep, weekly review, and how to quote evidence).
 
+## Send to Jira, Linear, Notion or Todoist
+
+Settings › **Send to** connects each service with your own token. All four are off until you add one. Tokens are kept in the macOS Keychain (service `app.dailybrief`); outside the Mac app, in `.daily-brief/secrets.json` (0600). **Save and test** checks the token and switches the service on only when it works.
+
+| Service | You need | Where tickets go |
+| --- | --- | --- |
+| Jira Cloud | site, your Atlassian email, an API token (id.atlassian.com › Security), project key | an issue of the type you pick (Task by default) |
+| Linear | a personal API key (Settings › Security & access), team key | an issue in that team |
+| Notion | an internal integration secret (notion.so/profile/integrations), a database shared with it | a page in that database |
+| Todoist | the API token (Settings › Integrations › Developer), optionally a project id | a task (Inbox by default) |
+
+Then every open item has **Send to …** in its actions (under **…** on a phone), in the **Start this** panel and on its History page. The ticket gets the item as its title, the quote, the meeting and date, the due date and a link back to the item on this Mac, and is assigned to the person when exactly one user there has that name (you, for things you owe). The item then shows **Ticket: LIN-123**. When the ticket is closed there, the item closes here with "Closed in Linear": checked every 30 minutes, only for open items with a ticket.
+
+## Local API and webhooks
+
+- **Local API:** Settings › Local API › **Create a token** turns on a REST API at `http://localhost:4242/api/v1` (`/items`, `/decisions`, `/people`, `/meetings`, `POST /items`, `PATCH /items/:id`). Only localhost, 120 requests a minute, other websites refused. See [docs/API.md](docs/API.md) for curl examples.
+- **Webhooks:** Settings › Webhooks posts signed JSON (HMAC-SHA256) to your URLs when an item is created or closed, or a decision is made. Off by default; failed deliveries are retried for about 7 hours. Verifying the signature is in [docs/API.md](docs/API.md#webhooks).
+
+Non-secret settings for these live in `.daily-brief/integrations.json`.
+
 ## Other recorders: Granola, Zoom, Google Meet, phone calls
 
 Settings > Other recorders reads meetings recorded outside Wispr Flow. Each source is off until you turn it on, everything is read on this Mac, and transcripts are read from their files when a meeting is read, never copied into the app's data.

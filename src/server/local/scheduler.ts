@@ -10,6 +10,7 @@ import { currentWorkspace, homeDataDir, listWorkspaces, withWorkspace, type Work
 import { notifyPrep } from "./prep";
 import { notifyFreshMeetings } from "./fresh";
 import { afterJobs } from "@/server/ai";
+import { startIntegrations } from "@/server/integrations/runtime";
 import { pollRepliesLocal } from "@/server/channels/local";
 import { importAllSources } from "@/server/recorders";
 
@@ -132,6 +133,7 @@ export function startScheduler(): void {
   rotateLog();
   checkLock();
   setTimeout(() => void tick(), 5_000).unref?.();
+  startIntegrations(() => st.owner === true); // tickets closed elsewhere, webhooks (off by default)
 
   function checkLock(): boolean {
     const owner = lock.tryAcquire();

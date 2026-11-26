@@ -141,6 +141,22 @@ export interface Item {
   starred?: boolean;
   /** Local date "YYYY-MM-DD": hidden from lists until that day. */
   snoozedUntil?: string | null;
+  /** A ticket made from this item in Jira, Linear, Notion or Todoist (src/server/integrations). */
+  ticket?: ItemTicket | null;
+  /** Why it closed when neither a meeting nor you closed it: "Closed in Linear". */
+  closeReason?: string | null;
+}
+
+export type TicketProvider = "jira" | "linear" | "notion" | "todoist";
+
+export interface ItemTicket {
+  provider: TicketProvider;
+  /** The provider's own id (Jira issue id, Linear issue id, Notion page id, Todoist task id). */
+  id: string;
+  /** What we show: "LIN-123", "OPS-7", "Notion", "Todoist". */
+  key: string;
+  url: string;
+  createdAt: string;
 }
 
 /** "extracted" from a meeting, or "manual": added by you. */
