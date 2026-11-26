@@ -15,7 +15,7 @@ export interface Store {
   getConnection(userId: string): Promise<Connection | null>;
   saveConnection(c: Connection): Promise<void>;
   /** Insert if (userId, providerMeetingId) is new. Returns the meeting, new or existing. */
-  upsertMeeting(m: Omit<Meeting, "id" | "processedAt">): Promise<{ meeting: Meeting; created: boolean }>;
+  upsertMeeting(m: Omit<Meeting, "id" | "processedAt">): Promise<{ meeting: Meeting; created: boolean; updated?: boolean }>;
   listUnprocessedMeetings(userId: string): Promise<Meeting[]>;
   listMeetingsBetween(userId: string, fromIso: string, toIso: string): Promise<Meeting[]>;
   getMeeting(id: string): Promise<Meeting | null>;
@@ -103,7 +103,11 @@ export class MemoryStore implements Store, RoutineStore {
   async saveConnection(c: Connection) { this.connections.set(c.userId, c); }
   async upsertMeeting(m: Omit<Meeting, "id" | "processedAt">) {
     const existing = [...this.meetings.values()].find((x) => x.userId === m.userId && x.providerMeetingId === m.providerMeetingId && (x.provider ?? "wispr_flow") === (m.provider ?? "wispr_flow"));
-    if (existing) return { meeting: existing, created: false };
+    if (existing) {
+      // Meetings stored before links were kept (25 Nov 2026) have none: fill it in when a poll brings one.
+      if (!existing.link && m.link) { existing.link = m.link; return { meeting: existing, created: false, updated: true }; }
+      return { meeting: existing, created: false };
+    }
     const meeting: Meeting = { ...m, id: this.newId(), processedAt: null };
     this.meetings.set(meeting.id, meeting);
     return { meeting, created: true };

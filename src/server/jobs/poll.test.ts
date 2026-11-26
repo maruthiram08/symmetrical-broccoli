@@ -1,7 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { MemoryStore } from "@/server/store";
 import { connect, FakeWispr, meeting } from "@/server/testing";
-import { pollAll, pollUser } from "./poll";
+import { pollAll, pollUser, resetLinkSweep } from "./poll";
 
 const NOW = new Date("2026-11-25T12:00:00.000Z");
 
@@ -13,6 +13,7 @@ function setup() {
 }
 
 describe("pollUser", () => {
+  beforeEach(() => resetLinkSweep());
   it("is idempotent: the same meeting twice gives one row", async () => {
     const { store, wispr, deps } = setup();
     const u = store.addUser({ email: "a@x.com" });
@@ -77,5 +78,33 @@ describe("pollAll", () => {
     expect(results.find((r) => r.userId === bad.id)).toMatchObject({ ok: false });
     expect(results.find((r) => r.userId === good.id)).toMatchObject({ ok: true, created: 1 });
     expect(store.events).toContainEqual(expect.objectContaining({ userId: bad.id, type: "job_error", payload: expect.objectContaining({ job: "poll" }) }));
+  });
+});
+
+describe("filling in missing Wispr links", () => {
+  beforeEach(() => resetLinkSweep());
+  it("reaches back once per run to the oldest meeting without a link and fills it in", async () => {
+    const { store, wispr, deps } = setup();
+    const u = store.addUser({ email: "a@x.com" });
+    connect(store, u.id, { lastSeenAt: "2026-11-25T08:00:00.000Z" });
+    // Stored before links were kept.
+    await store.upsertMeeting({ userId: u.id, provider: "wispr_flow", providerMeetingId: "old", title: "Old", startedAt: "2026-11-10T09:00:00.000Z", participants: [] });
+    wispr.meetings.set(u.id, [meeting("old", "2026-11-10T09:00:00.000Z", { link: "https://notes.example/old" })]);
+    await pollUser(deps, u.id);
+    expect(wispr.sinceCalls[0].since).toBe("2026-11-10T09:00:00.000Z");
+    expect([...store.meetings.values()].find((m) => m.providerMeetingId === "old")?.link).toBe("https://notes.example/old");
+    expect(store.connections.get(u.id)?.lastSeenAt).toBe("2026-11-25T08:00:00.000Z"); // not moved back
+    await pollUser(deps, u.id);
+    expect(wispr.sinceCalls[1].since).toBe("2026-11-25T08:00:00.000Z"); // only once
+  });
+
+  it("never replaces a link that is already there", async () => {
+    const store = new MemoryStore();
+    const u = store.addUser({ email: "a@x.com" });
+    const base = { userId: u.id, provider: "wispr_flow" as const, providerMeetingId: "m", title: "M", startedAt: "2026-11-10T09:00:00.000Z", participants: [] };
+    await store.upsertMeeting({ ...base, link: "https://a" });
+    const r = await store.upsertMeeting({ ...base, link: "https://b" });
+    expect(r.meeting.link).toBe("https://a");
+    expect(r.updated).toBeFalsy();
   });
 });

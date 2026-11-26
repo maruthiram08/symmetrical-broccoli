@@ -388,7 +388,7 @@ export class FileStore extends MemoryStore implements OAuthClientStore, AppStore
     }, (u) => !!u);
   }
   async saveConnection(c: Connection) { await this.change(() => super.saveConnection(c)); }
-  async upsertMeeting(m: Omit<Meeting, "id" | "processedAt">) { return this.change(() => super.upsertMeeting(m), (r) => r.created); }
+  async upsertMeeting(m: Omit<Meeting, "id" | "processedAt">) { return this.change(() => super.upsertMeeting(m), (r) => r.created || !!r.updated); }
   async commitExtraction(args: Parameters<MemoryStore["commitExtraction"]>[0]) {
     await this.change(async () => {
       const m = this.meetings.get(args.meetingId);
