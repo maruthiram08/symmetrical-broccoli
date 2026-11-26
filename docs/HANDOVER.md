@@ -12,7 +12,7 @@ A local Mac app that reads your Wispr Flow meetings and keeps one list of what y
 | --- | --- |
 | Repo | `maruthiram08/symmetrical-broccoli` |
 | Local app (current) | branch `local`, PR #2 |
-| Hosted version (parked) | branch `sprint-1`, PR #1 (draft): Supabase, Resend email, Vercel cron |
+| Hosted version | on `local` behind `DAILY_BRIEF_MODE=hosted` (setup in `docs/HOSTED.md`); old `sprint-1` / PR #1 is superseded |
 | Checkout on the Mac | `~/Desktop/DE/meetingtranscripts/daily-brief` |
 | Data | `~/Daily Brief/.daily-brief/state.json` (+ `.bak` hourly, `.bak-daily`), daily notes `~/Daily Brief/YYYY-MM-DD.md`, `decisions.md` |
 | Secrets | Keychain service `app.dailybrief` (Anthropic key, token key). Non-secret settings in `.daily-brief/settings.env` |
@@ -43,6 +43,12 @@ See the "Where we are" table in the roadmap doc. In short:
 - **Calendar:** tomorrow at a glance, recurring-meeting pages, due hints, Block 30 min (.ics).
 - **Claude:** an MCP server (`npm run mcp`, connected in Claude Code and Claude Desktop) and a skill at `skills/daily-brief/SKILL.md`.
 - **Reliability:** reconnect and API-key banners, retries, catching up after sleep, backups with auto-restore, a single-writer lock, and a Health section in Settings.
+- **Check names:** `/people/review` to say a heard name is an existing person, a new one, or not a person; merge and split on person pages; "Speaker 5"-style labels hidden automatically.
+- **Notes:** CodeMirror editor on day pages and `/notes`, slash commands (/todo, /owe, /waiting, /decision…), `[[person:]]` links with backlinks, writing assist (⌘J), and `/today` with the brief beside today's note.
+- **More inputs and outputs** (all off until set up in Settings): Granola, Zoom, an inbox folder and phone calls; delivery by email, Slack, Telegram, WhatsApp; Send to Jira, Linear, Notion, Todoist; a local API (`docs/API.md`) and webhooks.
+- **Workspaces and sync:** several notes folders, one-way folder sync (iCloud, Obsidian), git commit/push, editable templates, automatic `[[links]]` (on by default), and an Inbox for undated captures.
+- **Other devices:** CLI (`daily-brief today`), phone web app with pairing (off by default), widget endpoint (`docs/WIDGET.md`), menu-bar count, Windows/Linux code paths and a release workflow (untested builds), and an optional local Ollama model.
+- **Hosted version:** Supabase sign-in, Postgres store with row-level security, Vercel crons, Resend email, teams and Razorpay billing (test mode only). Built and tested locally; never run against real accounts.
 
 ## Costs
 
@@ -58,6 +64,9 @@ The API key is yours (claude-sonnet-5-5).
 
 ## Known gaps
 
+- **Hosted, channels, integrations:** need your own accounts and tokens; none were tried against the real services.
+- **Windows/Linux:** the release workflow and real builds were never run.
+
 - **Calendar:** Wispr Flow returns no calendar events for this account today, so calendar features stay hidden until a calendar is linked in Wispr Flow.
 - **Speaker labels:** a promise can be credited to the wrong person when Wispr's speaker labels are wrong.
 - **Decisions:** the least stable thing the extraction reads.
@@ -66,4 +75,4 @@ The API key is yours (claude-sonnet-5-5).
 
 ## If it scales later
 
-The hosted path (email or Slack delivery, sign-in, cloud database, WhatsApp, other recorders, mobile) is planned in the roadmap doc and started on `sprint-1`. The jobs (`src/server/jobs/*`) work through a `Store` interface, so a cloud store can replace the file store.
+The hosted path is built: follow `docs/HOSTED.md`, run `npm run hosted:check`, then `npm run hosted:migrate`. Local and hosted share the jobs through the `AppStore` interface.
