@@ -127,6 +127,19 @@ curl -s -H "Authorization: Bearer $DAILY_BRIEF_TOKEN" "$DB/meetings?since=2026-1
 
 Answer: `{ "meetings": [{ "id": "…", "title": "Banner sync", "startedAt": "…", "participants": ["Nitin Kumar"], "read": true, "shared": false, "link": "https://notes.wisprflow.ai/…", "items": { "owe": 1, "waiting": 1, "decision": 1 } }], … }`.
 
+## `POST /clips`
+
+Saves Markdown to a note, for the web clipper (`extensions/clipper`) or your own scripts. Body:
+`markdown` (required, up to 200,000 characters), `title`, `url` (http or https), `target` (`inbox`,
+the default, appends to the Inbox note; `new` makes a new note) and `kind` (`selection` or
+`article`). Each clip gets a heading, a source link and the date. Answer `201`:
+`{ "ok": true, "slug": "inbox", "target": "inbox", "url": "http://localhost:4242/notes/inbox" }`.
+
+```bash
+curl -s -X POST -H "Authorization: Bearer $DAILY_BRIEF_TOKEN" -H "Content-Type: application/json" \
+  -d '{"markdown":"Read later: **this**","title":"A post","url":"https://example.com/post"}' "$DB/clips"
+```
+
 ## Webhooks
 
 Settings › Webhooks posts a JSON event to your URLs (up to 5) when:

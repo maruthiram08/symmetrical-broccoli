@@ -142,6 +142,7 @@ describe("OpenAI-style adapter", () => {
 
 describe("Gemini adapter", () => {
   it("sends responseJsonSchema and the system instruction, reads JSON text back", async () => {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- typed so mock.calls has the body
     const generateContent = vi.fn(async (_p: unknown) => ({ text: JSON.stringify(output), candidates: [{ finishReason: "STOP" }], usageMetadata: { promptTokenCount: 500, candidatesTokenCount: 50, thoughtsTokenCount: 20 } }));
     const ai = adapt("gemini", geminiBackend({ models: { generateContent, generateContentStream: vi.fn() } }), "json_schema");
     const r = await extractMeeting(input, { client: ai, model: "gemini:g-model" });
@@ -166,6 +167,7 @@ describe("Gemini adapter", () => {
 
 describe("Mistral and OpenRouter adapters", () => {
   it("Mistral: camelCase json_schema with schemaDefinition, object arguments are fine too", async () => {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- typed so mock.calls has the body
     const complete = vi.fn(async (_r: unknown) => ({ choices: [{ message: { content: JSON.stringify(output) }, finishReason: "stop" }], usage: { promptTokens: 7, completionTokens: 3 } }));
     const ai = adapt("mistral", mistralBackend({ chat: { complete, stream: vi.fn() } }), "json_schema");
     const r = await extractMeeting(input, { client: ai, model: "mistral:mm" });

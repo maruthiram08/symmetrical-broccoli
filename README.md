@@ -113,7 +113,63 @@ ollama pull qwen2.5:14b    # or llama3.1:8b on a smaller machine
 Then pick Local, set the model, and press **Save and test Ollama**. Expect lower quality: local
 models miss more promises, close fewer items and handle Hinglish worse. If Ollama isn't running, a
 meeting waits and is tried again later. Claude stays the default; Ask, nudges and changed-decision
-checks keep using Claude when a key is set.
+checks keep using Claude when a key is set, unless you pick another provider for them in Settings › AI.
+
+## Settings › AI: other providers, per job
+
+Settings › **AI** picks a provider and model for each job: **Extraction** (reading meetings),
+**Ask**, **Writing assist** and **Nudges** (nudge drafts and changed-decision checks). The Anthropic
+API with your existing key stays the default for every job; nothing changes until you pick
+something else. Providers: Anthropic, OpenAI, Google Gemini, OpenRouter, Groq, DeepSeek, Mistral,
+xAI, any OpenAI-compatible server (LM Studio, vLLM, llama.cpp: give its base URL), Ollama, and
+**Your Claude plan (Claude Code)**.
+
+- **Keys** are your own. Paste one in that provider's card: it goes to the macOS Keychain (service
+  `app.dailybrief`, accounts like `OPENAI_API_KEY`), or to `.daily-brief/secrets.json` (0600) outside
+  the Mac app. Only the last four characters are shown again. The Anthropic key stays where it was.
+- **Model** is free text. The suggestions under it are editable: after **Test** they come from the
+  provider's own model list (listing models costs nothing).
+- **Test** checks the key and lists models. A rejected key, or no credit, shows a banner for that
+  provider in Settings › AI (the same wording as the Anthropic errors); it never stops the brief.
+- **Costs** next to each job are estimates for a typical meeting or question, from list prices:
+  Anthropic's built-in table, OpenRouter's published prices, or prices you enter in the
+  **Prices** table. Ollama is free; the Claude plan shows "on your plan".
+- **Extraction** on another provider uses the same prompt and output schema, in tool mode or
+  JSON-schema mode (pick per provider), and the same check that every quote is in the transcript.
+- **Your Claude plan (Claude Code)** runs the `claude` CLI you already signed in to, so it needs no
+  key and has no per-call charge. Uses your own Claude Code sign-in on this Mac. For personal use.
+  It is off by default, only in the local app, and hidden and refused in the hosted version.
+
+**Compare** (Settings › AI › Compare models) reads one past meeting with 2 or 3 provider/model pairs
+side by side. It shows each pair's estimated cost first and runs only after you tick the
+confirmation and press **Run**, once per estimate. Results show which finds each model made, what
+differs, closes, time, quotes dropped by the check, and the cost. Nothing is saved as items.
+
+## Ask: local search and threads
+
+Ask searches on this computer first: items, meeting summaries, transcripts from local recorder
+files (in chunks) and your notes, ranked with BM25. Only the top passages go to the model, and each
+keeps its citation. **Search on this Mac only** (Settings › AI › Search, on by default) means search
+never calls an API. You can add embeddings for better matches: **Ollama** (local, for example
+`ollama pull nomic-embed-text`), or, with the setting off, an OpenAI or OpenAI-compatible embeddings
+model. Vectors are cached in `.daily-brief/ask-embeddings.json` (transcript vectors only in memory).
+Wispr Flow transcripts aren't stored, so they aren't searched.
+
+Conversations are kept per workspace (`.daily-brief/ask-threads.json`). Follow-ups see the earlier
+turns. **Branch from here** on an answer, or **Branch from this quote** on a cited source, starts a
+side thread that sees the conversation up to that point and leaves the main thread as it was. The
+side rail shows the conversations and the thread tree; breadcrumbs, **Rename** and **Delete**
+(which removes that thread's own branches too) sit above the answer.
+
+## Web clipper (Chrome and Firefox)
+
+`extensions/clipper/` is a small browser extension that saves the selection, or the page's readable
+article, as Markdown into your **Inbox** note (`notes/inbox`) or a new note, through the local API.
+It isn't in any store: load it yourself (Chrome: `chrome://extensions` › Developer mode › Load
+unpacked; Firefox: `about:debugging` › Load Temporary Add-on › `manifest.json`). Create a token in
+Settings › Local API, paste it in the clipper's options, and add the extension's origin (shown in
+its options, like `chrome-extension://…`) under allowed origins. Details in
+[extensions/clipper/README.md](extensions/clipper/README.md).
 
 ## Workspaces, templates, links and sync
 
