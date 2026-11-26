@@ -19,8 +19,8 @@ export interface DeliverCtx {
 export function emailLinks(appUrl: string): EmailLinks {
   return {
     base: appUrl,
-    // Done and Wrong open the item, where you're signed in; mail scanners can't change anything with a GET.
-    actionUrl: (itemId) => `${appUrl}/item/${encodeURIComponent(itemId)}`,
+    // "Open" goes to the item, where you're signed in; mail scanners can't change anything with a GET.
+    itemUrl: (itemId) => `${appUrl}/item/${encodeURIComponent(itemId)}`,
     downloadUrl: `${appUrl}/api/account/export`,
     deleteUrl: `${appUrl}/account`,
   };

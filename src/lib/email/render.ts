@@ -1,13 +1,18 @@
 // Renders a BriefModel to an email-safe HTML document and a plain-text version.
+// First written for the hosted build (branch sprint-1); the local app reuses it for email delivery,
+// with "Open" links to the item on this Mac instead of signed Done/Wrong links.
 // Email rules: tables for layout, inline styles only (a small <style> block adds dark mode and phone
 // tweaks for clients that support it), no images, max width 600px. All model text is escaped.
 import type { BriefLine, BriefModel, ClosedLine } from "@/lib/types";
 
 export interface EmailLinks {
   base: string;
-  actionUrl(itemId: string, action: "done" | "wrong"): string;
-  downloadUrl: string;
-  deleteUrl: string;
+  /** Hosted build: one-click Done/Wrong links. */
+  actionUrl?(itemId: string, action: "done" | "wrong"): string;
+  /** Local app: an "Open" link to the item's page instead. */
+  itemUrl?(itemId: string): string;
+  downloadUrl?: string;
+  deleteUrl?: string;
 }
 
 export interface RenderedEmail {
@@ -130,9 +135,11 @@ function quoteLineHtml(quote: string, meetingTitle: string, meetingTime: string)
 
 function actionLinks(itemId: string, links: EmailLinks, actions: Array<"done" | "wrong">): string {
   const linkStyle = `${type(13, 18, 500, C.muted)}text-decoration:underline;`;
+  const actionUrl = links.actionUrl;
+  if (!actionUrl) return links.itemUrl ? `<a class="em-muted" href="${href(links.itemUrl(itemId))}" style="${linkStyle}">Open</a>` : "";
   const parts = actions.map((a) => {
     const label = a === "done" ? "Done" : "Wrong";
-    return `<a class="em-muted" href="${href(links.actionUrl(itemId, a))}" style="${linkStyle}">${label}</a>`;
+    return `<a class="em-muted" href="${href(actionUrl(itemId, a))}" style="${linkStyle}">${label}</a>`;
   });
   return parts.join(`<span class="em-faint" style="${type(13, 18, 400, C.faint)}">&nbsp;&nbsp;&middot;&nbsp;&nbsp;</span>`);
 }
@@ -158,8 +165,7 @@ function itemTable(markHtml: string, textHtml: string, side: string, extraRows: 
 
 function briefItemHtml(line: BriefLine, links: EmailLinks, last: boolean): string {
   const text = itemTextHtml(line, line.kind === "owe");
-  const extras = [quoteLineHtml(line.quote, line.meetingTitle, line.meetingTime)].filter(Boolean);
-  extras.push(actionLinks(line.itemId, links, line.kind === "decision" ? ["wrong"] : ["done", "wrong"]));
+  const extras = [quoteLineHtml(line.quote, line.meetingTitle, line.meetingTime), actionLinks(line.itemId, links, line.kind === "decision" ? ["wrong"] : ["done", "wrong"])].filter(Boolean);
   return row(itemTable(mark(lineMark(line)), text, sideLabel(line), extras), last);
 }
 
@@ -324,12 +330,15 @@ export function renderEmail(model: BriefModel, links: EmailLinks): RenderedEmail
 
   // Footer.
   const footLink = `${type(13, 18, 500, C.muted)}text-decoration:underline;`;
+  const foot = [
+    links.downloadUrl ? `<a class="em-muted" href="${href(links.downloadUrl)}" style="${footLink}">Download my notes</a>` : "",
+    links.deleteUrl ? `<a class="em-muted" href="${href(links.deleteUrl)}" style="${footLink}">Delete my data</a>` : "",
+  ].filter(Boolean);
+  if (!foot.length) foot.push(`<a class="em-muted" href="${href(links.base)}" style="${footLink}">Open Daily brief</a>`);
   rows.push(
     `<tr><td class="em-border" style="padding:40px 0 0 0;">` +
     `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;"><tr><td class="em-border" style="padding:16px 0 0 0;border-top:1px solid ${C.border};">` +
-    `<a class="em-muted" href="${href(links.downloadUrl)}" style="${footLink}">Download my notes</a>` +
-    `<span class="em-faint" style="${type(13, 18, 400, C.faint)}">&nbsp;&nbsp;&middot;&nbsp;&nbsp;</span>` +
-    `<a class="em-muted" href="${href(links.deleteUrl)}" style="${footLink}">Delete my data</a>` +
+    foot.join(`<span class="em-faint" style="${type(13, 18, 400, C.faint)}">&nbsp;&nbsp;&middot;&nbsp;&nbsp;</span>`) +
     `</td></tr><tr><td style="padding:12px 0 0 0;">` +
     `<span style="display:inline-block;width:10px;height:10px;background-color:${C.highlight};border:1px solid ${C.ink};border-radius:3px;font-size:0;line-height:0;vertical-align:middle;">&nbsp;</span>` +
     `<a class="em-faint" href="${href(links.base)}" style="${type(12, 16, 600, C.faint)}text-decoration:none;vertical-align:middle;">&nbsp;&nbsp;Daily brief</a>` +
@@ -362,7 +371,8 @@ function textItem(line: BriefLine, links: EmailLinks, actions: Array<"done" | "w
   const src = source(line.meetingTitle, line.meetingTime);
   if (withQuote && line.quote) out.push(`  "${line.quote}"${src ? ` · ${src}` : ""}`);
   else if (src) out.push(`  ${src}`);
-  for (const a of actions) out.push(`  ${a === "done" ? "Done" : "Wrong"}: ${links.actionUrl(line.itemId, a)}`);
+  if (links.actionUrl) for (const a of actions) out.push(`  ${a === "done" ? "Done" : "Wrong"}: ${links.actionUrl(line.itemId, a)}`);
+  else if (links.itemUrl) out.push(`  Open: ${links.itemUrl(line.itemId)}`);
   return out;
 }
 
@@ -396,6 +406,10 @@ export function renderText(model: BriefModel, links: EmailLinks): string {
     const more = model.stillOpenCount - shown.length;
     if (more > 0) out.push("", `And ${more} more. Your notes have the full list.`);
   }
-  out.push("", "--", `Download my notes: ${links.downloadUrl}`, `Delete my data: ${links.deleteUrl}`, "");
+  out.push("", "--");
+  if (links.downloadUrl) out.push(`Download my notes: ${links.downloadUrl}`);
+  if (links.deleteUrl) out.push(`Delete my data: ${links.deleteUrl}`);
+  if (!links.downloadUrl && !links.deleteUrl) out.push(`Open Daily brief: ${links.base}`);
+  out.push("");
   return out.join("\n");
 }

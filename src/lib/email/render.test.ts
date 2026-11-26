@@ -209,3 +209,18 @@ describe("renderEmail: sections and empty states", () => {
     expect(text).toContain("And 2 more.");
   });
 });
+
+describe("renderEmail: local app links", () => {
+  it("links each item to its page and the footer to the app", async () => {
+    const { localLinks } = await import("./fixture");
+    const out = renderEmail(fixtureBrief, localLinks);
+    expect(out.html).toContain(`href="http://localhost:4242/item/item-banner"`);
+    expect(out.html).toContain(`href="http://localhost:4242/item/item-record-date"`);
+    expect(out.html).not.toContain(".done");
+    expect(visible(out.html)).toContain("Open Daily brief");
+    expect(visible(out.html)).not.toContain("Delete my data");
+    expect(out.text).toContain("  Open: http://localhost:4242/item/item-banner");
+    expect(out.text).toContain("Open Daily brief: http://localhost:4242");
+    expect(out.text).not.toContain("Done:");
+  });
+});

@@ -252,7 +252,8 @@ export class FileStore extends MemoryStore implements OAuthClientStore, AppStore
   private apply(s: State): void {
     this.users = new Map(s.users.map((u) => [u.id, u]));
     this.connections = new Map(s.connections.map((c) => [c.userId, c]));
-    this.meetings = new Map(s.meetings.map((m) => [m.id, m]));
+    // Meetings stored before recorders existed all came from Wispr Flow.
+    this.meetings = new Map(s.meetings.map((m) => [m.id, m.provider ? m : { ...m, provider: "wispr_flow" as const }]));
     this.items = new Map(s.items.map((i) => [i.id, migrateItem(i)]));
     this.briefs = new Map(s.briefs);
     this.oauthClients = new Map(s.oauthClients ?? []);
@@ -382,6 +383,8 @@ export class FileStore extends MemoryStore implements OAuthClientStore, AppStore
   async setItemStatus(itemId: string, status: Item["status"], at: string) { await this.change(() => super.setItemStatus(itemId, status, at)); }
   async addManualItem(userId: string, input: ManualInput, at: string) { return this.change(() => super.addManualItem(userId, input, at)); }
   async updateItem(...a: Parameters<MemoryStore["updateItem"]>) { return this.change(() => super.updateItem(...a), (i) => !!i); }
+  async setItemTicket(...a: Parameters<MemoryStore["setItemTicket"]>) { return this.change(() => super.setItemTicket(...a), (i) => !!i); }
+  async closeItemWithReason(...a: Parameters<MemoryStore["closeItemWithReason"]>) { return this.change(() => super.closeItemWithReason(...a), (ok) => ok); }
   async deleteItem(itemId: string) { return this.change(() => super.deleteItem(itemId), (ok) => ok); }
   async saveBrief(...a: Parameters<MemoryStore["saveBrief"]>) { await this.change(() => super.saveBrief(...a)); }
   async logEvent(e: Parameters<MemoryStore["logEvent"]>[0]) { const at = new Date().toISOString(); await this.change(() => super.logEvent({ ...e, at })); }
@@ -415,6 +418,7 @@ export class FileStore extends MemoryStore implements OAuthClientStore, AppStore
 
   async getHealth() { this.reload(); return super.getHealth(); }
   async setHealth(patch: Partial<Health>) { await this.change(() => super.setHealth(patch)); }
+  async markMeetingDuplicate(meetingId: string, duplicateOf: string, at: string) { await this.change(() => super.markMeetingDuplicate(meetingId, duplicateOf, at)); }
   async recordMeetingFailure(meetingId: string, failure: string, at: string) { await this.change(() => super.recordMeetingFailure(meetingId, failure, at)); }
   async resetMeetingFailures(userId: string) { return this.change(() => super.resetMeetingFailures(userId), (n) => n > 0); }
   /** The "restored from backup" notice, until the user dismisses it. */

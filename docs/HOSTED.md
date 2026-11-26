@@ -82,7 +82,7 @@ npm run hosted:migrate                     # applies supabase/migrations/*.sql, 
 npm run hosted:check -- --connect          # database reachable, all migrations applied
 ```
 
-(Or paste the three files in `supabase/migrations/` into Supabase's **SQL Editor**, in order.
+(Or paste the files in `supabase/migrations/` into Supabase's **SQL Editor**, in order.
 `hosted:migrate` just remembers what ran, in `_daily_brief_migrations`.)
 
 ### 5. Crons
@@ -163,7 +163,7 @@ Every change is in the **Audit log**.
 - `src/server/hosted/jobs.ts`: the cron runs (same `pollUser` / `processPending` / `deliverUser`
   as the Mac), `withUserLock` in `db.ts` (session advisory lock; released if the function dies).
 - `src/middleware.ts`: hosted pages need a session (`db_session`, HMAC-signed, 30 days).
-- `supabase/migrations/`: `0001` core tables, `0002` billing and teams, `0003` row-level security
+- `supabase/migrations/`: `0001` core tables, `0002` billing and teams, `0003` row-level security, `0004` fields the local app gained since (recorder, duplicates, tickets)
   (the server connects as the owner; RLS guards anything reaching the tables through Supabase's
   REST API with the anon key or a user's token: own rows only, secrets never).
 

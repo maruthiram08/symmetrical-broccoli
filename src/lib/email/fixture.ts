@@ -119,3 +119,9 @@ export function fixtureVariant(variant: "full" | "nothing_owed" | "no_meetings" 
       };
   }
 }
+
+/** The local app's links: "Open" goes to the item's page on this Mac. */
+export const localLinks: EmailLinks = {
+  base: "http://localhost:4242",
+  itemUrl: (itemId) => `http://localhost:4242/item/${itemId}`,
+};

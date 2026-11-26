@@ -135,6 +135,19 @@ describe("HostedStore: meetings and extraction", () => {
     expect((await db.query("select count(*)::int as n from marks")).rows[0].n).toBe(0);
   });
 
+  it("hides a meeting recorded twice and keeps tickets on items", async () => {
+    const { meeting: keep } = await root.upsertMeeting({ userId: a, providerMeetingId: "w1", title: "Sync", startedAt: AT, participants: [] });
+    const { meeting: copy } = await root.upsertMeeting({ userId: a, providerMeetingId: "g1", title: "Sync", startedAt: AT, participants: [], provider: "granola" });
+    await root.markMeetingDuplicate(copy.id, keep.id, AT);
+    expect((await root.listMeetingsBetween(a, "0000", "9999")).map((m) => m.id)).toEqual([keep.id]);
+    expect(await root.getMeeting(copy.id)).toMatchObject({ provider: "granola", duplicateOf: keep.id, processedAt: AT });
+    const i = await root.addManualItem(a, { kind: "owe", text: "x", person: null, dueAt: null }, AT);
+    const ticket = { provider: "linear" as const, id: "1", key: "LIN-1", url: "https://linear.app/x", createdAt: AT };
+    expect((await root.setItemTicket(i.id, ticket))?.ticket).toEqual(ticket);
+    expect(await root.closeItemWithReason(i.id, "Closed in Linear", AT)).toBe(true);
+    expect(await root.getItem(i.id)).toMatchObject({ status: "done", closeReason: "Closed in Linear", ticket });
+  });
+
   it("counts meetings read since a date (free tier)", async () => {
     const { meeting: m } = await root.upsertMeeting({ userId: a, providerMeetingId: "p1", title: "One", startedAt: AT, participants: [] });
     await root.commitExtraction({ meetingId: m.id, userId: a, at: AT, closes: [], newItems: [] });

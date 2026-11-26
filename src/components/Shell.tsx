@@ -4,12 +4,14 @@ import { SearchIcon } from "./SearchIcon";
 import { Progress } from "./Progress";
 import { SideNav } from "./SideNav";
 import { HostedLinks } from "./HostedLinks";
+import { InboxLink, WorkspaceSwitch } from "./WorkspaceNav";
 
 /** Sidebar and reading column. `days` are past daily notes, newest first. */
 export function Shell({ days, current, children, footer, openCount, query }: { days: Array<{ date: string; label: string }>; current: string; children: ReactNode; footer?: ReactNode; openCount?: number; query?: string }) {
   return (
     <div className="db-shell">
       <SideNav brand={<span><i aria-hidden="true" />Daily brief</span>}>
+        <WorkspaceSwitch />
         <form className="db-search" action="/search" role="search">
           <SearchIcon />
           <input id="db-search" className="db-search__input" type="search" name="q" defaultValue={query} placeholder="Search" aria-label="Search everything" autoComplete="off" />
@@ -19,8 +21,10 @@ export function Shell({ days, current, children, footer, openCount, query }: { d
         <Link className="db-nav" href="/open" aria-current={current === "open" || current === "item" ? "page" : undefined}>
           All open{openCount ? <span className="db-nav__n">{openCount}</span> : null}
         </Link>
+        <InboxLink current={current} />
         <Link className="db-nav" href="/people" aria-current={current === "people" ? "page" : undefined}>People</Link>
         <Link className="db-nav" href="/series" aria-current={current === "series" ? "page" : undefined}>Recurring</Link>
+        <Link className="db-nav" href="/review" aria-current={current === "review" ? "page" : undefined}>Review</Link>
         <Link className="db-nav" href="/ask" aria-current={current === "ask" ? "page" : undefined}>Ask</Link>
         {days.length ? <div className="db-side__group">Earlier</div> : null}
         {days.map((d) => (

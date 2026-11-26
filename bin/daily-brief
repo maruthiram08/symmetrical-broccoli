@@ -1,0 +1,15 @@
+#!/bin/sh
+# daily-brief: runs src/cli/main.ts with this checkout's tsx. Works through a symlink
+# (scripts/install-cli.sh puts one on your PATH).
+SELF="$0"
+while [ -L "$SELF" ]; do
+  LINK="$(readlink "$SELF")"
+  case "$LINK" in /*) SELF="$LINK" ;; *) SELF="$(dirname "$SELF")/$LINK" ;; esac
+done
+DIR="$(cd "$(dirname "$SELF")/.." && pwd)"
+TSX="$DIR/node_modules/.bin/tsx"
+if [ ! -x "$TSX" ]; then
+  echo "daily-brief: run 'npm install' in $DIR first." >&2
+  exit 1
+fi
+exec "$TSX" --tsconfig "$DIR/tsconfig.json" "$DIR/src/cli/main.ts" "$@"

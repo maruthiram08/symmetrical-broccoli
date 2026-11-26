@@ -3,7 +3,6 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { env } from "@/lib/env";
 import { buildBrief } from "@/lib/brief/build";
-import { renderMarkdown } from "@/lib/brief/markdown";
 import { extractMeeting } from "@/lib/extract/extract";
 import { costInr } from "@/lib/extract/cost";
 import type { User } from "@/lib/types";
@@ -17,30 +16,42 @@ import { withTomorrow } from "./calendar";
 import type { AppStore } from "@/server/app-store";
 import { isHosted } from "@/server/mode";
 import { hostedMe, hostedSaveMe, hostedWisprAuthContext, sessionDeps, sessionStore } from "@/server/hosted/app";
+import { afterPublish, renderDailyFor, renderDecisionsFor, renderWeekFor } from "./outputs";
+import { currentWorkspace, homeDataDir } from "./workspaces";
+import { publishChannels } from "@/server/channels/local";
 
-/** A random key kept next to the data, used to seal the short-lived OAuth state cookie. */
+/**
+ * A random key kept next to the data, used to seal the short-lived OAuth state cookie and the
+ * Wispr Flow tokens. One key for every workspace: it lives in the home folder's .daily-brief/.
+ */
 function ensureLocalKey(): void {
   if (process.env.TOKEN_ENCRYPTION_KEY) return;
-  const dir = dataDir();
+  const dir = homeDataDir();
   mkdirSync(dir, { recursive: true, mode: 0o700 });
   const p = join(dir, "key");
   if (!existsSync(p)) writeFileSync(p, randomBytes(32).toString("base64"), { mode: 0o600 });
   process.env.TOKEN_ENCRYPTION_KEY = readFileSync(p, "utf8").trim();
 }
 
-const g = globalThis as unknown as { __dbStore?: FileStore };
+const g = globalThis as unknown as { __dbStores?: Map<string, FileStore> };
 
-/** The local file store, whatever the mode (the local scheduler and tools). */
+/**
+ * The current workspace's file store (local mode, and the local scheduler and tools): one per workspace per process (Next dev reloads modules;
+ * globalThis survives). Each workspace has its own state.json and Wispr Flow connection.
+ */
 export function getFileStore(): FileStore {
-  if (!g.__dbStore) {
+  const path = join(dataDir(), "state.json");
+  const all = (g.__dbStores ??= new Map());
+  let s = all.get(path);
+  if (!s) {
     ensureLocalKey();
-    g.__dbStore = new FileStore(join(dataDir(), "state.json"));
+    all.set(path, (s = new FileStore(path)));
   }
-  return g.__dbStore;
+  return s;
 }
 
 /**
- * The app's store. Local: one per process (Next dev reloads modules; globalThis survives).
+ * The app's store. Local: the current workspace's file store.
  * Hosted (DAILY_BRIEF_MODE=hosted): the signed-in user's rows in Supabase.
  */
 export function getStore(): AppStore {
@@ -67,18 +78,29 @@ export function wisprAuthContext(userId: string, now: () => Date = () => new Dat
   return { userId, store: s, clients: s, appUrl: appUrl(), serverUrl: env.wisprMcpUrl, now };
 }
 
+/** Jobs for the current workspace. Captured now, so a switch mid-run can't send them elsewhere. */
 export function buildDeps(): Deps {
   if (isHosted()) return sessionDeps();
   const now = () => new Date();
+  const ws = currentWorkspace();
+  const dir = notesDir();
+  const store = getFileStore();
   return {
-    store: getFileStore(),
+    store,
     wispr: (userId) => new McpWisprClient(wisprAuthContext(userId, now)),
     extract: (input) => extractMeeting(input),
     costInr,
     model: env.extractionModel,
     buildBrief: async (store, user, at) => withTomorrow(store, user, at, await buildBrief(store, user, at)),
-    renderMarkdown,
-    publish: (user, model, markdown, week) => publishLocal(notesDir(), user, model, markdown, undefined, week),
+    renderMarkdown: (model) => renderDailyFor(ws, store, model),
+    renderWeek: (user, week) => renderWeekFor(ws, store, user, week),
+    publish: async (user, model, markdown, week) => {
+      const decisions = await renderDecisionsFor(ws, store, model);
+      const r = await publishLocal(dir, user, model, markdown, undefined, week, decisions);
+      await afterPublish(ws, store, user, model, week);
+      await publishChannels(store, user, model, { recap: !!week }); // email, Slack, Telegram, WhatsApp; never throws
+      return r;
+    },
     now,
   };
 }

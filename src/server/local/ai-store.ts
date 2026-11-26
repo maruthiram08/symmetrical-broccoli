@@ -111,7 +111,12 @@ export class AiStore {
   }
 }
 
-const g = globalThis as unknown as { __dbAiStore?: AiStore };
+const g = globalThis as unknown as { __dbAiStores?: Map<string, AiStore> };
+/** One AI store per workspace (each has its own ai.json). */
 export function getAiStore(): AiStore {
-  return (g.__dbAiStore ??= new AiStore(join(dataDir(), "ai.json")));
+  const path = join(dataDir(), "ai.json");
+  const all = (g.__dbAiStores ??= new Map());
+  let s = all.get(path);
+  if (!s) all.set(path, (s = new AiStore(path)));
+  return s;
 }

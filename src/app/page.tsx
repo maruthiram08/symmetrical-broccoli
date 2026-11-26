@@ -18,6 +18,8 @@ import { prepCard } from "@/server/local/prep";
 import { TodayNotes } from "@/components/TodayNotes";
 import { onboardingStep } from "@/server/local/onboarding";
 import { pullState } from "@/server/local/scheduler";
+import { TopThree } from "@/components/TopThree";
+import { priorityContext, rankByPriority, topN } from "@/lib/priority";
 
 const countOf = (l: unknown[]) => (l.length ? String(l.length) : undefined);
 /** "in 22 min", "in 1 h 5 min" */
@@ -43,7 +45,12 @@ export default async function Today({ searchParams }: { searchParams: Promise<{ 
   const { undo, was, meeting } = await searchParams;
   const { startIso, endIso } = localDayBounds(b.date, user.timeZone);
   const todays = await store.listMeetingsBetween(user.id, startIso, endIso);
-  const ribbon = buildRibbon({ date: b.date, timeZone: user.timeZone, meetings: todays, items: await store.listItems(user.id), now });
+  const allItems = await store.listItems(user.id);
+  const ribbon = buildRibbon({ date: b.date, timeZone: user.timeZone, meetings: todays, items: allItems, now });
+  // You owe, most pressing first (src/lib/priority.ts: overdue, due soon, starred, who's waiting, age).
+  const ranked = rankByPriority(b.youOwe, (l) => l.itemId, priorityContext(allItems, await store.listMeetingsBetween(user.id, "0000", "9999"), now));
+  b.youOwe = ranked;
+  const top = topN(ranked);
   const only = meeting ? todays.find((m) => m.id === meeting) ?? null : null;
   const keep = <T extends { meetingId?: string }>(lines: T[]) => (only ? lines.filter((l) => l.meetingId === only.id) : lines);
   const prep = await prepCard(store, user, now);
@@ -85,6 +92,7 @@ export default async function Today({ searchParams }: { searchParams: Promise<{ 
 
       {only ? null : <CloseMoment lines={closedSinceLook} />}
       {only ? null : <ContradictionCards user={user} />}
+      {only ? null : <TopThree lines={top} />}
       <Section title="You owe" count={only ? countOf(keep(b.youOwe)) : owedCount} empty={only ? "Nothing you owe from this meeting." : b.meetingCount ? "Nothing owed. Go home." : "Nothing owed today."}>
         {keep(b.youOwe).map((l) => <BriefItem key={l.itemId} line={l} />)}
       </Section>

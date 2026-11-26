@@ -1,9 +1,12 @@
-import { homedir } from "node:os";
 import { join } from "node:path";
+import { currentWorkspace } from "./workspaces";
 
-/** Your notes folder. Plain Markdown, one file per day, plus decisions.md. */
+/**
+ * Your notes folder: the current workspace's folder. Plain Markdown, one file per day, plus
+ * decisions.md. With one workspace (the default) it is DAILY_BRIEF_DIR, else ~/Daily Brief.
+ */
 export function notesDir(): string {
-  return process.env.DAILY_BRIEF_DIR ?? join(homedir(), "Daily Brief");
+  return currentWorkspace().path;
 }
 /** App data inside the notes folder: state.json and the local key. Hidden, 0700. */
 export function dataDir(): string {

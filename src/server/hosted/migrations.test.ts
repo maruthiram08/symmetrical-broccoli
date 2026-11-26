@@ -9,7 +9,7 @@ const tables = [...sql.matchAll(/create table (\w+)/g)].map((m) => m[1]);
 
 describe("migrations", () => {
   it("are numbered in order", () => {
-    expect(all).toEqual(["0001_schema.sql", "0002_billing_teams.sql", "0003_security.sql"]);
+    expect(all).toEqual(["0001_schema.sql", "0002_billing_teams.sql", "0003_security.sql", "0004_local_parity.sql"]);
   });
 
   it("turn on row-level security for every table", () => {

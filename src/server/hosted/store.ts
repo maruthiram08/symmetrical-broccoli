@@ -24,6 +24,7 @@ const toMeeting = (r: Row): Meeting => ({
   startedAt: iso(r.started_at), participants: (r.participants as string[] | null) ?? [], processedAt: isoOrNull(r.processed_at),
   link: (r.link as string | null) ?? null, shared: !!r.shared || undefined, ownerName: (r.owner_name as string | null) ?? null,
   failedAttempts: Number(r.failed_attempts ?? 0), lastFailedAt: isoOrNull(r.last_failed_at), lastFailure: (r.last_failure as string | null) ?? null,
+  provider: (r.provider as Meeting["provider"]) ?? "wispr_flow", duplicateOf: (r.duplicate_of as string | null) ?? null,
 });
 
 const toItem = (r: Row): Item => ({
@@ -32,12 +33,14 @@ const toItem = (r: Row): Item => ({
   closedByMeetingId: (r.closed_by_meeting_id as string | null) ?? null, closeQuote: (r.close_quote as string | null) ?? null,
   createdAt: iso(r.created_at), closedAt: isoOrNull(r.closed_at), source: (r.source as Item["source"]) ?? "extracted",
   note: (r.note as string | null) ?? null, starred: !!r.starred, snoozedUntil: (r.snoozed_until as string | null) ?? null,
+  ticket: (r.ticket as Item["ticket"]) ?? null, closeReason: (r.close_reason as string | null) ?? null,
 });
 
-const ITEM_COLS = "id, user_id, kind, text, person, quote, meeting_id, due_at, status, closed_by_meeting_id, close_quote, created_at, closed_at, source, note, starred, snoozed_until";
+const ITEM_COLS = "id, user_id, kind, text, person, quote, meeting_id, due_at, status, closed_by_meeting_id, close_quote, created_at, closed_at, source, note, starred, snoozed_until, ticket, close_reason";
 const itemValues = (i: Item) => [
   i.id, i.userId, i.kind, i.text, i.person, i.quote ?? "", i.meetingId, i.dueAt, i.status, i.closedByMeetingId, i.closeQuote,
   i.createdAt, i.closedAt, i.source ?? "extracted", i.note ?? null, !!i.starred, i.snoozedUntil ?? null,
+  i.ticket ? JSON.stringify(i.ticket) : null, i.closeReason ?? null,
 ];
 const placeholders = (n: number, from = 1) => Array.from({ length: n }, (_, k) => `$${k + from}`).join(", ");
 
@@ -192,9 +195,9 @@ export class HostedStore implements AppStore {
     this.guard(m.userId);
     const id = randomUUID();
     await this.db.query(
-      `insert into meetings (id, user_id, provider_meeting_id, title, started_at, participants, link, shared, owner_name)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9) on conflict (user_id, provider_meeting_id) do nothing`,
-      [id, m.userId, m.providerMeetingId, m.title, m.startedAt, m.participants, m.link ?? null, !!m.shared, m.ownerName ?? null],
+      `insert into meetings (id, user_id, provider_meeting_id, title, started_at, participants, link, shared, owner_name, provider)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) on conflict (user_id, provider_meeting_id) do nothing`,
+      [id, m.userId, m.providerMeetingId, m.title, m.startedAt, m.participants, m.link ?? null, !!m.shared, m.ownerName ?? null, m.provider ?? "wispr_flow"],
     );
     // Whichever row won: ours (created) or the one that was there.
     const r = (await this.db.query("select * from meetings where user_id = $1 and provider_meeting_id = $2", [m.userId, m.providerMeetingId])).rows[0];
@@ -209,7 +212,8 @@ export class HostedStore implements AppStore {
   async listMeetingsBetween(userId: string, fromIso: string, toIso: string): Promise<Meeting[]> {
     this.guard(userId);
     const lo = bound(fromIso, "1970-01-01T00:00:00.000Z"), hi = bound(toIso, "2999-12-31T00:00:00.000Z");
-    return (await this.db.query("select * from meetings where user_id = $1 and started_at >= $2 and started_at < $3 order by started_at", [userId, lo, hi])).rows.map(toMeeting);
+    // A meeting recorded twice counts once: the copy (duplicate_of) is left out.
+    return (await this.db.query("select * from meetings where user_id = $1 and started_at >= $2 and started_at < $3 and duplicate_of is null order by started_at", [userId, lo, hi])).rows.map(toMeeting);
   }
 
   async getMeeting(id: string): Promise<Meeting | null> {
@@ -248,7 +252,7 @@ export class HostedStore implements AppStore {
         const left = new Set(applyMarks(fresh, asMarks).map((k) => (k as Mark & { id: string }).id));
         used = [...byId.keys()].filter((id) => !left.has(id));
       }
-      for (const i of fresh) await q.query(`insert into items (${ITEM_COLS}) values (${placeholders(17)})`, itemValues(i));
+      for (const i of fresh) await q.query(`insert into items (${ITEM_COLS}) values (${placeholders(19)})`, itemValues(i));
       for (const c of closes) {
         if (!isUuid(c.itemId)) continue;
         await q.query(
@@ -259,6 +263,13 @@ export class HostedStore implements AppStore {
       for (const id of used) await q.query("delete from marks where id = $1", [id]);
       await q.query("update meetings set processed_at = $2, failed_attempts = 0, last_failed_at = null, last_failure = null where id = $1", [meetingId, at]);
     });
+  }
+
+  /** The same meeting from another recorder: never read, left out of lists. */
+  async markMeetingDuplicate(meetingId: string, duplicateOf: string, at: string): Promise<void> {
+    if (!isUuid(meetingId)) return;
+    const own = this.own(4);
+    await this.db.query(`update meetings set duplicate_of = $2, processed_at = $3 where id = $1 and processed_at is null${own.sql}`, [meetingId, duplicateOf, at, ...own.params]);
   }
 
   async recordMeetingFailure(meetingId: string, failure: string, at: string): Promise<void> {
@@ -315,13 +326,13 @@ export class HostedStore implements AppStore {
   async setItemStatus(itemId: string, status: Item["status"], at: string): Promise<void> {
     if (!isUuid(itemId)) return;
     const own = this.own(4);
-    await this.db.query(`update items set status = $2, closed_at = $3 where id = $1${own.sql}`, [itemId, status, status === "open" ? null : at, ...own.params]);
+    await this.db.query(`update items set status = $2, closed_at = $3, close_reason = null where id = $1${own.sql}`, [itemId, status, status === "open" ? null : at, ...own.params]);
   }
 
   async addManualItem(userId: string, input: ManualInput, at: string): Promise<Item> {
     this.guard(userId);
     const item = manualItem(randomUUID(), userId, input, at);
-    await this.db.query(`insert into items (${ITEM_COLS}) values (${placeholders(17)})`, itemValues(item));
+    await this.db.query(`insert into items (${ITEM_COLS}) values (${placeholders(19)})`, itemValues(item));
     return item;
   }
 
@@ -334,6 +345,20 @@ export class HostedStore implements AppStore {
       [itemId, next.kind, next.text, next.person, next.dueAt, next.note ?? null, !!next.starred, next.snoozedUntil ?? null],
     );
     return next;
+  }
+
+  async setItemTicket(itemId: string, ticket: Item["ticket"] | null): Promise<Item | null> {
+    const cur = await this.getItem(itemId);
+    if (!cur) return null;
+    await this.db.query("update items set ticket = $2 where id = $1", [itemId, ticket ? JSON.stringify(ticket) : null]);
+    return { ...cur, ticket };
+  }
+
+  async closeItemWithReason(itemId: string, reason: string, at: string): Promise<boolean> {
+    if (!isUuid(itemId)) return false;
+    const own = this.own(4);
+    const r = await this.db.query(`update items set status = 'done', closed_at = $2, close_reason = $3 where id = $1 and status = 'open'${own.sql}`, [itemId, at, reason, ...own.params]);
+    return (r.rowCount ?? 0) > 0;
   }
 
   async deleteItem(itemId: string): Promise<boolean> {

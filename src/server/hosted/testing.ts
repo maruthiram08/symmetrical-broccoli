@@ -7,7 +7,7 @@ import { DataType, newDb } from "pg-mem";
 import type { Db } from "./db";
 
 export const MIGRATIONS_DIR = join(process.cwd(), "supabase", "migrations");
-export const TABLE_MIGRATIONS = ["0001_schema.sql", "0002_billing_teams.sql"];
+export const TABLE_MIGRATIONS = ["0001_schema.sql", "0002_billing_teams.sql", "0004_local_parity.sql"];
 
 export function memDb(): { db: Db; locks: Set<string> } {
   const mem = newDb();

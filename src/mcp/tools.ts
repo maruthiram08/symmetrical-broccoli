@@ -19,7 +19,7 @@ export interface ToolContext {
 
 const NOT_SET_UP = "Daily brief isn't set up yet: open http://localhost:4242 and save your name first.";
 
-interface Snapshot {
+export interface Snapshot {
   user: User;
   items: Item[];
   meetings: Meeting[];
@@ -28,7 +28,7 @@ interface Snapshot {
 }
 
 /** Fresh read of everything for the one local user, or null before setup. */
-async function snapshot(ctx: ToolContext): Promise<Snapshot | null> {
+export async function snapshot(ctx: ToolContext): Promise<Snapshot | null> {
   const user = (await ctx.store.listUsers())[0];
   if (!user) return null;
   const [items, meetings] = await Promise.all([
@@ -64,7 +64,7 @@ function dueText(i: Item, s: Snapshot): string | null {
  */
 export function formatItem(i: Item, s: Snapshot): string {
   const tz = s.user.timeZone;
-  const status = i.status === "open" ? "" : i.status === "done" ? " (done)" : " (marked wrong)";
+  const status = i.status === "open" ? "" : i.status === "done" ? " (done)" : i.status === "inbox" ? " (in the Inbox)" : " (marked wrong)";
   const head = [`[${i.id}] ${KIND_LABEL[i.kind]}${status}`, i.person, dueText(i, s)].filter(Boolean).join(" · ");
   const m = s.byId.get(i.meetingId);
   const src = m ? `${m.title}, ${day(m.startedAt, tz)}` : "a meeting";
@@ -113,7 +113,7 @@ export function resolvePerson(name: string, s: Snapshot): { person: PersonGroup 
   return { candidates: hits.map((g) => g.name) };
 }
 
-function noSuchPerson(name: string, candidates: string[], s: Snapshot): string {
+export function noSuchPerson(name: string, candidates: string[], s: Snapshot): string {
   if (candidates.length) return `"${name}" could be: ${candidates.join(", ")}. Ask again with the full name.`;
   const people = listPeople({ items: s.items, meetings: s.meetings, now: s.now, self: selfNames(s.user) }).slice(0, 30).map((p) => p.name);
   return `Nobody called "${name}" in your meetings.${people.length ? ` People: ${people.join(", ")}.` : ""}`;
@@ -239,15 +239,20 @@ export async function today(ctx: ToolContext): Promise<string> {
   );
 }
 
+/** An item by its id or a unique prefix of 6+ characters ("[abc123]" brackets are fine). */
+export function findItem(raw: string, s: Pick<Snapshot, "items">): { item: Item } | { error: string } {
+  const id = raw.trim().replace(/^\[|\]$/g, "");
+  const matches = s.items.filter((i) => i.id === id || (id.length >= 6 && i.id.startsWith(id)));
+  if (matches.length === 1) return { item: matches[0] };
+  return { error: matches.length ? `"${id}" matches ${matches.length} items; use the full id.` : `No item with id "${id}". Ids are shown in [brackets] by the other tools.` };
+}
+
 export async function markItem(ctx: ToolContext, args: { id: string; status: "done" | "wrong" | "open" }): Promise<{ text: string; isError?: boolean }> {
   const s = await snapshot(ctx);
   if (!s) return { text: NOT_SET_UP, isError: true };
-  const id = args.id.trim().replace(/^\[|\]$/g, "");
-  const matches = s.items.filter((i) => i.id === id || (id.length >= 6 && i.id.startsWith(id)));
-  if (matches.length !== 1) {
-    return { text: matches.length ? `"${id}" matches ${matches.length} items; use the full id.` : `No item with id "${id}". Ids are shown in [brackets] by the other tools.`, isError: true };
-  }
-  const item = matches[0];
+  const found = findItem(args.id, s);
+  if ("error" in found) return { text: found.error, isError: true };
+  const item = found.item;
   if (item.status === args.status) return { text: `Already ${args.status}:\n${formatItem(item, s)}` };
   // Same call the Done / Wrong / Undo buttons make (src/app/actions.ts setStatus): FileStore
   // reloads state.json, applies the change and writes it atomically. The web app sees it on its
