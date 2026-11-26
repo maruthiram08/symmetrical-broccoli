@@ -48,6 +48,8 @@ See the "Where we are" table in the roadmap doc. In short:
 - **More inputs and outputs** (all off until set up in Settings): Granola, Zoom, an inbox folder and phone calls; delivery by email, Slack, Telegram, WhatsApp; Send to Jira, Linear, Notion, Todoist; a local API (`docs/API.md`) and webhooks.
 - **Workspaces and sync:** several notes folders, one-way folder sync (iCloud, Obsidian), git commit/push, editable templates, automatic `[[links]]` (on by default), and an Inbox for undated captures.
 - **Other devices:** CLI (`daily-brief today`), phone web app with pairing (off by default), widget endpoint (`docs/WIDGET.md`), menu-bar count, Windows/Linux code paths and a release workflow (untested builds), and an optional local Ollama model.
+- **Notes app parity (26 Nov evening):** open any Markdown folder with a file tree, note search, tabs and split, focus mode, fuller live preview, Mermaid, "last Tuesday" in ⌘K; properties, note types, `/tags`, `/views` (table, Kanban), projects; `/graph`, export to PDF, HTML and Word, password-protected share files, a theme creator; `/canvas`.
+- **AI:** pick a provider per job in Settings › AI (Anthropic default; OpenAI, Gemini, OpenRouter, Groq, DeepSeek, Mistral, xAI, compatible, Ollama, or your own Claude plan, which is local-only and for personal use), Ask searches on the Mac and branches, `/setup/compare`, web clipper in `extensions/clipper/`.
 - **Hosted version:** Supabase sign-in, Postgres store with row-level security, Vercel crons, Resend email, teams and Razorpay billing (test mode only). Built and tested locally; never run against real accounts.
 
 ## Costs
@@ -65,7 +67,8 @@ The API key is yours (claude-sonnet-5-5).
 ## Known gaps
 
 - **Hosted, channels, integrations:** need your own accounts and tokens; none were tried against the real services.
-- **Windows/Linux:** the release workflow and real builds were never run.
+- **Windows/Linux:** dropped for now; the workflow exists but was never run.
+- **Node:** the app now ships its own Node 22, so Homebrew Node is needed only to build.
 
 - **Calendar:** Wispr Flow returns no calendar events for this account today, so calendar features stay hidden until a calendar is linked in Wispr Flow.
 - **Speaker labels:** a promise can be credited to the wrong person when Wispr's speaker labels are wrong.
