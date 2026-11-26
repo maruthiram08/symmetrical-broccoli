@@ -1,12 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Shell } from "@/components/Shell";
+import { VaultNotePage } from "@/components/vault/VaultNotePage";
 import { me } from "@/server/local/app";
 import { listPages, pagesDir } from "@/server/local/pages";
 import { notesDir } from "@/server/local/paths";
 import { newNoteFormAction } from "../notes-actions";
-import { openCountFor, pastDays } from "../_lib/days";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Notes" };
@@ -19,10 +18,10 @@ export default async function Notes() {
   if (!user) redirect("/setup");
   const pages = listPages();
   return (
-    <Shell days={await pastDays(user.id, "")} current="notes" openCount={await openCountFor(user.id)}>
+    <VaultNotePage path={null}>
       <h1 className="db-title">Notes</h1>
       <p className="db-subtitle">
-        Pages of your own, each a Markdown file in <span className="db-mono">{pagesDir(notesDir()).replace(/^\/Users\/[^/]+/, "~")}</span>. <Link className="db-link" href="/note-types">Note types</Link> · <Link className="db-link" href="/tags">Tags</Link>
+        Pages of your own, each a Markdown file in <span className="db-mono">{pagesDir(notesDir()).replace(/^\/Users\/[^/]+/, "~")}</span>. Every other .md file in the folder is under Files. <Link className="db-link" href="/note-types">Note types</Link> · <Link className="db-link" href="/tags">Tags</Link>
       </p>
       <form className="db-notes-new" action={newNoteFormAction}>
         <input className="db-input" name="title" placeholder="New note title" aria-label="New note title" maxLength={120} autoComplete="off" />
@@ -42,6 +41,6 @@ export default async function Notes() {
       ) : (
         <p className="db-section__empty">No notes yet. Give the first one a title above.</p>
       )}
-    </Shell>
+    </VaultNotePage>
   );
 }

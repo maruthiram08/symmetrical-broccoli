@@ -38,7 +38,27 @@ Daily notes (**Your notes** on a day, and **Today's note** in the Today view) an
 - **Keys.** ⌘B bold, ⌘I italic, ⌘E code, ⇧⌘X strike, ⌘Enter checkbox, Tab/⇧Tab indent.
 - **Writing assist.** Select text for **Tidy**, **Shorter**, **Slack message** or **Hinglish → English** (⌘J, then 1-4). Only the selected text goes to Claude, with your key and model (`EXTRACTION_MODEL`); the estimate shows before and the cost after, usually well under ₹0.5. **Replace**, **Insert below** or **Copy**. Off without `ANTHROPIC_API_KEY`, and paused while the key or credit banner is showing.
 
+### Any Markdown folder, tabs and focus mode
+
+A workspace can be any folder of Markdown, such as an Obsidian vault or a git repo of notes: add it under **Settings › Workspaces** and pick the folder. `/notes` then shows **Files**, a tree of its folders and `.md` files.
+
+- **Files.** Click to open, ⌘-click for a new tab, ⌥-click to open on the right. **⋯** on a row: new note or folder, rename, **Move to…**, delete. You can also drag a note or folder onto a folder. Delete moves it into the folder's `.trash` (the same place Obsidian uses), with **Undo**. Hidden folders (`.obsidian`, `.git`, `.trash`), `node_modules`, anything in a `.gitignore` and Obsidian's *Excluded files* are left out.
+- **Any note at its path.** `/notes/Projects/Alpha.md` opens that file; `/notes/q4-plan` still opens `notes/q4-plan.md`. Files are read and written byte for byte, and a file is only written when you change it. A file that isn't valid UTF-8 opens read-only. Renames don't rewrite links in other notes.
+- **Changes from other apps.** An open note picks up edits made elsewhere (Obsidian, git, iCloud) within a few seconds; if you were typing at the same time, their version is kept as `<name>.conflict-<time>.md` next to it. New, renamed and removed files show up in Files the same way.
+- **Search.** ⌘K searches the text of every note in the folder (a small local index, updated as files change) alongside items and meetings.
+- **Dates.** ⌘K also takes a day: *yesterday*, *last tuesday*, *3 days ago*, *next fri*, *25 nov*. It opens that day's page, or offers to create it.
+- **Tabs and split.** ⌘T new tab, ⌘W close tab, ⌘\ split left/right (or join), ⌃Tab / ⌃⇧Tab next and previous tab. The layout is remembered per workspace in this browser. In a plain browser tab, ⌘T, ⌘W and ⌃Tab go to the browser itself; they work in the Mac app, and the **+**, **×** and **Split** buttons work everywhere.
+- **Focus mode.** ⇧⌘F (or **Focus**) dims everything but the paragraph you're writing and keeps the cursor line in the middle of the screen.
+- **Live preview** hides Markdown markup except on the line you're on, and draws images (`![](pic.png)`, `![[Pasted image.png]]`), embedded notes (`![[Other note]]`), `==highlights==`, inline code, footnotes (`[^1]`) and Mermaid diagrams (a ` ```mermaid ` block; Mermaid loads only when a note has one).
+
 **Today view** (`/today`, or *With today's note* on Today) puts the brief and today's note side by side on a wide window.
+
+## Graph, export, protected sharing and themes
+
+- **Graph** (`/graph`): people, meetings, open promises, decisions and notes, joined by who owes whom, which meeting each item came from, who was in a meeting, and `[[links]]` between notes (so backlinks show too). Filter by type, by person (two steps around them), **Open only**, and a time range; the filters stay in the address. Hover (or tap on a phone) for a preview, click (or tap again) to open; drag to move, scroll or pinch to zoom, **Fit** to see everything. **As a list** shows the same nodes as links. Names go through the people directory, and speaker labels ("Speaker 5") are never people. Person, note and meeting pages show **Connections**, the graph one or two steps around them. Meetings have their own page (`/meeting/<id>`): who was there, what came out of it, what it closed.
+- **Export** on a note, an earlier day and Today: **PDF** (opens a print view; choose Save as PDF), **HTML** (one self-contained file: no scripts, remote fonts or images, and `[[links]]` become plain labels), **Word** (.docx). In the Mac app these open in your browser, which saves and prints files reliably.
+- **Share as protected file**: makes one HTML file whose content is encrypted in your browser (AES-256-GCM, key from your password with PBKDF2-SHA256, 310,000 iterations, WebCrypto). Send it however you like; it asks for the password and decrypts in the reader's browser. No server is involved, the password is never stored or sent, and a lost password means the file can't be opened.
+- **Themes** (Settings › Appearance): duplicate the default or start a new theme, set accent, background and ink for light and dark, a font from a safe list, density and corners, with a live preview of both. Save several and switch between them; **Export**/**Copy** a theme as JSON and **Import JSON** to bring one back. Themes only set CSS variables; the default theme writes nothing, so the app looks exactly as designed. Saved in `.daily-brief/themes.json` of your first notes folder.
 
 ## Properties, types, tags, views and projects
 

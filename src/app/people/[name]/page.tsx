@@ -5,6 +5,7 @@ import { BriefItem, ClosedItem, Section } from "@/components/BriefList";
 import { Mark } from "@/components/Mark";
 import { Shell } from "@/components/Shell";
 import { Backlinks } from "@/components/Backlinks";
+import { LocalGraph } from "@/components/graph/LocalGraph";
 import { initials, listPeople, normalizeName, ownsItem, personDetail, personSlug } from "@/lib/people";
 import { getStore, me } from "@/server/local/app";
 import { PersonManage, type ManageTarget } from "@/components/PersonManage";
@@ -159,6 +160,7 @@ export default async function Person({ params, searchParams }: { params: Promise
         undo={undo ? { changeId: undo.id, label: undo.label } : null}
       />
       <Backlinks person={d.person} people={people} />
+      <LocalGraph user={user} center={`person:${d.person.slug}`} />
     </Shell>
   );
 }

@@ -5,6 +5,7 @@ import { me } from "@/server/local/app";
 import { pastDays } from "../../_lib/days";
 import { loadAll, shortDate } from "../../_lib/lines";
 import { hitHref } from "../../_lib/links";
+import { noteSearch } from "../../_lib/vault";
 
 export const dynamic = "force-dynamic";
 
@@ -22,7 +23,7 @@ export async function GET(req: Request) {
       : { type: h.type, id: h.id, kind: "meeting", status: "open", text: h.title, sub: shortDate(h.at, user.timeZone), href: hitHref(h) },
   );
   return NextResponse.json(
-    { people, days: await pastDays(user.id, ""), results },
+    { people, days: await pastDays(user.id, ""), results, ...(await noteSearch(user, q)) },
     { headers: { "Cache-Control": "no-store" } },
   );
 }

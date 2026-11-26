@@ -20,6 +20,7 @@ import { TodayNotes } from "@/components/TodayNotes";
 import { onboardingStep } from "@/server/local/onboarding";
 import { pullState } from "@/server/local/scheduler";
 import { TopThree } from "@/components/TopThree";
+import { ExportMenu } from "@/components/ExportMenu";
 import { priorityContext, rankByPriority, topN } from "@/lib/priority";
 import { ByProject, GroupToggle } from "@/components/structure/ByProject";
 
@@ -79,6 +80,7 @@ export default async function Today({ searchParams }: { searchParams: Promise<{ 
         {" · "}<Link className="db-link" href="/today">With today&apos;s note</Link>
         <GroupToggle on={byProject} any={[...b.youOwe, ...b.waitingOn].some((l) => l.project)} />
       </p>
+      <div className="ex-bar"><ExportMenu type="day" id="today" label="Export brief" /></div>
       <SummaryLinks />
       {only ? null : <TodayNotes user={user} now={now} />}
 

@@ -11,6 +11,8 @@ import type { LinkTarget } from "@/lib/editor/commands";
 import { ASSIST_LABELS, ASSIST_MODES, type AssistMode } from "@/lib/editor/assist";
 import { parseWikiLink } from "@/lib/editor/links";
 import { editorExtensions } from "@/lib/editor/setup";
+import { defaultAsset } from "@/lib/editor/preview";
+import { vaultEmbedAction } from "@/app/vault-actions";
 import { localLine } from "@/lib/editor/slash";
 import { addItemFromNoteAction, assistAction, assistEstimateAction, createNoteAction, linkTargetsAction, setItemDoneFromNoteAction } from "@/app/notes-actions";
 import { clearDraft, readDraft, useAutosave, type Draft, type SaveFn } from "./useAutosave";
@@ -32,6 +34,12 @@ export interface MarkdownEditorProps {
   autoFocus?: boolean;
   /** Note titles, so [[Untyped]] links resolve to notes. */
   notes?: Array<{ slug: string; title: string }>;
+  /** Handle a link inside the app yourself (tabs); return true when handled. */
+  onNavigate?: (href: string, newTab: boolean) => boolean;
+  /** The note's folder, relative to the notes folder, for images like ![](pic.png). */
+  assetBase?: string;
+  /** Shown, never changed (a file that isn't plain UTF-8). */
+  readOnly?: boolean;
 }
 
 type Bubble = { from: number; to: number; text: string; top: number; left: number };
@@ -111,7 +119,9 @@ export function MarkdownEditor(p: MarkdownEditorProps) {
           },
           preview: {
             resolver: () => ({ notes: props.current.notes }),
-            navigate: (href, newTab) => { void auto.current.flush(); if (newTab) window.open(href, "_blank"); else router.push(href); },
+            navigate: (href, newTab) => { void auto.current.flush(); if (props.current.onNavigate?.(href, newTab)) return; if (newTab) window.open(href, "_blank"); else router.push(href); },
+            asset: (src, wiki) => defaultAsset(src, wiki, props.current.assetBase ?? ""),
+            embed: (target) => vaultEmbedAction(target),
             onTask: (line, checked) => {
               const m = line.match(/\[\[item:[^\]]+\]\]/);
               const l = m ? parseWikiLink(m[0]) : null;
@@ -133,7 +143,7 @@ export function MarkdownEditor(p: MarkdownEditorProps) {
               return r?.ok ? r : null;
             },
           }),
-        }),
+        }).concat(p.readOnly ? [EditorState.readOnly.of(true), EditorView.editable.of(false)] : []),
       }),
     });
     view.current = v;

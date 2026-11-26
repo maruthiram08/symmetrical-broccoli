@@ -8,7 +8,8 @@ import { EditorState, type Extension } from "@codemirror/state";
 import { drawSelection, EditorView, keymap, placeholder as placeholderExt, type KeyBinding } from "@codemirror/view";
 import { tags } from "@lezer/highlight";
 import { formattingKeymap, lineCommandKeymap, linkSource, slashSource, type LineCommandHandler, type LinkTarget } from "./commands";
-import { lineSeparatorOf, WikiLink } from "./markdown";
+import { lineSeparatorOf, NoteSyntax } from "./markdown";
+import { focusMode } from "./focus";
 import { livePreview, type PreviewConfig } from "./preview";
 
 const highlight = HighlightStyle.define([
@@ -26,7 +27,7 @@ export const docText = (s: EditorState) => s.sliceDoc();
 export function baseExtensions(doc: string): Extension[] {
   return [
     EditorState.lineSeparator.of(lineSeparatorOf(doc)),
-    markdown({ base: markdownLanguage, extensions: [WikiLink], addKeymap: false, completeHTMLTags: false }),
+    markdown({ base: markdownLanguage, extensions: NoteSyntax, addKeymap: false, completeHTMLTags: false }),
     indentUnit.of("  "),
     EditorState.allowMultipleSelections.of(true),
   ];
@@ -70,6 +71,7 @@ export function editorExtensions(doc: string, o: EditorOptions): Extension[] {
       ...defaultKeymap,
     ]),
     livePreview(o.preview),
+    focusMode(),
     o.extensions ?? [],
     EditorView.updateListener.of((u) => {
       if (u.docChanged) o.onChange?.(docText(u.state));

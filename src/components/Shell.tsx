@@ -28,6 +28,7 @@ export function Shell({ days, current, children, footer, openCount, query, wide 
         <Link className="db-nav" href="/review" aria-current={current === "review" ? "page" : undefined}>Review</Link>
         <Link className="db-nav" href="/ask" aria-current={current === "ask" ? "page" : undefined}>Ask</Link>
         <Link className="db-nav" href="/notes" aria-current={current === "notes" ? "page" : undefined}>Notes</Link>
+        <Link className="db-nav" href="/graph" aria-current={current === "graph" || current === "meeting" ? "page" : undefined}>Graph</Link>
         <StructureNav current={current} />
         {days.length ? <div className="db-side__group">Earlier</div> : null}
         {days.map((d) => (
