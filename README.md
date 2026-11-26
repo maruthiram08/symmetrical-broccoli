@@ -85,6 +85,33 @@ Settings > Other recorders reads meetings recorded outside Wispr Flow. Each sour
 - Granola's cache is not a public format. The shape we expect is written down in `src/server/recorders/granola.ts`; if it changes, Settings says it couldn't read it and nothing else happens.
 - Google Meet straight from Google Drive (without downloading) needs Google sign-in, which isn't built yet.
 
+## The command line
+
+`daily-brief` reads and writes the same `state.json` as the app (the app picks up changes on its next read).
+
+```bash
+npm run cli:install          # links bin/daily-brief into /opt/homebrew/bin or ~/.local/bin (prints the command; never sudo)
+daily-brief today            # Top 3, You owe, Waiting on, Decisions, Closed today
+daily-brief owe tarun        # most pressing first; waiting [person] works the same way
+daily-brief decisions --since 2026-11-01 banner
+daily-brief search "payout" --all
+daily-brief person Nitin
+daily-brief add "send Nitin the deck by Fri"
+daily-brief done 1a2b3c4d    # also: wrong, undo, star, unstar, snooze <id> tomorrow|mon|next week|2026-12-01|off
+daily-brief ask "what did I promise Priya this week?"
+daily-brief open review      # opens the app (or an item: open <id>)
+```
+
+Without installing: `npm run -s cli -- today`. Reads take `--json`; `--limit N` and `--no-color` work everywhere. Colours only show on a terminal (and never with `NO_COLOR`). Ids are the 8 characters at the end of each item's second line. `ask` is the only command that calls the Anthropic API: it uses `ANTHROPIC_API_KEY`, or the key you saved in Settings (Keychain), and costs about the same as Ask in the app.
+
+## Priority and Top 3
+
+You owe on Today and in `daily-brief owe` is ordered by a local score: overdue (more the later it is), due within a day or three, starred, how many other things the same person is waiting on from you, and how long it has been open. The three highest show as "Top 3 today" above You owe; hover one to see why. No API calls.
+
+## Monthly review and Year in review
+
+Review in the sidebar opens `/review/month/YYYY-MM` (and `/review/year/YYYY`): promises made, kept, late and closed by meetings, the people you promised most, decisions by week or month, the longest-open and fastest-closed items. Download HTML saves the review as one static file to share. Quotes from meetings are left out unless you press Include quotes first.
+
 ## The Mac app
 
 `Daily Brief.app` is a small Tauri window and menu bar item around the same server. It starts the server with your Node.js (Homebrew's is fine, 18.18 or later), or reuses one already running on port 4242, and stops the one it started when you quit. Closing the window keeps it in the menu bar, where you also find **Check meetings now**, **Open in browser** and **Launch at login**.

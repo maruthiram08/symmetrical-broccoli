@@ -20,6 +20,7 @@ export function Shell({ days, current, children, footer, openCount, query }: { d
         </Link>
         <Link className="db-nav" href="/people" aria-current={current === "people" ? "page" : undefined}>People</Link>
         <Link className="db-nav" href="/series" aria-current={current === "series" ? "page" : undefined}>Recurring</Link>
+        <Link className="db-nav" href="/review" aria-current={current === "review" ? "page" : undefined}>Review</Link>
         <Link className="db-nav" href="/ask" aria-current={current === "ask" ? "page" : undefined}>Ask</Link>
         {days.length ? <div className="db-side__group">Earlier</div> : null}
         {days.map((d) => (
