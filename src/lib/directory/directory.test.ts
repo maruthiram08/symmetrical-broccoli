@@ -346,3 +346,21 @@ describe("speaker labels", () => {
     expect(groupNames(["Speaker 1", "Nitin", "Guest"]).map((g) => g.name)).toEqual(["Nitin"]);
   });
 });
+
+describe("note links", () => {
+  it("[[person:alias]] backlinks reach the confirmed person only; speaker labels reach nobody", async () => {
+    const { linkIsPerson } = await import("./match");
+    const d = emptyDirectory();
+    apply(d, confirmNew(d, { name: "Mangku", spellings: ["Mungu", "Manku"] }, ctx()));
+    apply(d, confirmNew(d, { name: "Nitin Kumar", spellings: ["Nitin Kumar"] }, ctx()));
+    const [mangku, nitinKumar, nitinK] = groupNames(["Nitin K"], [], d.people).sort((a, b) => (a.personId ?? "z").localeCompare(b.personId ?? "z"));
+    expect(mangku.name).toBe("Mangku");
+    expect(linkIsPerson(mangku, "Mungu", d.people)).toBe(true);
+    expect(linkIsPerson(mangku, "manku", d.people)).toBe(true);
+    // a confirmed full name isn't claimed by an unchecked look-alike group
+    expect(nitinK.name).toBe("Nitin K");
+    expect(linkIsPerson(nitinK, "Nitin Kumar", d.people)).toBe(false);
+    expect(linkIsPerson(nitinKumar, "Nitin Kumar", d.people)).toBe(true);
+    expect(linkIsPerson(nitinK, "Speaker 5", d.people)).toBe(false);
+  });
+});

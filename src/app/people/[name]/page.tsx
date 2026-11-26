@@ -129,7 +129,7 @@ export default async function Person({ params, searchParams }: { params: Promise
         targets={targets}
         undo={undo ? { changeId: undo.id, label: undo.label } : null}
       />
-      <Backlinks person={d.person} />
+      <Backlinks person={d.person} people={people} />
     </Shell>
   );
 }

@@ -63,12 +63,15 @@ const short = (iso: string, tz: string) => new Date(iso).toLocaleDateString("en-
 export async function linkTargetsAction(): Promise<LinkTarget[]> {
   const user = await me();
   if (!user) return [];
-  const { items, meetings } = await loadAll(user);
+  const { items, meetings, people } = await loadAll(user);
   const out: LinkTarget[] = [];
-  // People with a page: everyone named on an item, one entry per person however it was spelled.
-  for (const g of groupNames(items.filter((i) => i.status !== "wrong").map((i) => i.person ?? "").filter(Boolean), [user.name, ...user.aliases])) {
-    const other = g.spellings.find((s) => s.toLowerCase() !== g.name.toLowerCase() && s.length > g.name.length);
-    out.push({ kind: "person", target: g.name, label: g.name, detail: other ? `Person · ${other}` : "Person" });
+  // People with a page: everyone named on an item (names through the people directory, so confirmed
+  // spellings, no speaker labels), plus confirmed people. Other spellings go in the detail so typing one finds them.
+  for (const g of groupNames(items.filter((i) => i.status !== "wrong").map((i) => i.person ?? "").filter(Boolean), [user.name, ...user.aliases], people)) {
+    const others = g.personId
+      ? g.spellings.filter((s) => s.toLowerCase() !== g.name.toLowerCase())
+      : g.spellings.filter((s) => s.toLowerCase() !== g.name.toLowerCase() && s.length > g.name.length).slice(0, 1);
+    out.push({ kind: "person", target: g.name, label: g.name, detail: others.length ? `Person · ${others.slice(0, 4).join(", ")}` : "Person" });
   }
   for (const n of listPages()) out.push({ kind: "note", target: n.slug, label: n.title, detail: "Note" });
   for (const m of [...meetings].sort((a, b) => b.startedAt.localeCompare(a.startedAt)).slice(0, 80)) {

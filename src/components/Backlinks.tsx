@@ -1,16 +1,18 @@
 import Link from "next/link";
 import { dateLabel } from "@/lib/brief/time";
 import { backlinks, linksToNote, linksToPerson, type WikiLink } from "@/lib/editor/links";
-import { belongsTo, type PersonGroup } from "@/lib/people";
+import type { PersonGroup } from "@/lib/people";
+import type { Person } from "@/lib/directory/directory";
+import { linkIsPerson } from "@/lib/directory/match";
 import { linkSources, listPages } from "@/server/local/pages";
 
 /** "Linked from": notes and daily notes that [[link]] to this person or note, with the lines. */
-export function Backlinks({ person, note, day }: { person?: PersonGroup; note?: { slug: string; title: string }; day?: string }) {
+export function Backlinks({ person, note, day, people }: { person?: PersonGroup; note?: { slug: string; title: string }; day?: string; people?: Person[] }) {
   let list: ReturnType<typeof backlinks> = [];
   try {
     const sources = linkSources();
     const resolver = { notes: listPages().map((p) => ({ slug: p.slug, title: p.title })) };
-    const match = (l: WikiLink) => (person ? linksToPerson(l, (name) => belongsTo(person, name), resolver) : note ? linksToNote(l, note) : day ? l.kind === "day" && l.target === day : false);
+    const match = (l: WikiLink) => (person ? linksToPerson(l, (name) => linkIsPerson(person, name, people), resolver) : note ? linksToNote(l, note) : day ? l.kind === "day" && l.target === day : false);
     list = backlinks(sources, match, note ? { type: "note", id: note.slug } : day ? { type: "day", id: day } : undefined);
   } catch {
     list = [];
