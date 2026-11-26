@@ -27,6 +27,19 @@ When something needs you, every page says so with a button: Wispr Flow signed yo
 - On any list: **j**/**k** move, **s** star (pins it to the top), **z** snooze until a day, **d** done, **w** wrong, **e** edit your own, **F** follow up (Start this).
 - On an earlier day's page, **Your notes** saves into that day's `.md` between `<!-- daily-brief:your-notes -->` markers, and stays when the brief is written again (see Notes below).
 
+## Routines
+
+Things you do regularly live under **Routines** in the sidebar (`/routines`), right under Recurring (which is recurring *meetings*).
+
+- **Add one** with New routine: what, how often (every day, weekdays, weekly on chosen days, monthly on day N, or every N days), an optional time and who it's for. Day 29–31 means the month's last day in shorter months. Or type it in quick add (`c`): "every Monday send sprint report to Tarun", "weekdays at 10 post the standup notes", "har Friday update bhejna".
+- **Today** shows a Routines section with what's due today, plus anything missed since you last did it (up to a week back), marked "overdue since Mon" in red. Tick it to mark that day done, Skip to let it go, or Tomorrow to snooze it. Only that day changes: the next one comes back on schedule. Routines never count as open items.
+- **The page** lists each routine in plain words ("Every Friday", "Weekdays at 10:00", "Monthly on the 1st") with when it's next due, when you last did it and a quiet "4 in a row". Edit, archive or delete from the row.
+- **The brief** (daily note, notification, Slack, Telegram, WhatsApp) adds "Routines due today" when any are.
+- **Timed routines** show a Mac notification at their time on the days they're due, once, unless you've already ticked, skipped or snoozed that day.
+- **From meetings:** when you promise something on a schedule in a meeting ("every Monday I'll send the report", "weekly I'll share the metrics", "har Friday main update bhejunga"), it doesn't become a one-off item. It waits on `/routines` under "Suggested from your meetings", with the quote and a link to the meeting: Add, Edit first, or Dismiss. Nothing becomes a routine until you tap.
+
+Routines are local-only for now; the hosted version doesn't have them yet.
+
 ## Notes
 
 Daily notes (**Your notes** on a day, and **Today's note** in the Today view) and free-form pages under **Notes** use one editor. It edits the Markdown itself with a live preview: markup hides except on the line you're on, so files stay byte-for-byte what you typed (line endings included) and open cleanly in any other app. Pages are `~/Daily Brief/notes/<name>.md`, newest first on `/notes`.

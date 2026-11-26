@@ -66,6 +66,12 @@ export const ModelOutputSchema = z.object({
       // people and their tasks are being captured").
       madeBy: z.enum(["user", "other", "none"]).nullable().optional(),
       madeTo: z.enum(["user", "other", "room", "none"]).nullable().optional(),
+      // Owe items the user will do regularly ("every Monday I'll send..."): cadence words. Optional.
+      recurrence: z
+        .string()
+        .nullable()
+        .optional()
+        .transform((v) => (v == null || v.trim() === "" ? undefined : v.trim())),
     }),
   ),
   closes: z.array(z.object({ itemId: z.string().min(1), quote: z.string().min(1) })),
@@ -115,6 +121,11 @@ export const OUTPUT_JSON_SCHEMA: Anthropic.Tool.InputSchema = {
             enum: ["label", "content"],
             description:
               'Owe and waiting items: "label" when the speaker labels alone show who promised, "content" when transcript cues (who is addressed, I/you, replies, roles) decided it. Leave out for decisions.',
+          },
+          recurrence: {
+            type: "string",
+            description:
+              'Owe items only, when the user explicitly says they will do it regularly: the cadence in plain English ("every Monday", "weekly", "weekdays", "daily", "monthly on the 1st", "every 2 weeks"), with a time if said ("every Friday at 10:00"). Leave out for one-off promises.',
           },
         },
       },
@@ -341,6 +352,7 @@ export function postProcess(
       quote: truncateQuote(verbatim),
       dueAt: toIsoOrNull(item.dueAt),
       ...(item.kind !== "decision" && item.attribution ? { attribution: item.attribution } : {}),
+      ...(item.kind === "owe" && item.recurrence ? { recurrence: item.recurrence } : {}),
     });
   }
 

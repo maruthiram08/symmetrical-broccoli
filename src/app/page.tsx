@@ -23,6 +23,7 @@ import { TopThree } from "@/components/TopThree";
 import { ExportMenu } from "@/components/ExportMenu";
 import { priorityContext, rankByPriority, topN } from "@/lib/priority";
 import { ByProject, GroupToggle } from "@/components/structure/ByProject";
+import { TodayRoutines } from "@/components/routines/TodayRoutines";
 
 const countOf = (l: unknown[]) => (l.length ? String(l.length) : undefined);
 /** "in 22 min", "in 1 h 5 min" */
@@ -103,6 +104,7 @@ export default async function Today({ searchParams }: { searchParams: Promise<{ 
       <Section title="You owe" count={only ? countOf(keep(b.youOwe)) : owedCount} empty={only ? "Nothing you owe from this meeting." : b.meetingCount ? "Nothing owed. Go home." : "Nothing owed today."}>
         {byProject ? <ByProject lines={keep(b.youOwe)} /> : keep(b.youOwe).map((l) => <BriefItem key={l.itemId} line={l} />)}
       </Section>
+      {only ? null : <TodayRoutines lines={b.routines ?? []} today={b.date} />}
       <Section title="Waiting on" count={countOf(keep(b.waitingOn))} empty={only ? "Nobody owes you anything from this meeting." : "Nobody owes you anything today."}>
         {byProject ? <ByProject lines={keep(b.waitingOn)} /> : keep(b.waitingOn).map((l) => <BriefItem key={l.itemId} line={l} />)}
       </Section>

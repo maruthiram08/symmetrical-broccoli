@@ -1,6 +1,7 @@
 import type { BriefLine, BriefModel } from "@/lib/types";
 import { renderTomorrowSection } from "@/lib/calendar/glance";
 import { renderWrapSection } from "./wrap";
+import { renderRoutinesSection } from "@/lib/routines/brief";
 
 /** The daily note saved as YYYY-MM-DD.md. Plain Markdown that any editor (and the v1.1 desktop app) can open. */
 export function renderMarkdown(m: BriefModel): string {
@@ -13,6 +14,7 @@ export function renderMarkdown(m: BriefModel): string {
   section(out, "You owe", m.youOwe);
   section(out, "Waiting on", m.waitingOn);
   section(out, "Decisions", m.decisions);
+  out.push(...renderRoutinesSection(m.routines));
 
   if (m.closedToday.length) {
     out.push("## Closed today", "");

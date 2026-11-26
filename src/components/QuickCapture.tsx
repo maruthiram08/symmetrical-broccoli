@@ -9,6 +9,9 @@ import { addItemAction, captureContextAction, deleteItemAction, updateItemAction
 import { parseCapture } from "@/lib/capture/parse";
 import { localDate } from "@/lib/brief/time";
 import { captureTokens } from "@/lib/structure/tag-core";
+import { addRoutineAction } from "@/app/routine-actions";
+import { parseRoutineCapture } from "@/lib/routines/parse";
+import { cadenceLabel } from "@/lib/routines/words";
 
 /** Open quick capture from anywhere: `window.dispatchEvent(new CustomEvent(OPEN_CAPTURE, { detail }))`. */
 export const OPEN_CAPTURE = "db:capture";
@@ -43,7 +46,7 @@ export function QuickCapture() {
   const [more, setMore] = useState(false);
   const [ctx, setCtx] = useState<Ctx | null>(null);
   // Fields you set by hand win over what the line says.
-  const [manual, setManual] = useState<Partial<{ kind: "owe" | "waiting"; person: string; dueDate: string }>>({});
+  const [manual, setManual] = useState<Partial<{ kind: "owe" | "waiting" | "routine"; person: string; dueDate: string }>>({});
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
@@ -107,8 +110,15 @@ export function QuickCapture() {
     timeZone: ctx?.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
   }), [tokens.rest, ctx]);
 
+  // "every Monday send the report to Tarun" is a routine (src/lib/routines), not a one-off item.
+  const routine = useMemo(() => (editId ? null : parseRoutineCapture(tokens.rest, {
+    people: ctx?.people ?? [], self: ctx?.self ?? [], now: new Date(),
+    timeZone: ctx?.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
+  })), [tokens.rest, ctx, editId]);
+  const asRoutine = !editId && (manual.kind ? manual.kind === "routine" : !!routine);
+
   // When editing, the text is saved as typed; when adding, the line is read.
-  const kind = manual.kind ?? parsed.kind;
+  const kind = manual.kind === "routine" ? parsed.kind : manual.kind ?? parsed.kind;
   const person = manual.person !== undefined ? manual.person : parsed.person ?? "";
   const dueDate = manual.dueDate !== undefined ? manual.dueDate : parsed.dueDate ?? "";
   const text = editId ? tokens.rest : parsed.text;
@@ -116,6 +126,16 @@ export function QuickCapture() {
 
   const save = () => {
     if (!line.trim() || pending) return;
+    if (asRoutine) {
+      if (!routine) { setError("Say how often, like “every Monday” or “weekdays at 10”."); return; }
+      start(async () => {
+        const r = await addRoutineAction({ title: routine.title, cadence: routine.cadence, time: routine.time, person: person.trim() || routine.person });
+        if (!r.ok) { setError(r.error); return; }
+        close();
+        router.refresh();
+      });
+      return;
+    }
     const input = {
       kind, text, person: person.trim() || null, dueDate: dueDate || null, note: note.trim() || null,
       ...(tokens.tags.length ? { tags: tokens.tags } : {}), ...(tokens.project ? { project: tokens.project } : {}),
@@ -166,10 +186,17 @@ export function QuickCapture() {
 
         <div className="db-capture__preview" id={`${ids}-preview`} aria-live="polite">
           <div className="db-capture__seg" role="group" aria-label="Kind">
-            <button type="button" aria-pressed={kind === "owe"} onClick={() => set("kind", "owe")}>You owe</button>
-            <button type="button" aria-pressed={kind === "waiting"} onClick={() => set("kind", "waiting")}>Waiting on</button>
+            <button type="button" aria-pressed={!asRoutine && kind === "owe"} onClick={() => set("kind", "owe")}>You owe</button>
+            <button type="button" aria-pressed={!asRoutine && kind === "waiting"} onClick={() => set("kind", "waiting")}>Waiting on</button>
+            {editId ? null : <button type="button" aria-pressed={asRoutine} onClick={() => set("kind", "routine")}>Routine</button>}
           </div>
-          {line.trim() ? (
+          {line.trim() && asRoutine ? (
+            <span className="db-capture__read">
+              <span className="db-capture__text">{routine?.title ?? tokens.rest}</span>
+              {routine ? <span className="db-capture__chip rt-chip"><span className="db-mark rt-mark" aria-hidden="true" />{cadenceLabel(routine.cadence, routine.time)}</span> : <span className="db-capture__chip">Say how often</span>}
+              {person || routine?.person ? <span className="db-capture__chip">{person || routine?.person}</span> : null}
+            </span>
+          ) : line.trim() ? (
             <span className="db-capture__read">
               {editId ? null : <span className="db-capture__text">{text}</span>}
               {person ? <span className="db-capture__chip">{person}</span> : null}
@@ -179,7 +206,7 @@ export function QuickCapture() {
               {!editId && !person.trim() && !dueDate ? <span className="db-capture__chip" title="No person or date: it waits in your Inbox">To Inbox</span> : null}
             </span>
           ) : (
-            <span className="db-capture__hint">Names, “today”, “tomorrow”, a weekday or a date are picked up as you type. #tag and +project too.</span>
+            <span className="db-capture__hint">Names, “today”, “tomorrow”, a weekday or a date are picked up as you type. #tag and +project too. “every Monday …” makes a routine.</span>
           )}
         </div>
 

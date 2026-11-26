@@ -9,6 +9,7 @@ import { errLine, rotateLog } from "./log";
 import { currentWorkspace, homeDataDir, listWorkspaces, withWorkspace, type Workspace } from "./workspaces";
 import { notifyPrep } from "./prep";
 import { notifyFreshMeetings } from "./fresh";
+import { notifyRoutines } from "./routine-notify";
 import { afterJobs } from "@/server/ai";
 import { startIntegrations } from "@/server/integrations/runtime";
 import { pollRepliesLocal } from "@/server/channels/local";
@@ -170,6 +171,7 @@ export function startScheduler(): void {
         await runExclusive(() => runTick(buildDeps(), tickState, {
           afterDeliver: async () => {
             await notifyPrep(getStore(), new Date());
+            await notifyRoutines(getStore(), new Date()); // timed routines, once per occurrence
             await afterJobs(); // contradiction check on new decisions; nudges once a day after the brief
             await pollRepliesLocal(); // Telegram "/done 3" replies, when turned on
           },

@@ -25,6 +25,7 @@ export function Shell({ days, current, children, footer, openCount, query, wide 
         <InboxLink current={current} />
         <Link className="db-nav" href="/people" aria-current={current === "people" ? "page" : undefined}>People</Link>
         <Link className="db-nav" href="/series" aria-current={current === "series" ? "page" : undefined}>Recurring</Link>
+        <Link className="db-nav" href="/routines" aria-current={current === "routines" ? "page" : undefined}>Routines</Link>
         <Link className="db-nav" href="/review" aria-current={current === "review" ? "page" : undefined}>Review</Link>
         <Link className="db-nav" href="/ask" aria-current={current === "ask" ? "page" : undefined}>Ask</Link>
         <Link className="db-nav" href="/notes" aria-current={current === "notes" ? "page" : undefined}>Notes</Link>

@@ -3,6 +3,7 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } fr
 import { join } from "node:path";
 import { renderDecisionsAppend } from "@/lib/brief/markdown";
 import { carryNotes } from "@/lib/capture/notes";
+import { routinesCount } from "@/lib/routines/brief";
 import type { BriefModel, User } from "@/lib/types";
 
 /** The weekly recap handed over on Fridays: written as week-YYYY-Www.md. */
@@ -43,10 +44,12 @@ export async function publishLocal(
 }
 
 export function notificationBody(m: BriefModel): string {
-  if (m.empty === "no_meetings") return "No meetings today.";
-  if (m.empty === "nothing_owed") return "Nothing owed. Go home.";
+  const r = routinesCount(m.routines);
+  const plus = (s: string) => (r ? `${s} · ${r}` : s);
+  if (m.empty === "no_meetings") return plus("No meetings today.");
+  if (m.empty === "nothing_owed") return plus("Nothing owed. Go home.");
   const first = m.youOwe[0];
-  return first ? `${first.text}${first.lateLabel ? ` (${first.lateLabel})` : ""}` : "Open Daily brief to see your day.";
+  return first ? plus(`${first.text}${first.lateLabel ? ` (${first.lateLabel})` : ""}`) : r ? `${r[0].toUpperCase()}${r.slice(1)}.` : "Open Daily brief to see your day.";
 }
 
 export type Notify = (title: string, body: string) => void;

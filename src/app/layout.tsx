@@ -27,7 +27,10 @@ import "./ai.css";
 import "./graph.css";
 import "./canvas.css";
 import "./structure.css";
+import "./routines.css";
 import { PwaRegister } from "@/components/PwaRegister";
+import { cookies } from "next/headers";
+import { MODE_COOKIE, parseMode, themeAttr } from "@/lib/theme/mode";
 
 const sans = Instrument_Sans({ subsets: ["latin"], weight: ["400", "500", "600"], variable: "--font-instrument-sans", display: "swap" });
 const mono = Geist_Mono({ subsets: ["latin"], weight: ["400", "500"], variable: "--font-geist-mono", display: "swap" });
@@ -46,9 +49,11 @@ export const viewport: Viewport = {
   ],
 };
 
-export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+  // Settings › Appearance › Mode: Light or Dark overrides the system setting.
+  const mode = themeAttr(parseMode((await cookies()).get(MODE_COOKIE)?.value));
   return (
-    <html lang="en" className={`${sans.variable} ${mono.variable}`}>
+    <html lang="en" className={`${sans.variable} ${mono.variable}`} data-theme={mode}>
       <body>
         {/* Settings › Appearance: the theme is read per request, so it can change without a rebuild. */}
         {/* eslint-disable-next-line @next/next/no-css-tags */}
