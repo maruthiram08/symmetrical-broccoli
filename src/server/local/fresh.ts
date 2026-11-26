@@ -1,5 +1,5 @@
 import type { Item } from "@/lib/types";
-import type { MemoryStore } from "@/server/store";
+import type { AppStore } from "@/server/app-store";
 import { macNotify } from "./publish";
 
 /** Meetings that started longer ago than this are backfill or a re-read: no notification. */
@@ -22,7 +22,7 @@ export function freshSummary(items: Pick<Item, "kind">[]): string | null {
  * re-reads) are skipped. Once per meeting, remembered with the prep-notice keys. Never throws.
  */
 export async function notifyFreshMeetings(
-  store: MemoryStore,
+  store: Pick<AppStore, "listUsers" | "listMeetingsBetween" | "listItems" | "markPrepNotified">,
   now: Date,
   notify: (title: string, body: string) => void = macNotify,
 ): Promise<number> {

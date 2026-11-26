@@ -6,6 +6,7 @@ import type { CalendarCache, Connection, Health, Item, LastLook, Meeting, Upcomi
 import { MemoryStore } from "@/server/store";
 import { isManual, migrateItem, type ManualInput } from "@/lib/capture/items";
 import type { OAuthClientStore } from "@/server/wispr/oauth";
+import type { AppStore } from "@/server/app-store";
 
 interface State {
   version: 1;
@@ -125,6 +126,19 @@ export function applyMarks(items: Item[], marks: Mark[]): Mark[] {
   return left;
 }
 
+/** The hand-made marks (Done/Wrong, star, snooze) on a user's extracted items, to keep across a re-read. */
+export function marksToKeep(items: Item[], userId: string): Mark[] {
+  const out: Mark[] = [];
+  for (const i of items) {
+    if (i.userId !== userId || isManual(i)) continue;
+    if ((i.status !== "open" && !i.closedByMeetingId) || i.starred || i.snoozedUntil) {
+      const status = i.closedByMeetingId ? "open" : i.status; // a close by a meeting comes back on the re-read
+      out.push({ userId, meetingId: i.meetingId, kind: i.kind, text: i.text, quote: i.quote, status, closedAt: status === "open" ? null : i.closedAt, starred: i.starred || undefined, snoozedUntil: i.snoozedUntil || undefined });
+    }
+  }
+  return out;
+}
+
 const MAX_EVENTS = 2000;
 /** How alike two items of one meeting must be to count as the same item read twice. */
 const DUPLICATE_SIMILARITY = 0.6;
@@ -135,7 +149,7 @@ const MAX_PREP_NOTIFIED = 500;
  * Small on purpose: a year of meetings is a few MB. The v1.1 desktop app moves this to SQLite.
  * Only this user's machine can read it (0600). Transcripts are never in it.
  */
-export class FileStore extends MemoryStore implements OAuthClientStore {
+export class FileStore extends MemoryStore implements OAuthClientStore, AppStore {
   oauthClients = new Map<string, OAuthClientInformationMixed>();
   marks: Mark[] = [];
   protected newId = () => randomUUID();
@@ -391,13 +405,7 @@ export class FileStore extends MemoryStore implements OAuthClientStore {
 
   private resetExtractionInMemory(userId: string): number {
     // Keep what the user marked by hand so the re-read doesn't undo it.
-    for (const i of this.items.values()) {
-      if (i.userId !== userId || isManual(i)) continue;
-      if ((i.status !== "open" && !i.closedByMeetingId) || i.starred || i.snoozedUntil) {
-        const status = i.closedByMeetingId ? "open" : i.status; // a close by a meeting comes back on the re-read
-        this.marks.push({ userId, meetingId: i.meetingId, kind: i.kind, text: i.text, quote: i.quote, status, closedAt: status === "open" ? null : i.closedAt, starred: i.starred || undefined, snoozedUntil: i.snoozedUntil || undefined });
-      }
-    }
+    this.marks.push(...marksToKeep([...this.items.values()], userId));
     // Your own items aren't read from meetings: they stay.
     for (const [id, i] of this.items) if (i.userId === userId && !isManual(i)) this.items.delete(id);
     let n = 0;

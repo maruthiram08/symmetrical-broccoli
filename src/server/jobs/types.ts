@@ -17,6 +17,8 @@ export interface Deps {
   /** On Fridays `week` carries the weekly recap (week-YYYY-Www.md). */
   publish: (user: User, model: BriefModel, markdown: string, week?: { key: string; markdown: string }) => Promise<{ id: string }>;
   now: () => Date;
+  /** How many more meetings this user may have read now (hosted free tier). Missing: no limit. */
+  allowance?: (userId: string) => Promise<number>;
 }
 
 /**

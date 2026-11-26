@@ -1,7 +1,7 @@
 import { formatTime } from "@/lib/brief/time";
 import { nextUpcoming, prepFor, prepNotice, type Prep } from "@/lib/wow/prep";
 import type { User } from "@/lib/types";
-import type { MemoryStore } from "@/server/store";
+import type { AppStore } from "@/server/app-store";
 import { errLine } from "./log";
 import { macNotify } from "./publish";
 
@@ -9,7 +9,7 @@ import { macNotify } from "./publish";
 export const PREP_NOTIFY_MIN = 10;
 
 /** The prep card for Today: the next meeting in the coming hour and what's open with its people. */
-export async function prepCard(store: MemoryStore, user: User, now: Date): Promise<Prep | null> {
+export async function prepCard(store: Pick<AppStore, "listUsers" | "getUpcoming" | "listItems" | "markPrepNotified">, user: User, now: Date): Promise<Prep | null> {
   const cache = await store.getUpcoming(user.id);
   const next = cache ? nextUpcoming(cache.meetings, now) : null;
   if (!next) return null;
@@ -21,7 +21,7 @@ export async function prepCard(store: MemoryStore, user: User, now: Date): Promi
  * (keyed by calendar id and start, so a moved meeting is announced again). Never throws.
  */
 export async function notifyPrep(
-  store: MemoryStore,
+  store: Pick<AppStore, "listUsers" | "getUpcoming" | "listItems" | "markPrepNotified">,
   now: Date,
   notify: (title: string, body: string) => void = macNotify,
 ): Promise<number> {

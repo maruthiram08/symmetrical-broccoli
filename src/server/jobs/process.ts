@@ -177,19 +177,22 @@ async function processMeetingOnce(
  * A failed meeting is never marked processed. Stops starting new meetings after `deadline` (epoch ms).
  */
 export async function processPending(
-  deps: Pick<Deps, "store" | "wispr" | "extract" | "costInr" | "model" | "now">,
+  deps: Pick<Deps, "store" | "wispr" | "extract" | "costInr" | "model" | "now" | "allowance">,
   userId: string,
   opts: { deadline?: number } = {},
 ): Promise<{ processed: number; failed: number; remaining: number; setAside: number; stoppedBy?: FailureKind | "reconnect" }> {
   const all = await deps.store.listUnprocessedMeetings(userId);
   const setAside = all.filter(isSetAside).length;
-  const pending = all.filter((m) => !isSetAside(m));
+  const allowed = deps.allowance ? Math.max(0, await deps.allowance(userId)) : Infinity;
+  // Over the free tier's limit: the rest stay queued (unread) until the month turns or they subscribe.
+  const pending = all.filter((m) => !isSetAside(m)).slice(0, allowed);
+  const held = all.length - setAside - pending.length;
   let processed = 0;
   let failed = 0;
   let stoppedBy: FailureKind | "reconnect" | undefined;
-  if (pending.length === 0) return { processed, failed, remaining: 0, setAside };
+  if (pending.length === 0) return { processed, failed, remaining: held, setAside };
   const conn = await deps.store.getConnection(userId);
-  if (!conn || conn.status === "needs_reconnect") return { processed, failed, remaining: pending.length, setAside, stoppedBy: "reconnect" };
+  if (!conn || conn.status === "needs_reconnect") return { processed, failed, remaining: pending.length + held, setAside, stoppedBy: "reconnect" };
 
   const nowMs = deps.now().getTime();
   const client = deps.wispr(userId);
@@ -219,11 +222,11 @@ export async function processPending(
     await client.close?.();
   }
   const nowSetAside = (await deps.store.listUnprocessedMeetings(userId)).filter(isSetAside).length;
-  return { processed, failed, remaining: pending.length - processed - failed, setAside: nowSetAside, ...(stoppedBy ? { stoppedBy } : {}) };
+  return { processed, failed, remaining: pending.length - processed - failed + held, setAside: nowSetAside, ...(stoppedBy ? { stoppedBy } : {}) };
 }
 
 export async function processAllPending(
-  deps: Pick<Deps, "store" | "wispr" | "extract" | "costInr" | "model" | "now">,
+  deps: Pick<Deps, "store" | "wispr" | "extract" | "costInr" | "model" | "now" | "allowance">,
   opts: { deadline?: number; concurrency?: number } = {},
 ) {
   const users = await deps.store.listUsers();

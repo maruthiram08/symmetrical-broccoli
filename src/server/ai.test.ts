@@ -20,7 +20,7 @@ process.env.DAILY_BRIEF_DIR = mkdtempSync(join(tmpdir(), "db-ask-"));
 process.env.ANTHROPIC_API_KEY = "test-key-not-real";
 process.env.EXTRACTION_MODEL = "claude-sonnet-5-5";
 
-const { getStore } = await import("@/server/local/app");
+const { getFileStore: getStore } = await import("@/server/local/app");
 const { getAiStore } = await import("@/server/local/ai-store");
 const { POST } = await import("@/app/api/ask/route");
 const { openContradictions, resolveContradiction } = await import("@/server/ai");
