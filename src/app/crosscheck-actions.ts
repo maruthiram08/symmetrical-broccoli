@@ -1,5 +1,6 @@
 "use server";
 
+import { splitOwner } from "@/lib/crosscheck/parse";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getFileStore, me } from "@/server/local/app";
@@ -38,8 +39,13 @@ export async function addFromCrossCheckAction(formData: FormData): Promise<void>
   const rec = await store.getCrossCheck(t.meetingId);
   const e = rec?.userId === user.id ? rec.entries[t.index] : undefined;
   if (!e || e.verdict !== "missed" || e.addedItemId) return;
-  const person = e.person ?? (kind === "waiting" ? e.wispr.owner : null);
-  const item = await store.addManualItem(user.id, { kind, text: e.wispr.text, person: person || null, dueAt: null, meetingId: t.meetingId }, new Date().toISOString());
+  // Records stored before the "(Name) task" format was parsed still carry the prefix in the text.
+  const split = splitOwner(e.wispr.text);
+  const owner = e.wispr.owner ?? split.owner;
+  const self = [user.name, ...user.aliases].map((n) => n.toLowerCase().split(/\s+/)[0]);
+  const ownerIsOther = !!owner && !self.includes(owner.toLowerCase().split(/\s+/)[0]);
+  const person = e.person ?? (kind === "waiting" && ownerIsOther ? owner : null);
+  const item = await store.addManualItem(user.id, { kind, text: split.text, person: person || null, dueAt: null, meetingId: t.meetingId }, new Date().toISOString());
   await store.updateCrossCheck(t.meetingId, (r) => {
     const x = r.entries[t.index];
     if (!x || x.addedItemId) return false;
