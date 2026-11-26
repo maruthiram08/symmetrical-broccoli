@@ -4,6 +4,7 @@
 import { esc } from "@/lib/brief/markdown";
 import { renderWrapSection } from "@/lib/brief/wrap";
 import { renderTomorrowSection } from "@/lib/calendar/glance";
+import { renderRoutinesSection } from "@/lib/routines/brief";
 import type { BriefLine, BriefModel } from "@/lib/types";
 import { renderTemplate, tidyMarkdown } from "./engine";
 import { blockLink, linkMention, wikilink, type LinkContext } from "./links";
@@ -51,6 +52,7 @@ late: {{wrap.late}}
 {{/each}}
 
 {{/if}}
+{{routinesSection}}
 {{#if closedToday}}
 ## Closed today
 
@@ -119,6 +121,8 @@ export interface DailyView {
   stillOpenMore: number;
   tomorrowSection: string;
   wrapSection: string;
+  /** "## Routines due today" with its lines, or "" when none are due. */
+  routinesSection: string;
 }
 
 export function lineView(l: BriefLine, links?: LinkContext): LineView {
@@ -177,6 +181,7 @@ export function dailyView(m: BriefModel, links?: LinkContext): DailyView {
     stillOpenMore: Math.max(0, m.stillOpenCount - m.stillOpen.length),
     tomorrowSection: renderTomorrowSection(m.tomorrow).join("\n"),
     wrapSection: renderWrapSection(m.wrap, m.openPromises).join("\n"),
+    routinesSection: renderRoutinesSection(m.routines).join("\n"),
   };
 }
 

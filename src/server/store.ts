@@ -1,5 +1,7 @@
 import type { CalendarCache, Connection, Health, Item, ItemTicket, LastLook, Meeting, UpcomingCache, User } from "@/lib/types";
 import { manualItem, type ManualInput } from "@/lib/capture/items";
+import { emptyRoutineDoc, type Occurrence, type Routine, type RoutineDoc, type RoutineSuggestion } from "@/lib/routines/types";
+import type { RoutineStore } from "@/server/routines";
 import { applyOps, emptyDirectory, resolveItems, resolveMeeting, resolveUpcoming, resolveCalendar, undoOps, type ChangeCtx, type Directory, type PeopleChange } from "@/lib/directory/directory";
 
 /**
@@ -57,11 +59,16 @@ export interface Store {
 }
 
 const MAX_PEOPLE_LOG = 200;
+/** Routine notifications remembered per user (enough for weeks of timed routines). */
+const MAX_ROUTINE_NOTIFIED = 500;
+/** Routine occurrences kept per routine (streaks look back at most this far). */
+const MAX_OCCURRENCES_PER_ROUTINE = 400;
+const normQuote = (s: string) => s.toLowerCase().replace(/\s+/g, " ").trim();
 
 let seq = 0;
 const uid = () => `00000000-0000-4000-8000-${String(++seq).padStart(12, "0")}`;
 
-export class MemoryStore implements Store {
+export class MemoryStore implements Store, RoutineStore {
   protected newId: () => string = uid;
   users = new Map<string, User>();
   connections = new Map<string, Connection>();
@@ -82,6 +89,8 @@ export class MemoryStore implements Store {
   people = new Map<string, Directory>();
   /** Undoable people changes per user, newest last. */
   peopleLog = new Map<string, PeopleChange[]>();
+  /** Routines per user (src/lib/routines): routines, occurrences, suggestions from meetings. */
+  routines = new Map<string, RoutineDoc>();
 
   addUser(u: Partial<User> & { email: string }): User {
     const user: User = { id: this.newId(), name: "", aliases: [], timeZone: "Asia/Kolkata", briefTime: "18:00", createdAt: new Date().toISOString(), ...u };
@@ -240,8 +249,67 @@ export class MemoryStore implements Store {
     this.prepNotified.add(key);
     return true;
   }
+  // ---------- routines (src/lib/routines) ----------
+  private routineDoc(userId: string): RoutineDoc {
+    let d = this.routines.get(userId);
+    if (!d) { d = emptyRoutineDoc(); this.routines.set(userId, d); }
+    return d;
+  }
+  async listRoutines(userId: string): Promise<Routine[]> { return (this.routines.get(userId)?.routines ?? []).map((r) => ({ ...r })); }
+  async saveRoutine(routine: Routine): Promise<Routine> {
+    const d = this.routineDoc(routine.userId);
+    const at = d.routines.findIndex((r) => r.id === routine.id);
+    if (at < 0) d.routines.push({ ...routine }); else d.routines[at] = { ...routine };
+    return routine;
+  }
+  async deleteRoutine(userId: string, routineId: string): Promise<boolean> {
+    const d = this.routines.get(userId);
+    if (!d || !d.routines.some((r) => r.id === routineId)) return false;
+    d.routines = d.routines.filter((r) => r.id !== routineId);
+    d.occurrences = d.occurrences.filter((o) => o.routineId !== routineId);
+    d.notified = d.notified.filter((k) => !k.startsWith(`${routineId}:`));
+    return true;
+  }
+  async listOccurrences(userId: string): Promise<Occurrence[]> { return (this.routines.get(userId)?.occurrences ?? []).map((o) => ({ ...o })); }
+  async setOccurrence(userId: string, routineId: string, date: string, mark: Pick<Occurrence, "status" | "until"> | null, at: string): Promise<boolean> {
+    const d = this.routines.get(userId);
+    if (!d || !d.routines.some((r) => r.id === routineId)) return false;
+    d.occurrences = d.occurrences.filter((o) => !(o.routineId === routineId && o.date === date));
+    if (mark) d.occurrences.push({ routineId, date, status: mark.status, ...(mark.until ? { until: mark.until } : {}), at });
+    const mine = d.occurrences.filter((o) => o.routineId === routineId).sort((a, b) => a.date.localeCompare(b.date));
+    if (mine.length > MAX_OCCURRENCES_PER_ROUTINE) {
+      const drop = new Set(mine.slice(0, mine.length - MAX_OCCURRENCES_PER_ROUTINE));
+      d.occurrences = d.occurrences.filter((o) => !drop.has(o));
+    }
+    return true;
+  }
+  async listRoutineSuggestions(userId: string): Promise<RoutineSuggestion[]> { return (this.routines.get(userId)?.suggestions ?? []).map((s) => ({ ...s })); }
+  async addRoutineSuggestions(userId: string, list: Array<Omit<RoutineSuggestion, "id" | "userId" | "status">>): Promise<number> {
+    if (!list.length) return 0;
+    const d = this.routineDoc(userId);
+    let n = 0;
+    for (const s of list) {
+      if (d.suggestions.some((x) => x.meetingId === s.meetingId && normQuote(x.quote) === normQuote(s.quote))) continue;
+      d.suggestions.push({ ...s, id: this.newId(), userId, status: "open" });
+      n++;
+    }
+    return n;
+  }
+  async setRoutineSuggestionStatus(userId: string, id: string, status: RoutineSuggestion["status"]): Promise<RoutineSuggestion | null> {
+    const s = this.routines.get(userId)?.suggestions.find((x) => x.id === id);
+    if (!s) return null;
+    s.status = status;
+    return { ...s };
+  }
+  async markRoutineNotified(userId: string, key: string): Promise<boolean> {
+    const d = this.routineDoc(userId);
+    if (d.notified.includes(key)) return false;
+    d.notified = [...d.notified, key].slice(-MAX_ROUTINE_NOTIFIED);
+    return true;
+  }
+
   async deleteUser(userId: string) {
-    this.users.delete(userId); this.connections.delete(userId); this.looks.delete(userId); this.upcoming.delete(userId); this.calendar.delete(userId); this.people.delete(userId); this.peopleLog.delete(userId);
+    this.users.delete(userId); this.connections.delete(userId); this.looks.delete(userId); this.upcoming.delete(userId); this.calendar.delete(userId); this.people.delete(userId); this.peopleLog.delete(userId); this.routines.delete(userId);
     for (const k of this.prepNotified) if (k.startsWith(userId + ":")) this.prepNotified.delete(k);
     for (const [k, m] of this.meetings) if (m.userId === userId) this.meetings.delete(k);
     for (const [k, i] of this.items) if (i.userId === userId) this.items.delete(k);

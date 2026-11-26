@@ -182,6 +182,8 @@ export interface ExtractionResult {
     dueAt: string | null;
     /** Owe/waiting: "label" when the speaker labels alone showed who promised, "content" when transcript cues decided it. Missing when the model didn't say. */
     attribution?: Attribution;
+    /** Owe items the user said they'll do regularly: the cadence in words ("every Friday"). Becomes a routine suggestion (src/lib/routines). */
+    recurrence?: string;
   }>;
   closes: Array<{ itemId: string; quote: string }>;
   usage: { inputTokens: number; outputTokens: number };
@@ -286,6 +288,8 @@ export interface BriefModel {
   stillOpen: BriefLine[]; // up to 5 oldest-first from before today
   empty: "nothing_owed" | "no_meetings" | null;
   subject: string;
+  /** Routines due today (and overdue ones), src/lib/routines. Missing when none, or the store has no routines. */
+  routines?: RoutineLine[];
 }
 
 /** When the user last looked at Today. `since` is the start of the current look, so a refresh keeps the close moment. */
@@ -294,6 +298,8 @@ export interface LastLook {
   /** Closes after this instant belong to this look's "Closed since you last looked". Null on the very first look. */
   since: string | null;
 }
+
+import type { RoutineLine } from "./routines/types";
 
 // ---------- calendar (src/lib/calendar, src/server/jobs/calendar.ts) ----------
 

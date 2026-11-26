@@ -2,6 +2,8 @@ import type { BriefLine, BriefModel, ClosedLine, Item, Meeting, QuotePeekInfo, U
 import type { Store } from "@/server/store";
 import { isManual, isSnoozed, lineExtras } from "@/lib/capture/items";
 import { dateLabel, dueLabel, formatTime, lateLabel, localDate, localDayBounds } from "./time";
+import { routinesDue } from "@/lib/routines/schedule";
+import { routineStore } from "@/server/routines";
 
 const STILL_OPEN_SHOWN = 5;
 
@@ -90,6 +92,9 @@ export async function buildBrief(store: Store, user: User, now: Date): Promise<B
 
   const wrap = { meetings: todaysMeetings.length, made: madeToday.length, kept, late };
   const openPromises = open.filter((i) => i.kind === "owe").length;
+  // Routines are their own list: they never count as open items or change the counts above.
+  const rs = routineStore(store);
+  const routines = rs ? routinesDue(await rs.listRoutines(user.id), await rs.listOccurrences(user.id), date, tz) : [];
   const empty: BriefModel["empty"] = todaysMeetings.length === 0 ? "no_meetings" : owe.length === 0 ? "nothing_owed" : null;
 
   return {
@@ -97,6 +102,7 @@ export async function buildBrief(store: Store, user: User, now: Date): Promise<B
     wrap, openPromises, youOwe: owe, waitingOn: waiting, decisions, closedToday,
     stillOpenCount: rest.length, stillOpen, empty,
     subject: subjectFor({ owe: owe.length, late, waiting: waiting.length, decisions: decisions.length, meetings: todaysMeetings.length, stillOpen: rest.length + owe.length + waiting.length }),
+    ...(routines.length ? { routines } : {}),
   };
 }
 

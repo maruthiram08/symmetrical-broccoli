@@ -6,6 +6,7 @@ import { localTranscript } from "@/server/recorders";
 import type { WisprClient } from "@/server/wispr/client";
 import { ReconnectRequiredError } from "@/server/wispr/oauth";
 import { logJobError, mapLimit, type Deps } from "./types";
+import { suggestRoutines } from "./routines";
 
 /** Most recent open decisions sent with each read (about 15 tokens each). */
 export const MAX_OPEN_DECISIONS = 40;
@@ -150,6 +151,9 @@ async function processMeetingOnce(
     if (client && !opts.client) await client.close?.();
   }
 
+  // Recurring promises ("every Friday I'll send...") wait on /routines as suggestions instead.
+  const recurring = await suggestRoutines(store, meeting, user, result.newItems, deps.now());
+  if (recurring.size) result = { ...result, newItems: result.newItems.filter((n) => !recurring.has(n)) };
   const at = deps.now().toISOString();
   const newItems = result.newItems.map((n) => ({
     kind: n.kind,

@@ -4,6 +4,7 @@
 import type { BriefLine, BriefModel } from "@/lib/types";
 import type { WeekModel } from "@/lib/brief/week";
 import type { WrapModel } from "@/lib/brief/wrap";
+import { routinesCount } from "@/lib/routines/brief";
 
 export type DigestKind = "brief" | "wrap" | "week";
 
@@ -52,13 +53,15 @@ const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? o
 const src = (title: string | null | undefined, time: string | null | undefined) => [title, time].filter(Boolean).join(", ") || null;
 
 export function briefSummary(m: BriefModel): string {
-  if (m.empty === "no_meetings") return `No meetings today. ${plural(m.youOwe.length + m.waitingOn.length + m.stillOpenCount, "item")} still open.`;
+  const routines = routinesCount(m.routines);
+  if (m.empty === "no_meetings") return `No meetings today. ${plural(m.youOwe.length + m.waitingOn.length + m.stillOpenCount, "item")} still open.${routines ? ` ${routines[0].toUpperCase()}${routines.slice(1)}.` : ""}`;
   const parts: string[] = [];
   const late = m.youOwe.filter((l) => l.lateLabel).length;
   if (m.youOwe.length) parts.push(`You owe ${m.youOwe.length}${late ? ` (${late} late)` : ""}`);
   if (m.waitingOn.length) parts.push(`waiting on ${m.waitingOn.length}`);
   if (m.decisions.length) parts.push(plural(m.decisions.length, "decision"));
   if (m.closedToday.length) parts.push(`${m.closedToday.length} closed`);
+  if (routines) parts.push(routines);
   if (!parts.length) return "Nothing owed. Go home.";
   const s = parts.join(", ");
   return `${s[0].toUpperCase()}${s.slice(1)}.`;
@@ -81,6 +84,12 @@ export function briefDigest(m: BriefModel): Digest {
     sections.push({
       title: "Decisions", count: `${m.decisions.length} today`,
       lines: m.decisions.map((l) => ({ itemId: l.itemId, text: l.text, person: l.person, quote: l.quote || null, source: src(l.meetingTitle, l.meetingTime) })),
+    });
+  }
+  if (m.routines?.length) {
+    sections.push({
+      title: "Routines due today", count: `${m.routines.length} due`,
+      lines: m.routines.map((r) => ({ text: r.title, person: r.person, side: r.overdueLabel ?? r.time, late: !!r.overdueLabel, source: r.cadenceLabel })),
     });
   }
   if (m.closedToday.length) {

@@ -9,6 +9,7 @@ import type { OAuthClientStore } from "@/server/wispr/oauth";
 import type { AppStore } from "@/server/app-store";
 import type { ChangeCtx, Directory, PeopleChange } from "@/lib/directory/directory";
 import type { SavedView } from "@/lib/structure/views";
+import type { RoutineDoc } from "@/lib/routines/types";
 
 interface State {
   version: 1;
@@ -37,6 +38,8 @@ interface State {
   peopleLog?: Array<[string, PeopleChange[]]>;
   /** Added with saved views: missing in older files (no views). */
   views?: Array<[string, SavedView[]]>;
+  /** Added with routines: missing in older files (no routines). */
+  routines?: Array<[string, RoutineDoc]>;
 }
 
 /** What happened when state.json couldn't be read. */
@@ -277,6 +280,10 @@ export class FileStore extends MemoryStore implements OAuthClientStore, AppStore
     this.people = new Map((s.people ?? []).map(([k, d]) => [k, { people: d?.people ?? [], moved: d?.moved ?? {} }]));
     this.peopleLog = new Map(s.peopleLog ?? []);
     this.views = new Map((s.views ?? []).filter(([, v]) => Array.isArray(v)));
+    this.routines = new Map((s.routines ?? []).filter(([, d]) => d && typeof d === "object").map(([k, d]) => [k, {
+      routines: Array.isArray(d.routines) ? d.routines : [], occurrences: Array.isArray(d.occurrences) ? d.occurrences : [],
+      suggestions: Array.isArray(d.suggestions) ? d.suggestions : [], notified: Array.isArray(d.notified) ? d.notified : [],
+    }]));
   }
 
   /** True when state.json is no longer the file this copy last read or wrote. */
@@ -327,6 +334,7 @@ export class FileStore extends MemoryStore implements OAuthClientStore, AppStore
       people: [...this.people.entries()],
       peopleLog: [...this.peopleLog.entries()],
       ...(this.views.size ? { views: [...this.views.entries()] } : {}),
+      ...(this.routines.size ? { routines: [...this.routines.entries()] } : {}),
     };
     mkdirSync(dirname(this.path), { recursive: true, mode: 0o700 });
     const json = JSON.stringify(state);
@@ -465,6 +473,17 @@ export class FileStore extends MemoryStore implements OAuthClientStore, AppStore
       return true;
     }, (ok) => ok);
   }
+
+  // Routines (src/lib/routines): reads refresh from disk, writes go through change().
+  async listRoutines(userId: string) { this.reload(); return super.listRoutines(userId); }
+  async saveRoutine(...a: Parameters<MemoryStore["saveRoutine"]>) { return this.change(() => super.saveRoutine(...a)); }
+  async deleteRoutine(...a: Parameters<MemoryStore["deleteRoutine"]>) { return this.change(() => super.deleteRoutine(...a), (ok) => ok); }
+  async listOccurrences(userId: string) { this.reload(); return super.listOccurrences(userId); }
+  async setOccurrence(...a: Parameters<MemoryStore["setOccurrence"]>) { return this.change(() => super.setOccurrence(...a), (ok) => ok); }
+  async listRoutineSuggestions(userId: string) { this.reload(); return super.listRoutineSuggestions(userId); }
+  async addRoutineSuggestions(...a: Parameters<MemoryStore["addRoutineSuggestions"]>) { return this.change(() => super.addRoutineSuggestions(...a), (n) => n > 0); }
+  async setRoutineSuggestionStatus(...a: Parameters<MemoryStore["setRoutineSuggestionStatus"]>) { return this.change(() => super.setRoutineSuggestionStatus(...a), (s) => !!s); }
+  async markRoutineNotified(...a: Parameters<MemoryStore["markRoutineNotified"]>) { return this.change(() => super.markRoutineNotified(...a), (fresh) => fresh); }
 
   async getOAuthClient(userId: string) { this.reload(); return this.oauthClients.get(userId) ?? null; }
   async saveOAuthClient(userId: string, info: OAuthClientInformationMixed) { await this.change(() => { this.oauthClients.set(userId, info); }); }
