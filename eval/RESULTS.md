@@ -71,3 +71,17 @@ After the final run, the example names and phrases in the prompt were made gener
 - **Attribution under bad diarization.** In the final run, one of the user's own promises was recorded as a waiting item from someone else.
 - **Scorer leniency and strictness.** Text matching is token overlap plus a key noun. It can still miss a correct paraphrase or accept a loose one. Read `--verbose` output before trusting a single number.
 - Cost per meeting rose about 20%.
+
+## 26 Nov 2026: attribution and decisions (new labels)
+
+Fixtures were rebuilt on Maruthi's Mac with fresh labels (34 required items, 3 required closes), so these numbers don't compare with the table above. Every score uses the fairer matcher (sound-alike names, phrasing lists).
+
+| | Baseline prompt (2 reads) | Round 1 prompt, shipped (2 reads) | Round 2 prompt (1 read) |
+|---|---|---|---|
+| Overall precision | 87.1% / 88.6% | **96.4% / 96.7%** | 80.0% |
+| Overall recall | 73.0% / 83.8% | 73.0% / 78.4% | 75.7% |
+| Attribution | 91.3% / 100% | **100% / 100%** | 87.5% |
+| Wrong closes | 1 / 1 | **0 / 0** | 1 |
+| Closes caught (of 3) | 1 / 2 | 0 / 1 | 2 |
+
+Round 1 ships: no wrong closes and every promise credited to the right person. A missed close leaves an item open for one more tap; a wrong close hides a real promise. Close recall is the next thing to improve. Total eval spend was ₹124.
