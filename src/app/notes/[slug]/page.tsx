@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { Backlinks } from "@/components/Backlinks";
+import { ExportMenu } from "@/components/ExportMenu";
+import { LocalGraph } from "@/components/graph/LocalGraph";
 import { NoteEditor } from "@/components/editor/NoteEditor";
 import { Shell } from "@/components/Shell";
 import { me } from "@/server/local/app";
@@ -26,9 +28,10 @@ export default async function Note({ params }: { params: Promise<{ slug: string 
   if (!page) notFound();
   return (
     <Shell days={await pastDays(user.id, "")} current="notes" openCount={await openCountFor(user.id)}>
-      <p className="db-crumb"><Link className="db-link" href="/notes">Notes</Link></p>
+      <div className="db-crumb ex-crumb"><Link className="db-link" href="/notes">Notes</Link><ExportMenu type="note" id={page.slug} /></div>
       <NoteEditor slug={page.slug} initial={page.markdown} hash={page.hash} {...await editorContext(user)} />
       <Backlinks note={{ slug: page.slug, title: page.title }} />
+      <LocalGraph user={user} center={`note:${page.slug}`} />
       <form className="db-notes-delete" action={deleteNoteAction}>
         <input type="hidden" name="slug" value={page.slug} />
         <span className="db-mono">notes/{page.slug}.md</span>

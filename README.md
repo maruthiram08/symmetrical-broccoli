@@ -40,6 +40,13 @@ Daily notes (**Your notes** on a day, and **Today's note** in the Today view) an
 
 **Today view** (`/today`, or *With today's note* on Today) puts the brief and today's note side by side on a wide window.
 
+## Graph, export, protected sharing and themes
+
+- **Graph** (`/graph`): people, meetings, open promises, decisions and notes, joined by who owes whom, which meeting each item came from, who was in a meeting, and `[[links]]` between notes (so backlinks show too). Filter by type, by person (two steps around them), **Open only**, and a time range; the filters stay in the address. Hover (or tap on a phone) for a preview, click (or tap again) to open; drag to move, scroll or pinch to zoom, **Fit** to see everything. **As a list** shows the same nodes as links. Names go through the people directory, and speaker labels ("Speaker 5") are never people. Person, note and meeting pages show **Connections**, the graph one or two steps around them. Meetings have their own page (`/meeting/<id>`): who was there, what came out of it, what it closed.
+- **Export** on a note, an earlier day and Today: **PDF** (opens a print view; choose Save as PDF), **HTML** (one self-contained file: no scripts, remote fonts or images, and `[[links]]` become plain labels), **Word** (.docx). In the Mac app these open in your browser, which saves and prints files reliably.
+- **Share as protected file**: makes one HTML file whose content is encrypted in your browser (AES-256-GCM, key from your password with PBKDF2-SHA256, 310,000 iterations, WebCrypto). Send it however you like; it asks for the password and decrypts in the reader's browser. No server is involved, the password is never stored or sent, and a lost password means the file can't be opened.
+- **Themes** (Settings › Appearance): duplicate the default or start a new theme, set accent, background and ink for light and dark, a font from a safe list, density and corners, with a live preview of both. Save several and switch between them; **Export**/**Copy** a theme as JSON and **Import JSON** to bring one back. Themes only set CSS variables; the default theme writes nothing, so the app looks exactly as designed. Saved in `.daily-brief/themes.json` of your first notes folder.
+
 ## Your data
 
 `~/Daily Brief/` (change with `DAILY_BRIEF_DIR`):
