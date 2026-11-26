@@ -43,7 +43,7 @@ export type TimelineEvent =
   | { kind: "mentioned"; at: string; itemId: string; text: string; quote: string; meeting: Meeting | null }
   | { kind: "due"; at: string; passed: boolean }
   | { kind: "closed"; at: string; quote: string; meeting: Meeting | null }
-  | { kind: "marked"; at: string; status: "done" | "wrong" }
+  | { kind: "marked"; at: string; status: "done" | "wrong"; reason?: string }
   | { kind: "open"; at: string };
 
 const MENTION_MIN = 0.34;
@@ -79,7 +79,7 @@ export function timeline(item: Item, items: Item[], meetings: Meeting[], now: Da
     const m = byId.get(item.closedByMeetingId) ?? null;
     out.push({ kind: "closed", at: m?.startedAt ?? item.closedAt ?? now.toISOString(), quote: item.closeQuote, meeting: m });
   } else if (item.status !== "open") {
-    out.push({ kind: "marked", at: item.closedAt ?? now.toISOString(), status: item.status });
+    out.push({ kind: "marked", at: item.closedAt ?? now.toISOString(), status: item.status, ...(item.closeReason ? { reason: item.closeReason } : {}) });
   } else if (item.kind !== "decision") {
     out.push({ kind: "open", at: now.toISOString() });
   }

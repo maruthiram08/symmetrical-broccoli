@@ -368,6 +368,8 @@ export class FileStore extends MemoryStore implements OAuthClientStore {
   async setItemStatus(itemId: string, status: Item["status"], at: string) { await this.change(() => super.setItemStatus(itemId, status, at)); }
   async addManualItem(userId: string, input: ManualInput, at: string) { return this.change(() => super.addManualItem(userId, input, at)); }
   async updateItem(...a: Parameters<MemoryStore["updateItem"]>) { return this.change(() => super.updateItem(...a), (i) => !!i); }
+  async setItemTicket(...a: Parameters<MemoryStore["setItemTicket"]>) { return this.change(() => super.setItemTicket(...a), (i) => !!i); }
+  async closeItemWithReason(...a: Parameters<MemoryStore["closeItemWithReason"]>) { return this.change(() => super.closeItemWithReason(...a), (ok) => ok); }
   async deleteItem(itemId: string) { return this.change(() => super.deleteItem(itemId), (ok) => ok); }
   async saveBrief(...a: Parameters<MemoryStore["saveBrief"]>) { await this.change(() => super.saveBrief(...a)); }
   async logEvent(e: Parameters<MemoryStore["logEvent"]>[0]) { const at = new Date().toISOString(); await this.change(() => super.logEvent({ ...e, at })); }

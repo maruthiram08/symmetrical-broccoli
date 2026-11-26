@@ -11,6 +11,7 @@ import "./wow3.css";
 import "./ask.css";
 import "./calendar.css";
 import "./capture.css";
+import "./integrations.css";
 import { QuickCapture } from "@/components/QuickCapture";
 import { ItemKeys } from "@/components/ItemKeys";
 

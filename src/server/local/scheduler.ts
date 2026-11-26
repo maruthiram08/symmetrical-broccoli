@@ -10,6 +10,7 @@ import { dataDir } from "./paths";
 import { notifyPrep } from "./prep";
 import { notifyFreshMeetings } from "./fresh";
 import { afterJobs } from "@/server/ai";
+import { startIntegrations } from "@/server/integrations/runtime";
 
 export const TICK_MS = 5 * 60_000;
 export const POLL_EVERY_MS = 30 * 60_000;
@@ -120,6 +121,7 @@ export function startScheduler(): void {
   rotateLog();
   checkLock();
   setTimeout(() => void tick(), 5_000).unref?.();
+  startIntegrations(() => st.owner === true); // tickets closed elsewhere, webhooks (off by default)
 
   function checkLock(): boolean {
     const owner = lock.tryAcquire();
