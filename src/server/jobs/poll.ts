@@ -2,6 +2,7 @@ import { WISPR_TOOLS, type WisprClient } from "@/server/wispr/client";
 import { ReconnectRequiredError } from "@/server/wispr/oauth";
 import type { Store } from "@/server/store";
 import { cacheCalendar } from "./calendar";
+import { dedupeNewMeeting } from "@/server/recorders/dedupe";
 import { errLine } from "@/server/local/log";
 import { logJobError, mapLimit, type Deps } from "./types";
 
@@ -57,6 +58,7 @@ export async function pollUser(
       }
       const r = await store.upsertMeeting({
         userId,
+        provider: "wispr_flow",
         providerMeetingId: m.providerMeetingId,
         title: m.title,
         startedAt: m.startedAt,
@@ -64,7 +66,11 @@ export async function pollUser(
         ...(m.link ? { link: m.link } : {}),
         ...(m.shared ? { shared: true, ...(m.ownerName ? { ownerName: m.ownerName } : {}) } : {}),
       });
-      if (r.created) created++;
+      if (r.created) {
+        created++;
+        // Already brought in by another recorder (Granola, Zoom...): read it once.
+        await dedupeNewMeeting(store, r.meeting, now.toISOString());
+      }
       if (!newestQueued || m.startedAt > newestQueued) newestQueued = m.startedAt;
     }
 

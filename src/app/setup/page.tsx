@@ -10,21 +10,24 @@ import { pullMeetingsSince, rereadAllMeetings, saveIncludeShared, saveSetup } fr
 import { pullState, schedulerStatus } from "@/server/local/scheduler";
 import { formatBytes, summarizeHealth } from "@/server/local/health";
 import { formatTime, localDate } from "@/lib/brief/time";
+import { ChannelHealthRows, ChannelSettings } from "@/components/channels/ChannelSettings";
 import { BRIEF_TIMES, formatBriefTime, timeZones, todayIn } from "../_lib/time";
 import { headers } from "next/headers";
 import { PlatformSettings } from "@/components/PlatformSettings";
 import { isRemote } from "@/server/local/phone-proxy";
+import { SourcesSection } from "@/components/SourcesSection";
+import { sourceStatuses } from "@/server/recorders/status";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Setup" };
 
-export default async function Setup({ searchParams }: { searchParams: Promise<{ error?: string; pull?: string; shared?: string; model?: string }> }) {
+export default async function Setup({ searchParams }: { searchParams: Promise<{ error?: string; pull?: string; shared?: string; upload?: string; source?: string; which?: string; ch?: string; saved?: string; test?: string; err?: string; removed?: string; model?: string }> }) {
   const user = await me();
   const conn = user ? await getStore().getConnection(user.id) : null;
   // First run happens on /welcome; Settings is for changing things afterwards.
   if (!user || !conn) redirect("/welcome");
   const connected = conn?.status === "active";
-  const { error, pull, shared, model } = await searchParams;
+  const { error, pull, shared, upload, source, which, model, ...flash } = await searchParams;
   const remote = isRemote(await headers());
   const pulling = pullState()?.running ?? false;
   const tz = user?.timeZone ?? "Asia/Kolkata";
@@ -140,6 +143,7 @@ export default async function Setup({ searchParams }: { searchParams: Promise<{ 
           ) : null}
         </section>
       ) : null}
+      <SourcesSection statuses={sourceStatuses(user, [...getStore().meetings.values()].filter((m) => m.userId === user.id), new Date())} flash={{ upload, source, which }} />
       {connected ? (
         <form action={rereadAllMeetings} className="db-stack db-subsection">
           <h2 className="db-section__title">Re-read all meetings in order</h2>
@@ -154,6 +158,7 @@ export default async function Setup({ searchParams }: { searchParams: Promise<{ 
           </div>
         </form>
       ) : null}
+      <ChannelSettings flash={flash} timeZone={tz} />
       <PlatformSettings remote={remote} timeZone={tz} modelError={model === "bad"} />
       {health ? (
         <section className="db-stack db-subsection" aria-labelledby="health">
@@ -168,6 +173,7 @@ export default async function Setup({ searchParams }: { searchParams: Promise<{ 
                 ? `${health.errors24h} (${health.errorsByJob.map(([j, n]) => `${j} ${n}`).join(" · ")}), last at ${at(health.lastErrorAt)}`
                 : "None"}
             </dd>
+            <ChannelHealthRows timeZone={tz} />
             <dt>Data file</dt><dd className="db-mono">{health.dataBytes === null ? "Not written yet" : formatBytes(health.dataBytes)}</dd>
             <dt>Background jobs</dt>
             <dd>{!jobs.running ? "Not started" : jobs.owner ? "Running here" : `Run by another Daily brief (pid ${jobs.holderPid ?? "?"})`}</dd>
