@@ -155,6 +155,10 @@ export interface Item {
   tags?: string[];
   /** The project note (slug of a note of type Project) it belongs to. Missing = none. */
   project?: string | null;
+  /** Who filed it: "auto" (src/lib/projects/autofile) or "you". Missing with a project = you, before auto-filing. */
+  projectBy?: "auto" | "you" | null;
+  /** Why an automatic filing chose its project: `matched “stock split”`. */
+  projectWhy?: string | null;
 }
 
 export type TicketProvider = "jira" | "linear" | "notion" | "todoist";
@@ -249,6 +253,8 @@ export interface BriefLine {
   /** Your tags and project (src/lib/structure). Only set when there are some. */
   tags?: string[];
   project?: string | null;
+  /** Set when the project was filed automatically: why (shown beside it, with a way to correct it). */
+  projectAuto?: string;
 }
 
 export interface QuotePeekInfo {

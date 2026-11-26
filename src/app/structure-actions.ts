@@ -9,7 +9,9 @@ import { localDate } from "@/lib/brief/time";
 import { coerce, propTypeFor, typeOf, type NoteType } from "@/lib/structure/note-types";
 import { flatTags, parseTagList, tagTree } from "@/lib/structure/tags";
 import { cleanView, type SavedView, type ViewSource } from "@/lib/structure/views";
-import { getStore, me } from "@/server/local/app";
+import { getFileStore, getStore, me } from "@/server/local/app";
+import { isHosted } from "@/server/mode";
+import { autoFileProjects, recordFiling } from "@/server/structure/autofile";
 import { readPage, validSlug } from "@/server/local/pages";
 import { loadNoteTypes, saveNoteTypes } from "@/server/structure/note-types";
 import { createTypedNote, noteRows, projectRows, resolveProject, setNoteProperties } from "@/server/structure/notes";
@@ -85,8 +87,44 @@ export async function setItemProjectAction(id: string, project: string, opts: { 
     else if (validSlug(project) && projectRows().some((p) => p.slug === project)) slug = project;
     else return { ok: false, error: "That project is gone." };
   }
-  await getStore().updateItem(id, { project: slug });
+  // A copy from before the change: the store hands out its own objects, and a correction needs
+  // to know where the item was filed automatically.
+  const was = { ...found.item };
+  await getStore().updateItem(id, { project: slug, projectBy: "you", projectWhy: null });
+  // Learn from it, and re-file the rest (local app: projects are notes on this Mac).
+  if (!isHosted()) await recordFiling(getFileStore(), found.user.id, was, slug, new Date().toISOString()).catch(() => undefined);
   return done({ ok: true, project: slug });
+}
+
+/** "Looks right" on an automatic filing: keep it, and learn from it. */
+export async function confirmItemProjectAction(id: string): Promise<{ ok: true } | Fail> {
+  const found = await myItem(id);
+  if (!found || !found.item.project) return { ok: false, error: "That item is gone." };
+  return setItemProjectAction(id, found.item.project).then((r) => (r.ok ? { ok: true as const } : r));
+}
+
+/** Make a project from a topic your meetings share, seeded with it as a keyword, and file into it. */
+export async function createProjectFromTopicAction(topic: string): Promise<{ ok: true; slug: string; filed: number } | Fail> {
+  const user = await me();
+  if (!user || isHosted()) return { ok: false, error: "Projects live on your Mac." };
+  const name = typeof topic === "string" ? topic.trim().slice(0, 80) : "";
+  if (!name) return { ok: false, error: "Give the project a name." };
+  const slug = await resolveProject(name, user.timeZone);
+  if (!slug) return { ok: false, error: "Couldn't make that project." };
+  const row = projectRows().find((p) => p.slug === slug);
+  const had = Array.isArray(row?.props.keywords) ? (row!.props.keywords as string[]) : [];
+  if (!had.map((k) => String(k).toLowerCase()).includes(name.toLowerCase())) setNoteProperties(slug, { keywords: [...had.map(String), name.toLowerCase()] });
+  await autoFileProjects(getFileStore(), user.id);
+  const filed = (await getStore().listItems(user.id)).filter((i) => i.project === slug).length;
+  return done({ ok: true, slug, filed });
+}
+
+/** "File again": re-run automatic filing now (after you edit a project's keywords, say). */
+export async function refileProjectsAction(): Promise<{ ok: true; filed: number; unfiled: number } | Fail> {
+  const user = await me();
+  if (!user || isHosted()) return { ok: false, error: "Projects live on your Mac." };
+  const r = await autoFileProjects(getFileStore(), user.id);
+  return done({ ok: true, filed: r.filed, unfiled: r.unfiled });
 }
 
 /** The project page's Kanban: You owe, Waiting on, Done. */

@@ -29,7 +29,7 @@ export interface AppStore extends Required<Store>, OAuthClientStore {
   getLastLook(userId: string): Promise<LastLook | null>;
   saveLastLook(userId: string, look: LastLook): Promise<void>;
   addManualItem(userId: string, input: ManualInput, at: string): Promise<Item>;
-  updateItem(itemId: string, patch: Partial<Pick<Item, "kind" | "text" | "person" | "dueAt" | "note" | "starred" | "snoozedUntil" | "tags" | "project">>): Promise<Item | null>;
+  updateItem(itemId: string, patch: Partial<Pick<Item, "kind" | "text" | "person" | "dueAt" | "note" | "starred" | "snoozedUntil" | "tags" | "project" | "projectBy" | "projectWhy">>): Promise<Item | null>;
   deleteItem(itemId: string): Promise<boolean>;
   setItemDue(userId: string, itemId: string, dueAt: string | null): Promise<boolean>;
   markPrepNotified(key: string): Promise<boolean>;

@@ -169,11 +169,22 @@ export class MemoryStore implements Store, RoutineStore {
     return item;
   }
   /** Change an item's own fields: text, person, due and note (manual items), star and snooze (any). */
-  async updateItem(itemId: string, patch: Partial<Pick<Item, "kind" | "text" | "person" | "dueAt" | "note" | "starred" | "snoozedUntil" | "tags" | "project">>): Promise<Item | null> {
+  async updateItem(itemId: string, patch: Partial<Pick<Item, "kind" | "text" | "person" | "dueAt" | "note" | "starred" | "snoozedUntil" | "tags" | "project" | "projectBy" | "projectWhy">>): Promise<Item | null> {
     const it = this.items.get(itemId);
     if (!it) return null;
     Object.assign(it, patch);
     return it;
+  }
+  /** File many items into projects at once (automatic filing). Returns how many changed. */
+  async fileItems(changes: Array<{ id: string; project: string | null; projectBy: Item["projectBy"]; projectWhy: string | null }>): Promise<number> {
+    let n = 0;
+    for (const c of changes) {
+      const it = this.items.get(c.id);
+      if (!it) continue;
+      Object.assign(it, { project: c.project, projectBy: c.projectBy, projectWhy: c.projectWhy });
+      n++;
+    }
+    return n;
   }
   /** Attach (or clear) the ticket made from an item. Returns the item, or null when it is gone. */
   async setItemTicket(itemId: string, ticket: ItemTicket | null): Promise<Item | null> {

@@ -16,10 +16,11 @@ export function starredFirst<T extends { starred?: boolean }>(xs: T[]): T[] {
 }
 
 /** The BriefLine fields for your own items, stars and editing. Spread into any line built from an item. */
-export function lineExtras(i: Item): Pick<BriefLine, "manual" | "note" | "starred" | "dueAt" | "tags" | "project"> {
+export function lineExtras(i: Item): Pick<BriefLine, "manual" | "note" | "starred" | "dueAt" | "tags" | "project" | "projectAuto"> {
   return {
     manual: isManual(i) || undefined, note: i.note ?? null, starred: !!i.starred || undefined, dueAt: i.dueAt,
     ...(i.tags?.length ? { tags: i.tags } : {}), ...(i.project ? { project: i.project } : {}),
+    ...(i.project && i.projectBy === "auto" ? { projectAuto: i.projectWhy ?? "filed automatically" } : {}),
   };
 }
 

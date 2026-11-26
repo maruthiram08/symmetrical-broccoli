@@ -9,6 +9,7 @@ import { personSlug } from "@/lib/people";
 import { getStore, me } from "@/server/local/app";
 import { openCountFor, pastDays } from "../../_lib/days";
 import { loadAll, shortDate, toClosedLine, toLine } from "../../_lib/lines";
+import { projectLabel } from "@/lib/structure/views";
 
 export const dynamic = "force-dynamic";
 
@@ -35,6 +36,8 @@ export default async function MeetingPage({ params }: { params: Promise<{ id: st
   const closed = items.filter((i) => i.closedByMeetingId === m.id && i.status === "done");
   const self = new Set([user.name, ...user.aliases].map((s) => s.toLowerCase()));
   const who = m.participants.filter((p) => !isSpeakerLabel(p) && !self.has(p.toLowerCase()));
+  // One meeting can feed several projects: its items' projects, most items first.
+  const projects = [...from.reduce((m, i) => (i.project ? m.set(i.project, (m.get(i.project) ?? 0) + 1) : m), new Map<string, number>())].sort((a, b) => b[1] - a[1]);
   const time = new Intl.DateTimeFormat("en-US", { timeZone: user.timeZone, hour: "numeric", minute: "2-digit" }).format(new Date(m.startedAt));
   return (
     <Shell days={await pastDays(user.id, "")} current="meeting" openCount={await openCountFor(user.id)}>
@@ -45,6 +48,11 @@ export default async function MeetingPage({ params }: { params: Promise<{ id: st
         {who.length ? <> · with {who.map((p, k) => <span key={p}>{k ? ", " : ""}<Link className="db-link" href={`/people/${encodeURIComponent(personSlug(p))}`}>{p}</Link></span>)}</> : null}
         {m.link ? <> · <a className="db-link" href={m.link} target="_blank" rel="noopener noreferrer">Notes in Wispr Flow</a></> : null}
       </p>
+      {projects.length ? (
+        <p className="db-subtitle st-line">
+          {projects.map(([slug, n]) => <Link key={slug} className="st-proj" href={`/notes/${encodeURIComponent(slug)}`} title={`${n} item${n === 1 ? "" : "s"} from this meeting`}>+{projectLabel(slug)}</Link>)}
+        </p>
+      ) : null}
       <Section title="You owe" count={owe.length ? String(owe.length) : undefined} empty="Nothing you owe from this meeting.">
         {owe.map((i) => <BriefItem key={i.id} line={toLine(i, byId, user, now)} back={back} />)}
       </Section>

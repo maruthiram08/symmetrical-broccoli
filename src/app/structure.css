@@ -180,6 +180,12 @@ a.st-list__row:hover { background: var(--surface-100); }
 
 /* Project menu */
 .st-projmenu__menu { min-width: 220px; }
+.st-projmenu__auto { display: flex; flex-direction: column; gap: 6px; padding: 6px 8px 8px; margin-bottom: 4px; border-bottom: 1px solid var(--border); color: var(--ink-muted); font: 400 12px/16px var(--font-sans); max-width: 260px; }
+.st-projmenu__auto .db-act { align-self: flex-start; }
+.st-proj--auto { border-bottom: 1px dashed currentColor; }
+.st-proj--auto:hover { text-decoration: none; }
+.pf-suggest { display: flex; align-items: center; gap: 12px; }
+.pf-suggest > span:first-child { flex: 1; }
 .st-projmenu__menu > button[aria-checked="true"] { font-weight: 600; }
 .st-projmenu__new { padding: 4px 2px 2px; }
 .st-projmenu__new .db-input { height: 30px; font-size: 13px; }

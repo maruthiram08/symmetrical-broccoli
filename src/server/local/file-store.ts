@@ -389,8 +389,10 @@ export class FileStore extends MemoryStore implements OAuthClientStore, AppStore
   }
   async saveConnection(c: Connection) { await this.change(() => super.saveConnection(c)); }
   async upsertMeeting(m: Omit<Meeting, "id" | "processedAt">) { return this.change(() => super.upsertMeeting(m), (r) => r.created || !!r.updated); }
+  /** Runs after a meeting's items are written (automatic project filing, src/server/structure/autofile.ts). Never fails the commit. */
+  afterCommit?: (userId: string) => Promise<unknown>;
   async commitExtraction(args: Parameters<MemoryStore["commitExtraction"]>[0]) {
-    await this.change(async () => {
+    const wrote = await this.change(async () => {
       const m = this.meetings.get(args.meetingId);
       if (m?.processedAt) return false; // idempotent: a meeting is only ever committed once
       await super.commitExtraction(args);
@@ -402,10 +404,12 @@ export class FileStore extends MemoryStore implements OAuthClientStore, AppStore
       }
       return true;
     }, (done) => done);
+    if (wrote && this.afterCommit) await this.afterCommit(args.userId).catch((e) => console.error(`[projects] ${e instanceof Error ? e.name : "Error"}`));
   }
   async setItemStatus(itemId: string, status: Item["status"], at: string) { await this.change(() => super.setItemStatus(itemId, status, at)); }
   async addManualItem(userId: string, input: ManualInput, at: string) { return this.change(() => super.addManualItem(userId, input, at)); }
   async updateItem(...a: Parameters<MemoryStore["updateItem"]>) { return this.change(() => super.updateItem(...a), (i) => !!i); }
+  async fileItems(...a: Parameters<MemoryStore["fileItems"]>) { return a[0].length ? this.change(() => super.fileItems(...a), (n) => n > 0) : 0; }
   async setItemTicket(...a: Parameters<MemoryStore["setItemTicket"]>) { return this.change(() => super.setItemTicket(...a), (i) => !!i); }
   async closeItemWithReason(...a: Parameters<MemoryStore["closeItemWithReason"]>) { return this.change(() => super.closeItemWithReason(...a), (ok) => ok); }
   async deleteItem(itemId: string) { return this.change(() => super.deleteItem(itemId), (ok) => ok); }
