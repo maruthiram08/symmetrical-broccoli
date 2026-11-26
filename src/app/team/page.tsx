@@ -20,7 +20,7 @@ const ERRORS: Record<string, string> = {
   last_owner: "A team needs an owner. Make someone else owner first.",
 };
 
-const when = (iso: string) => new Date(iso).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
+const when = (iso: string, timeZone: string) => new Date(iso).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit", timeZone });
 
 // Hosted mode, teams on: your teams, their members, the shared decisions log, who owes whom, and
 // (owners and admins) the audit log. Only items a member shared appear here.
@@ -41,7 +41,7 @@ export default async function Team({ searchParams }: { searchParams: Promise<{ w
           {mine.map((w) => <Link key={w.id} className={w.id === ws?.id ? "db-btn db-btn--primary" : "db-btn"} href={`/team?ws=${w.id}`}>{w.name}</Link>)}
         </nav>
       ) : null}
-      {ws ? <TeamView uid={uid} ws={ws} /> : <p className="db-lead">Share chosen items with the people you work with: decisions, and who owes whom. Nothing is shared until you share it.</p>}
+      {ws ? <TeamView uid={uid} ws={ws} tz={(await rootStore().forUser(uid).getUser(uid))?.timeZone ?? "Asia/Kolkata"} /> : <p className="db-lead">Share chosen items with the people you work with: decisions, and who owes whom. Nothing is shared until you share it.</p>}
       <section className="db-h-card">
         <h2 className="db-h-card__title">New team</h2>
         <form action={createTeam} className="db-stack">
@@ -53,14 +53,14 @@ export default async function Team({ searchParams }: { searchParams: Promise<{ w
   );
 }
 
-async function TeamView({ uid, ws }: { uid: string; ws: teams.Workspace }) {
+async function TeamView({ uid, ws, tz }: { uid: string; ws: teams.Workspace; tz: string }) {
   const db = rootStore().db;
   const admin = ws.role !== "member";
   const [members, decisions, owes, log] = await Promise.all([
     teams.listMembers(db, uid, ws.id),
     teams.decisionsLog(db, uid, ws.id),
     teams.whoOwesWhom(db, uid, ws.id),
-    admin ? teams.auditLog(db, uid, ws.id, 50) : Promise.resolve([]),
+    admin ? teams.auditLog(db, uid, ws.id, 30) : Promise.resolve([]),
   ]);
   return (
     <>
@@ -88,7 +88,7 @@ async function TeamView({ uid, ws }: { uid: string; ws: teams.Workspace }) {
       <section className="db-h-card">
         <h2 className="db-h-card__title">Decisions</h2>
         {decisions.length ? (
-          <ul className="db-h-list">{decisions.map((d) => <li key={d.itemId}>{d.text} <span className="db-h-muted">· {d.ownerName}{d.meetingTitle ? `, ${d.meetingTitle}` : ""} · {when(d.createdAt)}</span></li>)}</ul>
+          <ul className="db-h-list">{decisions.map((d) => <li key={d.itemId}>{d.text} <span className="db-h-muted">· {d.ownerName}{d.meetingTitle ? `, ${d.meetingTitle}` : ""} · {when(d.createdAt, tz)}</span></li>)}</ul>
         ) : <p className="db-h-muted">No shared decisions yet.</p>}
       </section>
 
@@ -144,13 +144,15 @@ async function TeamView({ uid, ws }: { uid: string; ws: teams.Workspace }) {
             <span className="db-h-muted">Manager brief is {ws.managerBrief ? "on" : "off"}: owners and admins get a line per member who opted in, in their daily brief.</span>
             <Button type="submit" variant="ghost">{ws.managerBrief ? "Turn off" : "Turn on"}</Button>
           </form>
-          <h3 className="db-h-card__title">Audit log</h3>
+          <details className="db-h-details">
+          <summary>Audit log</summary>
           <div className="db-h-scroll">
             <table className="db-h-table">
               <thead><tr><th>When</th><th>Who</th><th>What</th></tr></thead>
-              <tbody>{log.map((l, k) => <tr key={k}><td className="db-mono">{when(l.at)}</td><td>{l.actor ?? "deleted user"}</td><td>{l.action}{l.payload.role ? ` (${String(l.payload.role)})` : ""}{l.payload.to ? ` → ${String(l.payload.to)}` : ""}</td></tr>)}</tbody>
+              <tbody>{log.map((l, k) => <tr key={k}><td className="db-h-nowrap db-mono">{when(l.at, tz)}</td><td>{l.actor ?? "deleted user"}</td><td>{l.action}{l.payload.role ? ` (${String(l.payload.role)})` : ""}{l.payload.to ? ` → ${String(l.payload.to)}` : ""}</td></tr>)}</tbody>
             </table>
           </div>
+          </details>
         </section>
       ) : null}
     </>

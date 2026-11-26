@@ -91,6 +91,12 @@ The app keeps its secrets in the macOS Keychain (service `app.dailybrief`), not 
 
 `npm run install-login` sets up a launchd agent (`app.dailybrief`) that runs `npm start` at login. The Mac app replaces it: turn on **Launch at login** in the menu bar, and remove the agent with `npm run uninstall-login`. While the agent runs, the app reuses its server.
 
+## Hosted version (for friends)
+
+The same app can run on Vercel + Supabase for a few people, with nothing to install: sign in with an email link, connect your own Wispr Flow, get the brief by email (or Slack). Set `DAILY_BRIEF_MODE=hosted`; without it the app is the local Mac app, unchanged. Optional billing (Razorpay **test mode** only, ₹500/month, free tier of 20 meetings, referral codes) and teams (shared decisions, who owes whom, manager brief, audit log) are off until you turn them on.
+
+Setup, step by step: [docs/HOSTED.md](docs/HOSTED.md). Check your settings with `npm run hosted:check`, create the tables with `npm run hosted:migrate`.
+
 ## Develop
 
 `npm test`, `npm run typecheck`, `npm run lint`, `npm run eval` (extraction accuracy on real meetings; see `eval/README.md`).
