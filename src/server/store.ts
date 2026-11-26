@@ -1,6 +1,6 @@
 import type { CalendarCache, Connection, Health, Item, ItemTicket, LastLook, Meeting, UpcomingCache, User } from "@/lib/types";
 import { manualItem, type ManualInput } from "@/lib/capture/items";
-import { applyOps, emptyDirectory, resolveItems, resolveMeeting, resolveUpcoming, undoOps, type ChangeCtx, type Directory, type PeopleChange } from "@/lib/directory/directory";
+import { applyOps, emptyDirectory, resolveItems, resolveMeeting, resolveUpcoming, resolveCalendar, undoOps, type ChangeCtx, type Directory, type PeopleChange } from "@/lib/directory/directory";
 
 /**
  * Data access used by the jobs. Two implementations:
@@ -38,6 +38,8 @@ export interface Store {
   /** Calendar events and meeting series cached by the poll (src/server/jobs/calendar.ts). Optional. */
   saveCalendar?(userId: string, cache: CalendarCache): Promise<void>;
   getCalendar?(userId: string): Promise<CalendarCache | null>;
+  /** The calendar cache as stored (attendees not resolved), for the job that rewrites it. */
+  getCalendarRaw?(userId: string): Promise<CalendarCache | null>;
   /** Count a failed read of a meeting (it stays unprocessed). Optional: stores without it never give up. */
   recordMeetingFailure?(meetingId: string, failure: string, at: string): Promise<void>;
   /** Retry: forget failed attempts, so set-aside meetings are read again. Returns how many. */
@@ -222,7 +224,9 @@ export class MemoryStore implements Store {
     return c;
   }
   async saveCalendar(userId: string, cache: CalendarCache) { this.calendar.set(userId, cache); }
-  async getCalendar(userId: string) { return this.calendar.get(userId) ?? null; }
+  /** Attendee names resolved through the people directory; the stored cache is untouched. */
+  async getCalendar(userId: string) { return resolveCalendar(this.calendar.get(userId) ?? null, this.people.get(userId)); }
+  async getCalendarRaw(userId: string) { return this.calendar.get(userId) ?? null; }
   /** Set (or clear) an open item's due time. Returns false when there is no such item of this user. */
   async setItemDue(userId: string, itemId: string, dueAt: string | null): Promise<boolean> {
     const it = this.items.get(itemId);

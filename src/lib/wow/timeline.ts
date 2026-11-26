@@ -1,6 +1,6 @@
 // Promise timeline, related past items and the quiet streak. Pure: no API calls, simple scoring.
 
-import { belongsTo, groupNames } from "@/lib/people";
+import { belongsTo, groupNames, itemsSamePerson } from "@/lib/people";
 import { addDays, localDate, localDayBounds } from "@/lib/brief/time";
 import type { Item, Meeting } from "@/lib/types";
 
@@ -66,7 +66,7 @@ export function timeline(item: Item, items: Item[], meetings: Meeting[], now: Da
     .sort((a, b) => start(a).localeCompare(start(b)))) {
     if (seenMeetings.has(o.meetingId) || o.source === "manual") continue; // your own items aren't a meeting bringing it up
     const words = Math.max(overlap(o.text, item.text), overlap(o.quote, item.quote));
-    const person = item.person ? samePerson(o.person, item.person, self) : true;
+    const person = item.person ? itemsSamePerson(o, item, (x, y) => samePerson(x, y, self)) : true;
     if (words >= MENTION_MIN && person) {
       seenMeetings.add(o.meetingId);
       out.push({ kind: "mentioned", at: start(o), itemId: o.id, text: o.text, quote: o.quote, meeting: byId.get(o.meetingId) ?? null });
@@ -109,7 +109,7 @@ export function relatedItems(item: Item, items: Item[], meetings: Meeting[], sel
     if (o.id === item.id || !live(o) || o.source === "manual" || start(o) > at || (start(o) === at && o.meetingId === item.meetingId)) continue;
     const theirs = contentWords(`${o.text} ${o.quote}`);
     const shared = [...mine].filter((w) => theirs.has(w));
-    const person = samePerson(o.person, item.person, self);
+    const person = !!item.person && itemsSamePerson(o, item, (x, y) => samePerson(x, y, self));
     const words = overlap(`${o.text} ${o.quote}`, `${item.text} ${item.quote}`);
     if (!shared.length && !person) continue;
     if (!shared.length && o.kind !== "decision" && !(person && o.kind === item.kind)) continue;

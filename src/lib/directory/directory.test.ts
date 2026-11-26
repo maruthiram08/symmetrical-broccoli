@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { Item, Meeting } from "@/lib/types";
 import { buildUserMessage } from "@/lib/extract/prompt";
-import { findPerson, groupNames, listPeople } from "@/lib/people";
+import { findPerson, groupNames, listPeople, personDetail } from "@/lib/people";
 import { MemoryStore } from "@/server/store";
 import { FileStore } from "@/server/local/file-store";
 import { processMeeting } from "@/server/jobs/process";
@@ -362,5 +362,59 @@ describe("note links", () => {
     expect(linkIsPerson(nitinK, "Nitin Kumar", d.people)).toBe(false);
     expect(linkIsPerson(nitinKumar, "Nitin Kumar", d.people)).toBe(true);
     expect(linkIsPerson(nitinK, "Speaker 5", d.people)).toBe(false);
+  });
+});
+
+describe("calendar and grouping through the directory", () => {
+  it("resolves calendar attendees on read and never writes them back", async () => {
+    const s = new MemoryStore();
+    const u = s.addUser({ email: "a@b", name: "Me" });
+    const cache = { fetchedAt: "2026-11-25T00:00:00Z", nextFetchAt: "2026-11-25T00:30:00Z", fromIso: "a", toIso: "z", seriesChecked: {}, series: [],
+      events: [{ calendarId: "c1", title: "1:1", startsAt: "2026-11-26T05:00:00Z", endsAt: null, attendees: ["Mungu", "mangku@acme.com"] }] };
+    await s.saveCalendar(u.id, cache);
+    await s.changePeople(u.id, (d, x) => confirmNew(d, { name: "Mangku", spellings: ["Mungu"], email: "mangku@acme.com" }, x), "2026-11-25T00:00:00Z");
+    expect((await s.getCalendar(u.id))!.events[0].attendees).toEqual(["Mangku"]);
+    expect((await s.getCalendarRaw(u.id))!.events[0].attendees).toEqual(["Mungu", "mangku@acme.com"]);
+    expect(s.calendar.get(u.id)!.events[0].attendees).toEqual(["Mungu", "mangku@acme.com"]);
+  });
+
+  it("prep never merges two confirmed people who share a first name", async () => {
+    const { prepFor } = await import("@/lib/wow/prep");
+    const d = emptyDirectory();
+    apply(d, confirmNew(d, { name: "Nitin", spellings: ["Nitin"] }, ctx()));
+    apply(d, confirmNew(d, { name: "Nitin Kumar", spellings: ["Nitin Kumar"] }, ctx()));
+    const items = resolveItems([item({ person: "Nitin", text: "A" }), item({ person: "Nitin Kumar", text: "B" })], d);
+    const meeting = { calendarId: "c", title: "1:1", startsAt: "2026-11-26T05:00:00Z", attendees: ["Nitin Kumar"] };
+    expect(prepFor(meeting, items, [], d.people).owe.map((i) => i.text)).toEqual(["B"]);
+    // without a directory, today's guess stays: "Nitin" joins the only "Nitin ..." in the room
+    expect(prepFor(meeting, [item({ person: "Nitin", text: "A" }), item({ person: "Nitin Kumar", text: "B" })], []).owe.map((i) => i.text).sort()).toEqual(["A", "B"]);
+  });
+
+  it("items are the same person by directory id, else by guess", async () => {
+    const { itemsSamePerson } = await import("@/lib/people");
+    const guess = (a: string | null, b: string | null) => !!a && !!b && a.split(" ")[0] === b.split(" ")[0];
+    expect(itemsSamePerson({ person: "Nitin", personId: "a" }, { person: "Nitin Kumar", personId: "b" }, guess)).toBe(false);
+    expect(itemsSamePerson({ person: "Nitin", personId: "a" }, { person: "Nitin", personId: "a" }, guess)).toBe(true);
+    expect(itemsSamePerson({ person: "Nitin", personId: "a" }, { person: "Nitin K" }, guess)).toBe(false);
+    expect(itemsSamePerson({ person: "Nitin" }, { person: "Nitin K" }, guess)).toBe(true);
+  });
+
+  it("the week view counts confirmed people apart", async () => {
+    const { buildWeek } = await import("@/lib/brief/week");
+    const d = emptyDirectory();
+    apply(d, confirmNew(d, { name: "Nitin", spellings: ["Nitin"] }, ctx()));
+    apply(d, confirmNew(d, { name: "Nitin Kumar", spellings: ["Nitin Kumar"] }, ctx()));
+    const m = meeting({ startedAt: "2026-11-24T05:00:00Z" });
+    const items = resolveItems([item({ person: "Nitin", meetingId: m.id, createdAt: m.startedAt }), item({ person: "Nitin Kumar", meetingId: m.id, createdAt: m.startedAt })], d);
+    const w = buildWeek({ items, meetings: [m] }, new Date("2026-11-25T10:00:00Z"), "Asia/Kolkata");
+    expect(w.youOwe.map((p) => p.person).sort()).toEqual(["Nitin", "Nitin Kumar"]);
+  });
+
+  it("a confirmed person with no items still has a person page", () => {
+    const d = emptyDirectory();
+    apply(d, confirmNew(d, { name: "Ravi Shah", spellings: ["Ravi Shah"] }, ctx()));
+    const found = personDetail("ravi-shah", { items: [], meetings: [], now: new Date(), people: d.people });
+    expect(found?.person).toMatchObject({ name: "Ravi Shah", personId: d.people[0].id });
+    expect(personDetail("nobody-here", { items: [], meetings: [], now: new Date(), people: d.people })).toBeNull();
   });
 });

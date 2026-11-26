@@ -3,7 +3,7 @@
 // resolves it through here. No directory (or an empty one) changes nothing.
 // Pure: the store keeps one Directory per user and applies the ops these functions return.
 
-import type { Item, Meeting, UpcomingMeeting } from "@/lib/types";
+import type { CalendarCache, Item, Meeting, UpcomingMeeting } from "@/lib/types";
 import { isSpeakerLabel, unlabelText } from "./speakers";
 
 export type PersonStatus = "confirmed" | "ignored";
@@ -132,6 +132,12 @@ export function resolveUpcoming<M extends Pick<UpcomingMeeting, "attendees">>(m:
   if (isEmpty(d) || !m.attendees.length) return m;
   const r = resolver(d);
   return { ...m, attendees: dedupe(m.attendees.map(r.participant)) };
+}
+
+/** A calendar cache with every event's attendees resolved (a copy; the same object without a directory). */
+export function resolveCalendar(c: CalendarCache | null, d: Directory | null | undefined): CalendarCache | null {
+  if (!c || isEmpty(d)) return c;
+  return { ...c, events: c.events.map((e) => resolveUpcoming(e, d)) };
 }
 
 const dedupe = (xs: string[]) => xs.filter((x, i) => xs.findIndex((y) => nameKey(y) === nameKey(x)) === i);

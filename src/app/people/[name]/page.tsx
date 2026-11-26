@@ -5,9 +5,11 @@ import { BriefItem, ClosedItem, Section } from "@/components/BriefList";
 import { Mark } from "@/components/Mark";
 import { Shell } from "@/components/Shell";
 import { Backlinks } from "@/components/Backlinks";
-import { initials, listPeople, normalizeName, ownsItem, personDetail } from "@/lib/people";
+import { initials, listPeople, normalizeName, ownsItem, personDetail, personSlug } from "@/lib/people";
 import { getStore, me } from "@/server/local/app";
 import { PersonManage, type ManageTarget } from "@/components/PersonManage";
+import { UnknownPerson } from "@/components/UnknownPerson";
+import { isSpeakerLabel } from "@/lib/directory/speakers";
 import { localDate } from "@/lib/brief/time";
 import { isSnoozed, starredFirst } from "@/lib/capture/items";
 import { pastDays } from "../../_lib/days";
@@ -21,6 +23,11 @@ export async function generateMetadata({ params }: { params: Promise<{ name: str
   return { title: slug.split("-").filter(Boolean).map((w) => w[0].toUpperCase() + w.slice(1)).join(" ") || "Person" };
 }
 
+/** "nitin-kumar" -> "Nitin Kumar" (a slug keeps no case; the page lets you fix the spelling). */
+function nameFromSlug(slug: string): string {
+  return slug.split(/[-\s]+/).filter(Boolean).map((w) => w[0].toUpperCase() + w.slice(1)).join(" ").slice(0, 80);
+}
+
 // One person: what you owe them, what they owe you, what closed, what was decided with them, and when you met.
 export default async function Person({ params, searchParams }: { params: Promise<{ name: string }>; searchParams: Promise<{ merged?: string }> }) {
   const { name } = await params;
@@ -31,7 +38,24 @@ export default async function Person({ params, searchParams }: { params: Promise
   const { items, meetings, people } = await loadAll(user);
   const input = { items, meetings, now, self: [user.name, ...user.aliases], people };
   const found = personDetail(name, input);
-  if (!found) notFound();
+  if (!found) {
+    // A [[person:X]] link (or an old URL) for a name nobody has: offer to add them or say who it is.
+    const shown = nameFromSlug(decodeURIComponent(name));
+    if (!shown) notFound();
+    const known = listPeople(input).sort((a, b) => a.name.localeCompare(b.name))
+      .map((p) => ({ value: p.personId ? `p:${p.personId}` : `n:${p.slug}`, label: p.personId ? p.name : `${p.name} (not checked)`, slug: p.slug, ref: p.personId ? { personId: p.personId } : { name: p.name } }));
+    return (
+      <Shell days={await pastDays(user.id, "")} current="people" openCount={items.filter((i) => i.status === "open" && i.kind !== "decision").length}>
+        <p className="db-crumb"><Link className="db-link" href="/people">People</Link></p>
+        <h1 className="db-title db-person-title">
+          <span className="db-avatar db-avatar--lg" aria-hidden="true">{initials(shown)}</span>
+          {shown}
+        </h1>
+        <UnknownPerson name={shown} speaker={isSpeakerLabel(shown)} targets={known} />
+        <Backlinks person={{ name: shown, slug: personSlug(shown), keys: [normalizeName(shown)], spellings: [shown] }} people={people} />
+      </Shell>
+    );
+  }
   // Snoozed items wait for their day; starred ones go first.
   const today = localDate(now, user.timeZone);
   const awake = (xs: typeof found.youOwe) => starredFirst(xs.filter((i) => !isSnoozed(i, today)));
@@ -54,6 +78,7 @@ export default async function Person({ params, searchParams }: { params: Promise
       : { value: `n:${p.slug}`, label: `${p.name} (not checked)`, slug: p.slug, ref: { name: p.name } });
   // Split works on every item that names them, open ones first.
   const theirItems = items.filter((i) => i.status !== "wrong" && ownsItem(d.person, i)).sort((a, b) => Number(b.status === "open") - Number(a.status === "open"));
+  const nothing = !theirItems.length && !d.decisions.length && !d.meetings.length;
   const undo = merged ? (await getStore().listPeopleChanges(user.id)).find((c) => c.id === merged && !c.undone) : undefined;
   const n = (k: number, one: string, many = one + "s") => `${k} ${k === 1 ? one : many}`;
   const facts = [
@@ -82,6 +107,9 @@ export default async function Person({ params, searchParams }: { params: Promise
         </p>
       ) : null}
 
+      {nothing ? (
+        <p className="nr-noitems">No items yet. When a meeting names {d.person.name}, what you owe each other shows up here.</p>
+      ) : <>
       <Section title="You owe" count={d.youOwe.length ? String(d.youOwe.length) : undefined} empty={`Nothing owed to ${d.person.name}.`}>
         {d.youOwe.map((i) => <BriefItem key={i.id} line={toLine(i, byId, user, now)} back={back} />)}
       </Section>
@@ -118,6 +146,7 @@ export default async function Person({ params, searchParams }: { params: Promise
           ))}
         </ul> : null}
       </Section>
+      </>}
       <PersonManage
         key={`${d.person.slug}:${merged ?? ""}`}
         self={d.person.personId ? { personId: d.person.personId } : { name: d.person.name, spellings: d.person.spellings }}

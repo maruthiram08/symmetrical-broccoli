@@ -1,5 +1,5 @@
 // Tomorrow at a glance: tomorrow's meetings, each with what's open with its people. Pure.
-
+import type { Person } from "@/lib/directory/directory";
 import { addDays, dueLabel, formatTime, lateLabel, localDayBounds } from "@/lib/brief/time";
 import { prepFor } from "@/lib/wow/prep";
 import type { CalendarEvent, GlanceItem, GlanceMeeting, Item, MeetingSeries } from "@/lib/types";
@@ -17,6 +17,8 @@ export function tomorrowGlance(args: {
   timeZone: string;
   now: Date;
   self?: string[];
+  /** The people directory, so confirmed people are never merged by first-name guess. */
+  people?: Person[];
 }): GlanceMeeting[] {
   const { startIso, endIso } = localDayBounds(addDays(args.today, 1), args.timeZone);
   const open = args.items.filter((i) => i.status === "open");
@@ -30,7 +32,7 @@ export function tomorrowGlance(args: {
   const preps = args.events
     .filter((e) => e.startsAt >= startIso && e.startsAt < endIso)
     .sort((a, b) => a.startsAt.localeCompare(b.startsAt))
-    .map((e) => ({ e, p: prepFor({ calendarId: e.calendarId, title: e.title, startsAt: e.startsAt, attendees: e.attendees }, open, args.self ?? []) }));
+    .map((e) => ({ e, p: prepFor({ calendarId: e.calendarId, title: e.title, startsAt: e.startsAt, attendees: e.attendees }, open, args.self ?? [], args.people ?? []) }));
   // Each item is listed once: under the smallest meeting with its person (a 1:1 before a standup), then the earliest.
   const home = new Map<string, number>();
   preps.forEach(({ p }, k) => {

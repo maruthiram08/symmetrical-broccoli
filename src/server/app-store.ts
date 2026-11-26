@@ -39,6 +39,7 @@ export interface AppStore extends Required<Store>, OAuthClientStore {
   getUpcoming(userId: string): Promise<UpcomingCache | null>;
   saveCalendar(userId: string, cache: CalendarCache): Promise<void>;
   getCalendar(userId: string): Promise<CalendarCache | null>;
+  getCalendarRaw(userId: string): Promise<CalendarCache | null>;
   getHealth(): Promise<Health>;
   setHealth(patch: Partial<Health>): Promise<void>;
 }

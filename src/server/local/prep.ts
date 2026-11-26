@@ -9,11 +9,11 @@ import { osNotify } from "./publish";
 export const PREP_NOTIFY_MIN = 10;
 
 /** The prep card for Today: the next meeting in the coming hour and what's open with its people. */
-export async function prepCard(store: Pick<AppStore, "listUsers" | "getUpcoming" | "listItems" | "markPrepNotified">, user: User, now: Date): Promise<Prep | null> {
+export async function prepCard(store: Pick<AppStore, "listUsers" | "getUpcoming" | "listItems" | "markPrepNotified"> & Partial<Pick<AppStore, "getPeople">>, user: User, now: Date): Promise<Prep | null> {
   const cache = await store.getUpcoming(user.id);
   const next = cache ? nextUpcoming(cache.meetings, now) : null;
   if (!next) return null;
-  return prepFor(next, await store.listItems(user.id, { status: "open" }), [user.name, ...user.aliases]);
+  return prepFor(next, await store.listItems(user.id, { status: "open" }), [user.name, ...user.aliases], (await store.getPeople?.(user.id))?.people ?? []);
 }
 
 /**
@@ -21,7 +21,7 @@ export async function prepCard(store: Pick<AppStore, "listUsers" | "getUpcoming"
  * (keyed by calendar id and start, so a moved meeting is announced again). Never throws.
  */
 export async function notifyPrep(
-  store: Pick<AppStore, "listUsers" | "getUpcoming" | "listItems" | "markPrepNotified">,
+  store: Pick<AppStore, "listUsers" | "getUpcoming" | "listItems" | "markPrepNotified"> & Partial<Pick<AppStore, "getPeople">>,
   now: Date,
   notify: (title: string, body: string) => void = osNotify,
 ): Promise<number> {
@@ -32,7 +32,7 @@ export async function notifyPrep(
       const next = cache ? nextUpcoming(cache.meetings, now, PREP_NOTIFY_MIN + 2) : null;
       if (!next) continue;
       if (!(await store.markPrepNotified(`${user.id}:${next.calendarId}:${next.startsAt}`))) continue;
-      const p = prepFor(next, await store.listItems(user.id, { status: "open" }), [user.name, ...user.aliases]);
+      const p = prepFor(next, await store.listItems(user.id, { status: "open" }), [user.name, ...user.aliases], (await store.getPeople?.(user.id))?.people ?? []);
       notify(`Next: ${next.title} at ${formatTime(next.startsAt, user.timeZone)}`, prepNotice(p));
       sent++;
     }
