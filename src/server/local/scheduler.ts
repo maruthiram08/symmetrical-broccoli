@@ -32,10 +32,18 @@ export interface TickState {
   /** Since when every poll has failed (epoch ms), or null. */
   pollFailingSince: number | null;
   lastTickAt: number;
+  /** Meetings were left unread when the last read hit its time limit: keep reading next tick
+   *  instead of waiting for the next poll. Starts true so a restart mid re-read carries on. */
+  backlog?: boolean;
 }
 
 export function newTickState(): TickState {
-  return { lastPoll: 0, pollFailingSince: null, lastTickAt: 0 };
+  return { lastPoll: 0, pollFailingSince: null, lastTickAt: 0, backlog: true };
+}
+
+/** More meetings are waiting that another run could read now (not ones stopped by a key or credit problem). */
+export function hasBacklog(rs: { processed: number; remaining: number; stoppedBy?: unknown }[]): boolean {
+  return rs.some((r) => r.remaining > 0 && r.processed > 0 && !r.stoppedBy);
 }
 
 /**
@@ -64,11 +72,12 @@ export async function runTick(
     const failed = results.some((r) => !r.ok);
     st.lastPoll = failed ? nowMs - POLL_EVERY_MS + POLL_RETRY_MS : nowMs;
     st.pollFailingSince = failed ? st.pollFailingSince ?? nowMs : null;
-    await processAllPending(deps, { deadline: nowMs + 10 * 60_000 });
+    st.backlog = hasBacklog(await processAllPending(deps, { deadline: nowMs + 10 * 60_000 }));
     await opts.afterProcess?.();
-  } else if (imported.created > imported.duplicates) {
-    await processAllPending(deps, { deadline: nowMs + 10 * 60_000 });
-    await opts.afterProcess?.();
+  } else if (imported.created > imported.duplicates || st.backlog) {
+    const r = await processAllPending(deps, { deadline: nowMs + 10 * 60_000 });
+    st.backlog = hasBacklog(r);
+    if (imported.created > imported.duplicates || r.some((x) => x.processed > 0)) await opts.afterProcess?.();
   }
   const waitForPoll = st.pollFailingSince !== null && nowMs - st.pollFailingSince < DELIVER_WAIT_FOR_POLL_MS;
   const delivered = waitForPoll ? [] : await deliverDue(deps, deps.now(), { catchUp: true });
