@@ -4,6 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import { BriefItem, ClosedItem, Section } from "@/components/BriefList";
 import { Mark } from "@/components/Mark";
 import { Shell } from "@/components/Shell";
+import { Backlinks } from "@/components/Backlinks";
 import { initials, normalizeName, personDetail } from "@/lib/people";
 import { me } from "@/server/local/app";
 import { localDate } from "@/lib/brief/time";
@@ -96,6 +97,7 @@ export default async function Person({ params }: { params: Promise<{ name: strin
           ))}
         </ul> : null}
       </Section>
+      <Backlinks person={d.person} />
     </Shell>
   );
 }

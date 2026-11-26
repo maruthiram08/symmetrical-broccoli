@@ -6,6 +6,8 @@ import { me } from "@/server/local/app";
 import { readDayNote } from "@/server/local/notes";
 import { DayNotes } from "@/components/DayNotes";
 import { notesDir } from "@/server/local/paths";
+import { Backlinks } from "@/components/Backlinks";
+import { editorContext } from "../../_lib/editor";
 import { openCountFor, pastDays } from "../../_lib/days";
 
 export const dynamic = "force-dynamic";
@@ -31,7 +33,8 @@ export default async function Day({ params }: { params: Promise<{ date: string }
         <span className="db-mono">{`${notesDir().replace(/^\/Users\/[^/]+/, "~")}/${date}.md`}</span>
       </p>
       <pre className="db-md">{body}</pre>
-      <DayNotes key={date} date={date} initial={note.notes} />
+      <DayNotes key={date} date={date} initial={note.notes} {...await editorContext(user)} />
+      <Backlinks day={date} />
     </Shell>
   );
 }

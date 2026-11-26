@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { BriefItem, ClosedItem, Section } from "@/components/BriefList";
 import { CloseMoment, SummaryLinks } from "@/components/CloseWrap";
@@ -66,6 +67,7 @@ export default async function Today({ searchParams }: { searchParams: Promise<{ 
       <p className="db-subtitle">
         {b.meetingCount ? `From ${n(b.meetingCount, "meeting")} today` : "No meetings yet today"} · Brief at{" "}
         <span className="db-mono">{formatBriefTime(user.briefTime)}</span>
+        {" · "}<Link className="db-link" href="/today">With today&apos;s note</Link>
       </p>
       <SummaryLinks />
       {only ? null : <TodayNotes user={user} now={now} />}

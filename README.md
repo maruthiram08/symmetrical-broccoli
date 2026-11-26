@@ -25,7 +25,20 @@ When something needs you, every page says so with a button: Wispr Flow signed yo
 
 - Press **c** anywhere (or ⌘K › Add…, or **Quick add…** in the menu bar) and type one line: "send Nitin the deck by Fri", "Tarun owes me API spec tomorrow". It's read on your Mac, no AI: kind, person and due date (today, tomorrow, a weekday or a date), which you can change before saving. Items you add show "added by you" and can be edited or deleted.
 - On any list: **j**/**k** move, **s** star (pins it to the top), **z** snooze until a day, **d** done, **w** wrong, **e** edit your own, **F** follow up (Start this).
-- On an earlier day's page, **Your notes** saves into that day's `.md` between `<!-- daily-brief:your-notes -->` markers, and stays when the brief is written again.
+- On an earlier day's page, **Your notes** saves into that day's `.md` between `<!-- daily-brief:your-notes -->` markers, and stays when the brief is written again (see Notes below).
+
+## Notes
+
+Daily notes (**Your notes** on a day, and **Today's note** in the Today view) and free-form pages under **Notes** use one editor. It edits the Markdown itself with a live preview: markup hides except on the line you're on, so files stay byte-for-byte what you typed (line endings included) and open cleanly in any other app. Pages are `~/Daily Brief/notes/<name>.md`, newest first on `/notes`.
+
+- **Saving.** As you type, on blur, on leaving the page and on ⌘S. Until a save lands the text is also kept in the browser, so a closed window or a stopped server doesn't lose it; it saves when the app is reachable again. If a page changed in another app while it was open, that version is kept as `notes/<name>.conflict-<time>.md`.
+- **Slash commands.** Type `/`: **/todo**, **/owe**, **/waiting** (type the line, press Enter: it is read by the same parser as quick capture and becomes one of your items, written back as a linked checkbox), **/decision** (a decision callout), **/date** (today, or `/date fri`), **/person**, **/link**, **/heading**, **/quote**, **/callout**, **/divider**, **/table**, **/toggle**, **/checklist**.
+- **Links.** Type `[[` (or ⌘K) to link a person, note, meeting or item, or make a new note. Links are written `[[person:Nitin K]]`, `[[note:q4-plan|Q4 plan]]`, `[[item:<id>|Send the deck]]`, `[[day:2026-11-26]]`; click one to open it. People, notes and days show **Linked from** with the lines that link there. Ticking an item's checkbox in a note marks the item done.
+- **Rich blocks** are plain Markdown underneath: callouts `> [!note] Title`, toggles `<details><summary>…</summary>`, GFM tables and `- [ ]` checklists.
+- **Keys.** ⌘B bold, ⌘I italic, ⌘E code, ⇧⌘X strike, ⌘Enter checkbox, Tab/⇧Tab indent.
+- **Writing assist.** Select text for **Tidy**, **Shorter**, **Slack message** or **Hinglish → English** (⌘J, then 1-4). Only the selected text goes to Claude, with your key and model (`EXTRACTION_MODEL`); the estimate shows before and the cost after, usually well under ₹0.5. **Replace**, **Insert below** or **Copy**. Off without `ANTHROPIC_API_KEY`, and paused while the key or credit banner is showing.
+
+**Today view** (`/today`, or *With today's note* on Today) puts the brief and today's note side by side on a wide window.
 
 ## Your data
 
