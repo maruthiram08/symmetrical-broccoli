@@ -11,17 +11,18 @@ import { pullState, schedulerStatus } from "@/server/local/scheduler";
 import { formatBytes, summarizeHealth } from "@/server/local/health";
 import { formatTime, localDate } from "@/lib/brief/time";
 import { BRIEF_TIMES, formatBriefTime, timeZones, todayIn } from "../_lib/time";
+import { SyncSettings } from "@/components/SyncSettings";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Setup" };
 
-export default async function Setup({ searchParams }: { searchParams: Promise<{ error?: string; pull?: string; shared?: string }> }) {
+export default async function Setup({ searchParams }: { searchParams: Promise<{ error?: string; pull?: string; shared?: string; sync?: string; git?: string }> }) {
   const user = await me();
   const conn = user ? await getStore().getConnection(user.id) : null;
   // First run happens on /welcome; Settings is for changing things afterwards.
   if (!user || !conn) redirect("/welcome");
   const connected = conn?.status === "active";
-  const { error, pull, shared } = await searchParams;
+  const { error, pull, shared, sync, git } = await searchParams;
   const pulling = pullState()?.running ?? false;
   const tz = user?.timeZone ?? "Asia/Kolkata";
   const today = todayIn(tz);
@@ -150,6 +151,7 @@ export default async function Setup({ searchParams }: { searchParams: Promise<{ 
           </div>
         </form>
       ) : null}
+      <SyncSettings syncError={sync} gitError={git} />
       {health ? (
         <section className="db-stack db-subsection" aria-labelledby="health">
           <h2 className="db-section__title" id="health">Health</h2>

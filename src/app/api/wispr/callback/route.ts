@@ -7,6 +7,7 @@ import { runExclusive } from "@/server/local/scheduler";
 import { logJobError } from "@/server/jobs/types";
 import { finishWisprAuth, openPending, PENDING_COOKIE } from "@/server/wispr/oauth";
 import { errLine } from "@/server/local/log";
+import { getWorkspace, WORKSPACE_COOKIE, withWorkspace } from "@/server/local/workspaces";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,12 +16,18 @@ const WAIT_MS = 45_000;
 function done(path: string) {
   const res = NextResponse.redirect(new URL(path, appUrl()));
   res.cookies.set(PENDING_COOKIE, "", { path: "/api/wispr", maxAge: 0 });
+  res.cookies.set(WORKSPACE_COOKIE, "", { path: "/api/wispr", maxAge: 0 });
   return res;
 }
 
 // Finishes OAuth and saves the connection. On a first run it returns to /welcome (step 3 picks the
 // range to read); on a reconnect it reads the last 7 days, then shows the Connected page.
 export async function GET(req: Request) {
+  const ws = getWorkspace((await cookies()).get(WORKSPACE_COOKIE)?.value ?? "");
+  return ws ? withWorkspace(ws, () => finish(req)) : finish(req);
+}
+
+async function finish(req: Request) {
   const url = new URL(req.url);
   const user = await me();
   // First run (nothing read yet): back to /welcome, whose step 3 asks how far back to read.

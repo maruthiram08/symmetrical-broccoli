@@ -41,7 +41,7 @@ export default async function ItemPage({ params }: { params: Promise<{ id: strin
   const when = (iso: string) => `${shortDate(iso, tz)}, ${formatTime(iso, tz)}`;
   const late = item.status === "open" && item.kind !== "decision" && !!item.dueAt && Date.parse(item.dueAt) < now.getTime();
   const slug = item.person ? personSlug(item.person) : "";
-  const status = item.status === "open" ? (item.kind === "decision" ? "Decided" : late ? "Overdue" : "Open") : item.status === "done" ? "Done" : "Marked wrong";
+  const status = item.status === "open" ? (item.kind === "decision" ? "Decided" : late ? "Overdue" : "Open") : item.status === "done" ? "Done" : item.status === "inbox" ? "In your Inbox" : "Marked wrong";
 
   return (
     <Shell days={await pastDays(user.id, "")} current="item" openCount={openCount}>

@@ -64,7 +64,7 @@ function dueText(i: Item, s: Snapshot): string | null {
  */
 export function formatItem(i: Item, s: Snapshot): string {
   const tz = s.user.timeZone;
-  const status = i.status === "open" ? "" : i.status === "done" ? " (done)" : " (marked wrong)";
+  const status = i.status === "open" ? "" : i.status === "done" ? " (done)" : i.status === "inbox" ? " (in the Inbox)" : " (marked wrong)";
   const head = [`[${i.id}] ${KIND_LABEL[i.kind]}${status}`, i.person, dueText(i, s)].filter(Boolean).join(" · ");
   const m = s.byId.get(i.meetingId);
   const src = m ? `${m.title}, ${day(m.startedAt, tz)}` : "a meeting";

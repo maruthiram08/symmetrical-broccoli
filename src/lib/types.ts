@@ -1,7 +1,8 @@
 // Shared domain types. Every module imports from here; keep it the single source of truth.
 
 export type ItemKind = "owe" | "waiting" | "decision";
-export type ItemStatus = "open" | "done" | "wrong";
+/** "inbox": captured by you without a person or due date, waiting in the Inbox to be triaged. */
+export type ItemStatus = "open" | "done" | "wrong" | "inbox";
 
 export interface User {
   id: string;

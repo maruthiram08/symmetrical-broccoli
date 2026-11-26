@@ -78,10 +78,10 @@ export function timeline(item: Item, items: Item[], meetings: Meeting[], now: Da
   if (item.status === "done" && item.closeQuote && item.closedByMeetingId) {
     const m = byId.get(item.closedByMeetingId) ?? null;
     out.push({ kind: "closed", at: m?.startedAt ?? item.closedAt ?? now.toISOString(), quote: item.closeQuote, meeting: m });
-  } else if (item.status !== "open") {
+  } else if (item.status === "done" || item.status === "wrong") {
     out.push({ kind: "marked", at: item.closedAt ?? now.toISOString(), status: item.status });
   } else if (item.kind !== "decision") {
-    out.push({ kind: "open", at: now.toISOString() });
+    out.push({ kind: "open", at: now.toISOString() }); // open, or in the Inbox
   }
   const rank = (e: TimelineEvent) => (e.kind === "made" ? 0 : e.kind === "open" ? 2 : 1);
   return out.sort((a, b) => rank(a) - rank(b) || a.at.localeCompare(b.at));

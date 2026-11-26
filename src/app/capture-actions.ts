@@ -5,14 +5,14 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { addDays, localDate, zonedTime } from "@/lib/brief/time";
 import { DUE_TIME } from "@/lib/capture/parse";
-import { isManual } from "@/lib/capture/items";
+import { goesToInbox, isManual } from "@/lib/capture/items";
 import { normalizeName } from "@/lib/people";
 import { listPeople } from "@/lib/people";
 import { getStore, me } from "@/server/local/app";
 import { saveDayNotes } from "@/server/local/notes";
 import { loadAll } from "./_lib/lines";
 
-type Result = { ok: true; id?: string } | { ok: false; error: string };
+type Result = { ok: true; id?: string; inbox?: boolean } | { ok: false; error: string };
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const fields = z.object({
@@ -39,11 +39,11 @@ export async function addItemAction(input: z.input<typeof fields>): Promise<Resu
   const user = await me();
   if (!user) return { ok: false, error: "Set up Daily brief first." };
   const { kind, text, person, dueDate, note } = p.data;
-  const item = await getStore().addManualItem(user.id, {
-    kind, text, person: person || null, note: note || null,
-    dueAt: dueDate ? zonedTime(dueDate, DUE_TIME, user.timeZone).toISOString() : null,
-  }, new Date().toISOString());
-  return done({ ok: true, id: item.id });
+  const dueAt = dueDate ? zonedTime(dueDate, DUE_TIME, user.timeZone).toISOString() : null;
+  // No person and no date: it goes to the Inbox to be sorted out later.
+  const inbox = goesToInbox({ person, dueAt });
+  const item = await getStore().addManualItem(user.id, { kind, text, person: person || null, note: note || null, dueAt, inbox }, new Date().toISOString());
+  return done({ ok: true, id: item.id, inbox });
 }
 
 /** Edit one of your own items. */
@@ -53,10 +53,10 @@ export async function updateItemAction(id: string, input: z.input<typeof fields>
   const found = await mine(id);
   if (!found || !isManual(found.item)) return { ok: false, error: "Only items you added can be edited." };
   const { kind, text, person, dueDate, note } = p.data;
-  await getStore().updateItem(id, {
-    kind, text, person: person || null, note: note || null,
-    dueAt: dueDate ? zonedTime(dueDate, DUE_TIME, found.user.timeZone).toISOString() : null,
-  });
+  const dueAt = dueDate ? zonedTime(dueDate, DUE_TIME, found.user.timeZone).toISOString() : null;
+  await getStore().updateItem(id, { kind, text, person: person || null, note: note || null, dueAt });
+  // An Inbox item that now has a person or a date is sorted: it moves to its list.
+  if (found.item.status === "inbox" && !goesToInbox({ person, dueAt })) await getStore().setItemStatus(id, "open", new Date().toISOString());
   return done({ ok: true, id });
 }
 

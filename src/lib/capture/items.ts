@@ -31,13 +31,18 @@ export interface ManualInput {
   person: string | null;
   dueAt: string | null;
   note?: string | null;
+  /** Lands in the Inbox (status "inbox") instead of the lists, to be triaged later. */
+  inbox?: boolean;
 }
+
+/** Quick-captured with neither a person nor a due date: it goes to the Inbox. */
+export const goesToInbox = (input: { person?: string | null; dueAt?: string | null }) => !input.person?.trim() && !input.dueAt;
 
 /** A new manual item, shaped exactly like an extracted one. */
 export function manualItem(id: string, userId: string, input: ManualInput, at: string): Item {
   return {
     id, userId, kind: input.kind, text: input.text.trim(), person: input.person?.trim() || null,
-    quote: "", meetingId: MANUAL_MEETING_ID, dueAt: input.dueAt, status: "open",
+    quote: "", meetingId: MANUAL_MEETING_ID, dueAt: input.dueAt, status: input.inbox ? "inbox" : "open",
     closedByMeetingId: null, closeQuote: null, createdAt: at, closedAt: null,
     source: "manual", note: input.note?.trim() || null, starred: false, snoozedUntil: null,
   };
