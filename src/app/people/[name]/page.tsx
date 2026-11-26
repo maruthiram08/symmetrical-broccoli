@@ -61,6 +61,9 @@ export default async function Person({ params, searchParams }: { params: Promise
   const today = localDate(now, user.timeZone);
   const awake = (xs: typeof found.youOwe) => starredFirst(xs.filter((i) => !isSnoozed(i, today)));
   const d = { ...found, youOwe: awake(found.youOwe), waitingOn: awake(found.waitingOn) };
+  // Snoozed ones still count as open, so show them in their own group rather than hiding them.
+  const snoozed = [...found.youOwe, ...found.waitingOn].filter((i) => isSnoozed(i, today))
+    .sort((a, b) => (a.snoozedUntil ?? "").localeCompare(b.snoozedUntil ?? ""));
   if (decodeURIComponent(name) !== d.person.slug) redirect(`/people/${encodeURIComponent(d.person.slug)}`);
 
   // other spellings worth showing: not just a change of case
@@ -86,6 +89,7 @@ export default async function Person({ params, searchParams }: { params: Promise
     s.youOwe ? `You owe ${n(s.youOwe, "thing")}` : null,
     s.theyOwe ? `${n(s.theyOwe, "thing")} owed to you` : null,
     s.overdue ? `${s.overdue} late` : null,
+    snoozed.length ? `${snoozed.length} snoozed` : null,
     s.meetingCount ? `${n(s.meetingCount, "meeting")} together` : null,
   ].filter(Boolean).join(" · ");
 
@@ -111,12 +115,17 @@ export default async function Person({ params, searchParams }: { params: Promise
       {nothing ? (
         <p className="nr-noitems">No items yet. When a meeting names {d.person.name}, what you owe each other shows up here.</p>
       ) : <>
-      <Section title="You owe" count={d.youOwe.length ? String(d.youOwe.length) : undefined} empty={`Nothing owed to ${d.person.name}.`}>
+      <Section title="You owe" count={d.youOwe.length ? String(d.youOwe.length) : undefined} empty={snoozed.some((i) => i.kind === "owe") ? `Nothing due now. The rest is snoozed below.` : `Nothing owed to ${d.person.name}.`}>
         {d.youOwe.map((i) => <BriefItem key={i.id} line={toLine(i, byId, user, now)} back={back} />)}
       </Section>
-      <Section title="Waiting on" count={d.waitingOn.length ? String(d.waitingOn.length) : undefined} empty={`${d.person.name} owes you nothing.`}>
+      <Section title="Waiting on" count={d.waitingOn.length ? String(d.waitingOn.length) : undefined} empty={snoozed.some((i) => i.kind === "waiting") ? `Nothing due now. The rest is snoozed below.` : `${d.person.name} owes you nothing.`}>
         {d.waitingOn.map((i) => <BriefItem key={i.id} line={toLine(i, byId, user, now)} back={back} />)}
       </Section>
+      {snoozed.length ? (
+        <Section title="Snoozed" count={String(snoozed.length)}>
+          {snoozed.map((i) => <BriefItem key={i.id} line={{ ...toLine(i, byId, user, now), snoozedUntil: i.snoozedUntil ?? null }} back={back} />)}
+        </Section>
+      ) : null}
       {d.closed.length ? (
         <Section title="Closed recently" count={String(d.closed.length)}>
           {d.closed.map((i) =>
