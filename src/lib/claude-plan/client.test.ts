@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { EventEmitter } from "node:events";
-import { buildArgs, claudePlanClient, type Env, findClaudeBinary, runClaudePlan, type SpawnLike } from "./client";
+import { buildArgs, claudePlanClient, cleanChildEnv, type Env, findClaudeBinary, runClaudePlan, type SpawnLike } from "./client";
 import { classifyAnthropicError } from "../extract/errors";
 
 function fakeSpawn(stdout: string, code = 0, seen: { args?: string[]; env?: Env; stdin?: string } = {}): SpawnLike {
@@ -62,5 +62,43 @@ describe("claude plan client", () => {
     expect(findClaudeBinary({ PATH: "/usr/bin" }, (p) => p === "/opt/homebrew/bin/claude")).toBe("/opt/homebrew/bin/claude");
     expect(findClaudeBinary({ PATH: "", CLAUDE_CODE_BIN: "/custom/claude" }, (p) => p === "/custom/claude")).toBe("/custom/claude");
     expect(buildArgs({ model: "", max_tokens: 1, messages: [{ role: "user", content: "q" }] }).args).toContain("sonnet");
+  });
+
+  it("drops nested-session and endpoint variables from the child env", () => {
+    const e = cleanChildEnv({ HOME: "/h", PATH: "/bin", CLAUDECODE: "1", CLAUDE_CODE_ENTRYPOINT: "cli", CLAUDE_CODE_BIN: "/c", AI_AGENT: "x",
+      ANTHROPIC_BASE_URL: "http://proxy", ANTHROPIC_API_KEY: "sk", CLAUDE_AGENT_SDK_VERSION: "1", CLAUDE_CONFIG_DIR: "/cfg" });
+    expect(e).toEqual({ HOME: "/h", PATH: "/bin", CLAUDE_CODE_BIN: "/c", CLAUDE_CONFIG_DIR: "/cfg" });
+  });
+
+  it("sends SIGKILL when the child ignores SIGTERM after a timeout", async () => {
+    const sigs: string[] = [];
+    const spawn = (() => {
+      const c = new EventEmitter() as EventEmitter & { stdout: EventEmitter; stderr: EventEmitter; stdin: { end(d: string): void }; kill(s?: string): void };
+      c.stdout = new EventEmitter(); c.stderr = new EventEmitter(); c.stdin = { end: () => {} };
+      c.kill = (s?: string) => { sigs.push(s ?? "SIGTERM"); };
+      return c;
+    }) as unknown as SpawnLike;
+    const e = await runClaudePlan({ model: "s", max_tokens: 1, messages: [{ role: "user", content: "q" }] },
+      { bin: "/x/claude", spawn, timeoutMs: 5, killGraceMs: 5 }).catch((x) => x);
+    expect(e.name).toBe("TimeoutError");
+    await new Promise((r) => setTimeout(r, 30));
+    expect(sigs).toEqual(["SIGTERM", "SIGKILL"]);
+  });
+
+  it("doesn't SIGKILL a child that exits after SIGTERM", async () => {
+    const sigs: string[] = [];
+    const spawn = (() => {
+      const c = new EventEmitter() as EventEmitter & { stdout: EventEmitter; stderr: EventEmitter; stdin: { end(d: string): void }; kill(s?: string): void };
+      c.stdout = new EventEmitter(); c.stderr = new EventEmitter(); c.stdin = { end: () => {} };
+      c.kill = (s?: string) => { sigs.push(s ?? "SIGTERM"); setTimeout(() => c.emit("close", null), 0); };
+      return c;
+    }) as unknown as SpawnLike;
+    const ac = new AbortController();
+    const p = runClaudePlan({ model: "s", max_tokens: 1, messages: [{ role: "user", content: "q" }] },
+      { bin: "/x/claude", spawn, killGraceMs: 10 }, ac.signal).catch((x) => x);
+    ac.abort();
+    expect((await p).name).toBe("AbortError");
+    await new Promise((r) => setTimeout(r, 40));
+    expect(sigs).toEqual(["SIGTERM"]);
   });
 });

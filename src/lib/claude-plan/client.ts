@@ -31,6 +31,8 @@ export interface ClaudePlanDeps {
   bin?: string;
   spawn?: SpawnLike;
   timeoutMs?: number;
+  /** Wait after SIGTERM before SIGKILL. */
+  killGraceMs?: number;
   env?: Env;
 }
 
@@ -115,14 +117,31 @@ function errorFrom(out: string, err: string, code: number | null, r: CliResult |
   return new ClaudePlanError(`Claude Code exited with code ${code ?? "?"}.`, code === null ? null : 500);
 }
 
+const KILL_GRACE_MS = 3000;
+
+/** Variables that make a child `claude` think it is nested inside another Claude Code session,
+ *  or point it at a different endpoint or key. Launching the app from a Claude Code shell
+ *  leaks these in, and the child then hangs instead of using the plan login. */
+const DROP_KEYS = new Set(["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL", "CLAUDECODE", "AI_AGENT"]);
+const DROP_PREFIXES = ["CLAUDE_CODE_", "CLAUDE_AGENT_SDK_"];
+const KEEP = new Set(["CLAUDE_CODE_BIN"]);
+
+export function cleanChildEnv(src: Env): Env {
+  const env: Env = {};
+  for (const [k, v] of Object.entries(src)) {
+    if (v === undefined) continue;
+    if (!KEEP.has(k) && (DROP_KEYS.has(k) || DROP_PREFIXES.some((p) => k.startsWith(p)))) continue;
+    env[k] = v;
+  }
+  return env;
+}
+
 /** Runs one request through the CLI. Throws ClaudePlanError. */
 export async function runClaudePlan(body: Params, deps: ClaudePlanDeps = {}, signal?: AbortSignal): Promise<Anthropic.Message> {
   const bin = deps.bin ?? findClaudeBinary(deps.env);
   if (!bin) throw new ClaudePlanError("Claude Code isn't installed on this Mac. Install it from claude.com/claude-code, then sign in.", 401);
   const { args, tool } = buildArgs(body);
-  const env = { ...(deps.env ?? process.env) };
-  delete env.ANTHROPIC_API_KEY;
-  delete env.ANTHROPIC_AUTH_TOKEN;
+  const env = cleanChildEnv(deps.env ?? process.env);
   const doSpawn = deps.spawn ?? (nodeSpawn as unknown as SpawnLike);
 
   const { out, err, code } = await new Promise<{ out: string; err: string; code: number | null }>((resolve, reject) => {
@@ -130,13 +149,19 @@ export async function runClaudePlan(body: Params, deps: ClaudePlanDeps = {}, sig
     try { child = doSpawn(bin, args, { env }); } catch (e) { reject(new ClaudePlanError(`Couldn't start Claude Code: ${(e as Error).message}`, null)); return; }
     let out = "", err = "", done = false;
     const finish = (f: () => void) => { if (!done) { done = true; clearTimeout(timer); signal?.removeEventListener("abort", onAbort); f(); } };
-    const onAbort = () => { child.kill("SIGTERM"); finish(() => reject(Object.assign(new Error("Aborted"), { name: "AbortError" }))); };
-    const timer = setTimeout(() => { child.kill("SIGTERM"); finish(() => reject(Object.assign(new ClaudePlanError("Claude Code timed out.", 408), { name: "TimeoutError" }))); }, deps.timeoutMs ?? CLAUDE_PLAN_TIMEOUT_MS);
+    let exited = false;
+    const stop = () => {
+      try { child.kill("SIGTERM"); } catch { /* already gone */ }
+      const t = setTimeout(() => { if (!exited) { try { child.kill("SIGKILL"); } catch { /* already gone */ } } }, deps.killGraceMs ?? KILL_GRACE_MS);
+      (t as { unref?: () => void }).unref?.();
+    };
+    const onAbort = () => { stop(); finish(() => reject(Object.assign(new Error("Aborted"), { name: "AbortError" }))); };
+    const timer = setTimeout(() => { stop(); finish(() => reject(Object.assign(new ClaudePlanError("Claude Code timed out.", 408), { name: "TimeoutError" }))); }, deps.timeoutMs ?? CLAUDE_PLAN_TIMEOUT_MS);
     signal?.addEventListener("abort", onAbort);
     child.stdout?.on("data", (b) => { out += b.toString(); });
     child.stderr?.on("data", (b) => { err += b.toString(); });
     child.on("error", (e) => finish(() => reject(new ClaudePlanError(`Couldn't start Claude Code: ${e.message}`, null))));
-    child.on("close", (code) => finish(() => resolve({ out, err, code })));
+    child.on("close", (code) => { exited = true; finish(() => resolve({ out, err, code })); });
     child.stdin?.end(promptOf(body.messages));
   });
 

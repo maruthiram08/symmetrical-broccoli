@@ -288,6 +288,18 @@ fn spawn_server(app: &AppHandle, node: &Path) -> Result<Child, String> {
         use std::os::windows::process::CommandExt;
         cmd.creation_flags(CREATE_NO_WINDOW);
     }
+    // Started from a Claude Code shell, the app inherits variables that make the
+    // claude-plan child think it's nested in that session and hang. Drop them.
+    for (k, _) in std::env::vars_os() {
+        let k = k.to_string_lossy().to_string();
+        if k == "CLAUDECODE" || k == "AI_AGENT" || k == "ANTHROPIC_BASE_URL"
+            || k == "ANTHROPIC_API_KEY" || k == "ANTHROPIC_AUTH_TOKEN"
+            || (k.starts_with("CLAUDE_CODE_") && k != "CLAUDE_CODE_BIN")
+            || k.starts_with("CLAUDE_AGENT_SDK_")
+        {
+            cmd.env_remove(&k);
+        }
+    }
     cmd.arg(&script)
         .current_dir(&dir)
         .env("PORT", PORT.to_string())
