@@ -278,3 +278,39 @@ describe("MCP", () => {
     expect(out).toContain("Send sheet");
   });
 });
+
+describe("workspaces", () => {
+  it("keeps one directory per workspace state file", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "names-ws-"));
+    const state = (name: string) => {
+      const p = join(dir, `${name}.json`);
+      writeFileSync(p, JSON.stringify({ version: 1, users: [{ id: "u", email: "a@b", name: "Me", aliases: [], timeZone: "Asia/Kolkata", briefTime: "18:00", createdAt: "x" }], connections: [], meetings: [], items: [item({ userId: "u", person: "Nithin" })], briefs: [] }));
+      return p;
+    };
+    const work = new FileStore(state("work")), home = new FileStore(state("home"));
+    await work.changePeople("u", (d, x) => confirmNew(d, { name: "Nitin", spellings: ["Nithin"] }, x), "2026-11-26T00:00:00Z");
+    expect((await work.listItems("u"))[0].person).toBe("Nitin");
+    expect((await home.listItems("u"))[0].person).toBe("Nithin");
+    expect((await home.getPeople("u")).people).toEqual([]);
+  });
+});
+
+describe("widget", () => {
+  it("counts the same with a directory (names resolved, ignored names kept as items)", async () => {
+    const { widgetSummary } = await import("@/lib/platform/widget");
+    const s = new MemoryStore();
+    const u = s.addUser({ email: "a@b", name: "Me" });
+    const { meeting: m } = await s.upsertMeeting({ userId: u.id, providerMeetingId: "p", title: "Sync", startedAt: "2026-11-25T05:00:00Z", participants: [] });
+    await s.commitExtraction({ meetingId: m.id, userId: u.id, at: "2026-11-25T06:00:00Z", closes: [], newItems: [
+      { kind: "owe", text: "Send sheet", person: "Mungu", quote: "q", meetingId: m.id, dueAt: null },
+      { kind: "owe", text: "Send recap", person: "Speaker 2", quote: "q2", meetingId: m.id, dueAt: null },
+    ] });
+    const now = new Date("2026-11-25T08:00:00Z");
+    const before = await widgetSummary(s, u, now);
+    await s.changePeople(u.id, (d, x) => confirmNew(d, { name: "Mangku", spellings: ["Mungu"] }, x), "2026-11-25T07:00:00Z");
+    await s.changePeople(u.id, (d, x) => ignoreNames(d, ["Speaker 2"], x), "2026-11-25T07:00:00Z");
+    const after = await widgetSummary(s, u, now);
+    expect({ ...after, updatedAt: "" }).toEqual({ ...before, updatedAt: "" });
+    expect(after.owe).toBe(2);
+  });
+});
