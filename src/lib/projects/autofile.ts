@@ -55,6 +55,8 @@ export const MARGIN = 1.5;
 const TITLE_WEIGHT = 0.6;
 const PERSON_WEIGHT = 0.4;
 const PAIR_WEIGHT = 1.6;
+/** A whole one-word seed: enough alone only when the word is rare (in roughly 1 item in 20 or fewer). */
+const ONE_WORD_WEIGHT = 1.25;
 /** An item's own words this strong for some project switch off the meeting title. */
 const OWN_CLEAR = 0.25;
 
@@ -142,10 +144,13 @@ export function judge(c: Candidate, m: Model): Verdict {
     const s = m.strength.get(p.slug)!;
     const phrases = m.phrases.get(p.slug)!;
     const val = (t: string, key: string) => {
-      // A whole seed (a one-word project name or keyword) counts like a phrase, however common.
       const whole = phrases.has(key.replace(/^~/, ""));
-      const r = whole ? Math.max(m.rarity(t), 0.8) : m.rarity(t);
-      return (s.get(key) ?? 0) * r * (t.includes(" ") || whole ? PAIR_WEIGHT : 1);
+      const phrase = t.includes(" ");
+      // A one-word project name or keyword ("chart", "option") counts by how rare the word is in
+      // your meetings: a word in a few items can file on its own, one that turns up all over can't
+      // (it needs another sign, or a phrase keyword like "chart alerts").
+      if (whole && !phrase) return (s.get(key) ?? 0) * m.rarity(t) * ONE_WORD_WEIGHT;
+      return (s.get(key) ?? 0) * m.rarity(t) * (phrase ? PAIR_WEIGHT : 1);
     };
     let ownScore = 0;
     let best: { t: string; v: number } | null = null;
