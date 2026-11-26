@@ -40,6 +40,14 @@ Daily notes (**Your notes** on a day, and **Today's note** in the Today view) an
 
 **Today view** (`/today`, or *With today's note* on Today) puts the brief and today's note side by side on a wide window.
 
+## Properties, types, tags, views and projects
+
+- **Properties.** A note's YAML front matter shows as a panel above the editor: text, number, date, checkbox, list, or a link to a person or note (`[[person:Nitin]]`). Editing one property rewrites only its lines; the rest of the front matter stays exactly as written. Values the panel can't edit simply (nested YAML) are shown read-only.
+- **Note types.** Meeting note, Project and Person note come with default properties and a template. Change them or add your own on **Notes → Note types** (`/note-types`); they live in `.daily-brief/note-types.json` per workspace. Make one from the slash menu (`/new project Q4 launch`, then Enter: the line becomes a link to the new note) or from ⌘K.
+- **Tags.** Write `#tag` or `#nested/tag` in a note, put `tags:` in its properties, or add `#tag` in quick capture; items can carry tags from their page. `/tags` shows the tree with counts; a tag's page lists its notes and items. ⌘-click a tag in the editor to open it. Tags are in ⌘K.
+- **Views.** Saved views over notes (by type, property or tag) or items (by status, kind, person, project or tag), with filter, sort and group, as a **Table** (click a header to sort; safe cells edit in place) or **Kanban** (drag a card, or use its Move menu, to change status or a property). They're listed on `/views`, each gets a sidebar entry, and they're kept per workspace (also in the hosted version).
+- **Projects.** A project is a note of type Project. Assign an item from its page, the "…" menu on a brief line, or quick capture (`+december-launch`: a project that doesn't exist yet is made). The project's note shows a board (You owe, Waiting on, Done) and its linked notes. **Group by project** on Today groups the brief by project.
+
 ## Your data
 
 `~/Daily Brief/` (change with `DAILY_BRIEF_DIR`):

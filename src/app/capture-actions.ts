@@ -12,6 +12,16 @@ import { listPeople } from "@/lib/people";
 import { getStore, me } from "@/server/local/app";
 import { saveDayNotes } from "@/server/local/notes";
 import { loadAll } from "./_lib/lines";
+import { parseTagList } from "@/lib/structure/tags";
+import { resolveProject } from "@/server/structure/notes";
+
+/** Tags and project from the form, only when given (an edit without them keeps the item's). */
+function structureInput(d: { tags?: string[]; project?: string | null }, timeZone: string): { tags?: string[]; project?: string | null } {
+  const out: { tags?: string[]; project?: string | null } = {};
+  if (d.tags) out.tags = parseTagList(d.tags.join(" "));
+  if (d.project !== undefined) out.project = d.project ? resolveProject(d.project, timeZone) : null;
+  return out;
+}
 
 type Result = { ok: true; id?: string; inbox?: boolean } | { ok: false; error: string };
 
@@ -22,6 +32,9 @@ const fields = z.object({
   person: z.string().trim().max(80).nullable().optional(),
   dueDate: z.string().regex(DATE).nullable().optional(),
   note: z.string().max(2000).nullable().optional(),
+  /** Quick capture's #tags and +project (a project's name or slug; a new name makes the project). */
+  tags: z.array(z.string().max(60)).max(20).optional(),
+  project: z.string().trim().max(120).nullable().optional(),
 });
 
 async function mine(id: string) {
@@ -43,7 +56,8 @@ export async function addItemAction(input: z.input<typeof fields>): Promise<Resu
   const dueAt = dueDate ? zonedTime(dueDate, DUE_TIME, user.timeZone).toISOString() : null;
   // No person and no date: it goes to the Inbox to be sorted out later.
   const inbox = goesToInbox({ person, dueAt });
-  const item = await getStore().addManualItem(user.id, { kind, text, person: person || null, note: note || null, dueAt, inbox }, new Date().toISOString());
+  const extra = structureInput(p.data, user.timeZone);
+  const item = await getStore().addManualItem(user.id, { kind, text, person: person || null, note: note || null, dueAt, inbox, ...extra }, new Date().toISOString());
   return done({ ok: true, id: item.id, inbox });
 }
 
@@ -55,7 +69,7 @@ export async function updateItemAction(id: string, input: z.input<typeof fields>
   if (!found || !isManual(found.item)) return { ok: false, error: "Only items you added can be edited." };
   const { kind, text, person, dueDate, note } = p.data;
   const dueAt = dueDate ? zonedTime(dueDate, DUE_TIME, found.user.timeZone).toISOString() : null;
-  await getStore().updateItem(id, { kind, text, person: person || null, note: note || null, dueAt });
+  await getStore().updateItem(id, { kind, text, person: person || null, note: note || null, dueAt, ...structureInput(p.data, found.user.timeZone) });
   // An Inbox item that now has a person or a date is sorted: it moves to its list.
   if (found.item.status === "inbox" && !goesToInbox({ person, dueAt })) await getStore().setItemStatus(id, "open", new Date().toISOString());
   return done({ ok: true, id });

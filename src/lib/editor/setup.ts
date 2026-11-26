@@ -1,6 +1,6 @@
 // The notes editor's CodeMirror state: Markdown (GFM + [[links]]), history, keys, menus and the
 // live preview. The document is the Markdown text, kept exactly, including its line endings.
-import { autocompletion, closeBrackets, closeBracketsKeymap, completionKeymap } from "@codemirror/autocomplete";
+import { autocompletion, closeBrackets, closeBracketsKeymap, completionKeymap, type CompletionSource } from "@codemirror/autocomplete";
 import { defaultKeymap, history, historyKeymap, indentLess, indentMore } from "@codemirror/commands";
 import { markdown, markdownKeymap, markdownLanguage } from "@codemirror/lang-markdown";
 import { codeFolding, HighlightStyle, indentUnit, syntaxHighlighting } from "@codemirror/language";
@@ -42,6 +42,9 @@ export interface EditorOptions {
   keys?: KeyBinding[];
   onChange?: (doc: string) => void;
   onSelection?: (view: EditorView) => void;
+  /** More extensions and slash/link menu sources (src/lib/structure/editor.ts: #tags, /new). */
+  extensions?: Extension[];
+  completions?: CompletionSource[];
 }
 
 export function editorExtensions(doc: string, o: EditorOptions): Extension[] {
@@ -55,7 +58,7 @@ export function editorExtensions(doc: string, o: EditorOptions): Extension[] {
     EditorView.lineWrapping,
     EditorView.contentAttributes.of({ spellcheck: "true", autocorrect: "on", autocapitalize: "sentences", "aria-multiline": "true", role: "textbox" }),
     o.placeholder ? placeholderExt(o.placeholder) : [],
-    autocompletion({ override: [slashSource(o.today), linkSource(o.targets, o.newNote)], icons: false, defaultKeymap: true, closeOnBlur: true, activateOnTyping: true, aboveCursor: false }),
+    autocompletion({ override: [slashSource(o.today), linkSource(o.targets, o.newNote), ...(o.completions ?? [])], icons: false, defaultKeymap: true, closeOnBlur: true, activateOnTyping: true, aboveCursor: false }),
     lineCommandKeymap(o.lineCommands),
     formattingKeymap(o.keys),
     keymap.of([
@@ -67,6 +70,7 @@ export function editorExtensions(doc: string, o: EditorOptions): Extension[] {
       ...defaultKeymap,
     ]),
     livePreview(o.preview),
+    o.extensions ?? [],
     EditorView.updateListener.of((u) => {
       if (u.docChanged) o.onChange?.(docText(u.state));
       if (u.selectionSet || u.focusChanged || u.docChanged) o.onSelection?.(u.view);

@@ -12,6 +12,8 @@ import { NudgeSlot } from "./NudgeSlot";
 import { PersonPeek } from "./PersonPeek";
 import { ItemActs } from "./ItemActs";
 import { TicketLabel, TicketSend } from "./integrations/TicketSlot";
+import { LineStructure } from "./structure/LineStructure";
+import { ProjectMenu } from "./structure/ProjectMenu";
 
 function Act({ id, status, label, back, keep }: { id: string; status: "done" | "wrong" | "open"; label: string; back?: string; keep?: boolean }) {
   return (
@@ -65,6 +67,7 @@ export function BriefItem({ line, back }: { line: BriefLine; back?: string }) {
         {line.shared ? <span className="db-item__src db-item__shared" title="From a meeting someone else recorded and shared with you">shared</span> : null}
         </>}
         <TicketLabel itemId={line.itemId} />
+        <LineStructure tags={line.tags} project={line.project} />
         <Link className="db-item__src w3-history" href={`/item/${encodeURIComponent(line.itemId)}`}>· History</Link>
       </span>
       <DueHintRow line={line} back={back} />
@@ -75,6 +78,7 @@ export function BriefItem({ line, back }: { line: BriefLine; back?: string }) {
         {line.manual && line.kind !== "decision" ? (
           <EditButton edit={{ id: line.itemId, kind: line.kind, text: line.text, person: line.person, dueAt: line.dueAt ?? null, note: line.note ?? null }} />
         ) : null}
+        {actionable ? <ProjectMenu itemId={line.itemId} project={line.project ?? null} /> : null}
         {actionable ? <TicketSend itemId={line.itemId} /> : null}
         {actionable ? <StartThisButton itemId={line.itemId} /> : null}
         {actionable ? <Act id={line.itemId} status="done" label="Done" back={back} keep /> : null}

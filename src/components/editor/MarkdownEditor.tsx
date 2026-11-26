@@ -14,6 +14,8 @@ import { editorExtensions } from "@/lib/editor/setup";
 import { localLine } from "@/lib/editor/slash";
 import { addItemFromNoteAction, assistAction, assistEstimateAction, createNoteAction, linkTargetsAction, setItemDoneFromNoteAction } from "@/app/notes-actions";
 import { clearDraft, readDraft, useAutosave, type Draft, type SaveFn } from "./useAutosave";
+import { structureExtensions } from "@/lib/structure/editor";
+import { createTypedNoteAction, noteTypesAction } from "@/app/structure-actions";
 
 export interface MarkdownEditorProps {
   /** Unique per document, for the offline draft ("note:q4-plan", "day:2026-11-26"). */
@@ -44,6 +46,7 @@ export function MarkdownEditor(p: MarkdownEditorProps) {
   const view = useRef<EditorView | null>(null);
   const targets = useRef<LinkTarget[]>([]);
   const targetsAt = useRef(0);
+  const noteTypes = useRef<Array<{ id: string; name: string }>>([]);
   const bubbleRef = useRef<HTMLDivElement>(null);
   const [bubble, setBubble] = useState<Bubble | null>(null);
   const [estimate, setEstimate] = useState<string | null>(null);
@@ -60,6 +63,7 @@ export function MarkdownEditor(p: MarkdownEditorProps) {
     if (!force && Date.now() - targetsAt.current < 60_000) return;
     targetsAt.current = Date.now();
     try { targets.current = await linkTargetsAction(); } catch { /* offline: keep the last list */ }
+    if (!noteTypes.current.length) noteTypes.current = await noteTypesAction().catch(() => []);
   }, []);
 
   const onSelection = useCallback((v: EditorView) => {
@@ -120,6 +124,15 @@ export function MarkdownEditor(p: MarkdownEditorProps) {
           ],
           onChange: (text) => auto.current.change(text),
           onSelection,
+          ...structureExtensions({
+            types: () => { if (!noteTypes.current.length) void noteTypesAction().then((t) => { noteTypes.current = t; }).catch(() => {}); return noteTypes.current; },
+            create: async (typeId, title) => {
+              const r = await createTypedNoteAction(typeId, title).catch(() => null);
+              setNotice(r?.ok ? `Made “${r.title}”` : r?.error ?? "Couldn't reach Daily brief.");
+              if (r?.ok) void loadTargets(true);
+              return r?.ok ? r : null;
+            },
+          }),
         }),
       }),
     });

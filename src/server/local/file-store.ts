@@ -8,6 +8,7 @@ import { isManual, migrateItem, type ManualInput } from "@/lib/capture/items";
 import type { OAuthClientStore } from "@/server/wispr/oauth";
 import type { AppStore } from "@/server/app-store";
 import type { ChangeCtx, Directory, PeopleChange } from "@/lib/directory/directory";
+import type { SavedView } from "@/lib/structure/views";
 
 interface State {
   version: 1;
@@ -34,6 +35,8 @@ interface State {
   /** Added with the people directory: missing in older files (names then show as extracted). */
   people?: Array<[string, Directory]>;
   peopleLog?: Array<[string, PeopleChange[]]>;
+  /** Added with saved views: missing in older files (no views). */
+  views?: Array<[string, SavedView[]]>;
 }
 
 /** What happened when state.json couldn't be read. */
@@ -159,6 +162,8 @@ export class FileStore extends MemoryStore implements OAuthClientStore, AppStore
   protected newId = () => randomUUID();
 
   recovery: Recovery | null = null;
+  /** Saved views per user (src/lib/structure/views.ts). */
+  views = new Map<string, SavedView[]>();
 
   /** The file as this copy last read or wrote it; null before the first good read. */
   private loaded: FileSig | null = null;
@@ -271,6 +276,7 @@ export class FileStore extends MemoryStore implements OAuthClientStore, AppStore
     this.recovery = s.recovery ?? null;
     this.people = new Map((s.people ?? []).map(([k, d]) => [k, { people: d?.people ?? [], moved: d?.moved ?? {} }]));
     this.peopleLog = new Map(s.peopleLog ?? []);
+    this.views = new Map((s.views ?? []).filter(([, v]) => Array.isArray(v)));
   }
 
   /** True when state.json is no longer the file this copy last read or wrote. */
@@ -320,6 +326,7 @@ export class FileStore extends MemoryStore implements OAuthClientStore, AppStore
       recovery: this.recovery,
       people: [...this.people.entries()],
       peopleLog: [...this.peopleLog.entries()],
+      ...(this.views.size ? { views: [...this.views.entries()] } : {}),
     };
     mkdirSync(dirname(this.path), { recursive: true, mode: 0o700 });
     const json = JSON.stringify(state);
@@ -405,7 +412,7 @@ export class FileStore extends MemoryStore implements OAuthClientStore, AppStore
   async getCalendarRaw(userId: string) { this.reload(); return super.getCalendarRaw(userId); }
   async setItemDue(userId: string, itemId: string, dueAt: string | null) { return this.change(() => super.setItemDue(userId, itemId, dueAt), (ok) => ok); }
   async markPrepNotified(key: string) { return this.change(() => super.markPrepNotified(key), (fresh) => fresh); }
-  async deleteUser(userId: string) { await this.change(async () => { await super.deleteUser(userId); this.oauthClients.delete(userId); }); }
+  async deleteUser(userId: string) { await this.change(async () => { await super.deleteUser(userId); this.oauthClients.delete(userId); this.views.delete(userId); }); }
 
   /**
    * Forget every extracted item and mark all meetings unread, so they can be read again oldest
@@ -439,6 +446,25 @@ export class FileStore extends MemoryStore implements OAuthClientStore, AppStore
   /** The "restored from backup" notice, until the user dismisses it. */
   async getRecovery() { this.reload(); return this.recovery; }
   async dismissRecovery() { await this.change(() => { const had = !!this.recovery; this.recovery = null; return had; }, (had) => had); }
+
+  async listViews(userId: string) { this.reload(); return [...(this.views.get(userId) ?? [])]; }
+  async saveView(userId: string, view: SavedView) {
+    return this.change(() => {
+      const list = (this.views.get(userId) ?? []).filter((v) => v.id !== view.id);
+      const at = (this.views.get(userId) ?? []).findIndex((v) => v.id === view.id);
+      list.splice(at < 0 ? list.length : at, 0, view);
+      this.views.set(userId, list);
+      return view;
+    });
+  }
+  async deleteView(userId: string, viewId: string) {
+    return this.change(() => {
+      const list = this.views.get(userId) ?? [];
+      if (!list.some((v) => v.id === viewId)) return false;
+      this.views.set(userId, list.filter((v) => v.id !== viewId));
+      return true;
+    }, (ok) => ok);
+  }
 
   async getOAuthClient(userId: string) { this.reload(); return this.oauthClients.get(userId) ?? null; }
   async saveOAuthClient(userId: string, info: OAuthClientInformationMixed) { await this.change(() => { this.oauthClients.set(userId, info); }); }
