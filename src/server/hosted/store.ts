@@ -8,6 +8,7 @@ import { applyOps, emptyDirectory, resolveItems, resolveMeeting, resolveUpcoming
 import { manualItem, type ManualInput } from "@/lib/capture/items";
 import type { CalendarCache, Connection, Health, Item, LastLook, Meeting, UpcomingCache, User } from "@/lib/types";
 import type { AppStore, RecoveryNotice } from "@/server/app-store";
+import type { SavedView } from "@/lib/structure/views";
 import { decrypt, encrypt } from "@/server/crypto";
 import { applyMarks, marksToKeep, type Mark } from "@/server/local/file-store";
 import type { Store } from "@/server/store";
@@ -31,6 +32,13 @@ const toMeeting = (r: Row): Meeting => ({
   provider: (r.provider as Meeting["provider"]) ?? "wispr_flow", duplicateOf: (r.duplicate_of as string | null) ?? null,
 });
 
+/** A text[] column: pg gives an array; a bare literal ("{a,b}") is read too. */
+function tagsOf(v: unknown): string[] {
+  if (Array.isArray(v)) return v.filter((x): x is string => typeof x === "string" && !!x);
+  if (typeof v === "string" && /^\{.*\}$/.test(v)) return v.slice(1, -1).split(",").map((x) => x.replace(/^"|"$/g, "").trim()).filter(Boolean);
+  return [];
+}
+
 const toItem = (r: Row): Item => ({
   id: String(r.id), userId: String(r.user_id), kind: r.kind as Item["kind"], text: String(r.text), person: (r.person as string | null) ?? null,
   quote: String(r.quote ?? ""), meetingId: String(r.meeting_id), dueAt: isoOrNull(r.due_at), status: r.status as Item["status"],
@@ -38,13 +46,15 @@ const toItem = (r: Row): Item => ({
   createdAt: iso(r.created_at), closedAt: isoOrNull(r.closed_at), source: (r.source as Item["source"]) ?? "extracted",
   note: (r.note as string | null) ?? null, starred: !!r.starred, snoozedUntil: (r.snoozed_until as string | null) ?? null,
   ticket: (r.ticket as Item["ticket"]) ?? null, closeReason: (r.close_reason as string | null) ?? null,
+  ...(tagsOf(r.tags).length ? { tags: tagsOf(r.tags) } : {}), ...(r.project ? { project: String(r.project) } : {}),
 });
 
-const ITEM_COLS = "id, user_id, kind, text, person, quote, meeting_id, due_at, status, closed_by_meeting_id, close_quote, created_at, closed_at, source, note, starred, snoozed_until, ticket, close_reason";
+const ITEM_COLS = "id, user_id, kind, text, person, quote, meeting_id, due_at, status, closed_by_meeting_id, close_quote, created_at, closed_at, source, note, starred, snoozed_until, ticket, close_reason, tags, project";
+const ITEM_N = ITEM_COLS.split(",").length;
 const itemValues = (i: Item) => [
   i.id, i.userId, i.kind, i.text, i.person, i.quote ?? "", i.meetingId, i.dueAt, i.status, i.closedByMeetingId, i.closeQuote,
   i.createdAt, i.closedAt, i.source ?? "extracted", i.note ?? null, !!i.starred, i.snoozedUntil ?? null,
-  i.ticket ? JSON.stringify(i.ticket) : null, i.closeReason ?? null,
+  i.ticket ? JSON.stringify(i.ticket) : null, i.closeReason ?? null, i.tags ?? [], i.project ?? null,
 ];
 const placeholders = (n: number, from = 1) => Array.from({ length: n }, (_, k) => `$${k + from}`).join(", ");
 
@@ -258,7 +268,7 @@ export class HostedStore implements AppStore {
         const left = new Set(applyMarks(fresh, asMarks).map((k) => (k as Mark & { id: string }).id));
         used = [...byId.keys()].filter((id) => !left.has(id));
       }
-      for (const i of fresh) await q.query(`insert into items (${ITEM_COLS}) values (${placeholders(19)})`, itemValues(i));
+      for (const i of fresh) await q.query(`insert into items (${ITEM_COLS}) values (${placeholders(ITEM_N)})`, itemValues(i));
       for (const c of closes) {
         if (!isUuid(c.itemId)) continue;
         await q.query(
@@ -338,17 +348,17 @@ export class HostedStore implements AppStore {
   async addManualItem(userId: string, input: ManualInput, at: string): Promise<Item> {
     this.guard(userId);
     const item = manualItem(randomUUID(), userId, input, at);
-    await this.db.query(`insert into items (${ITEM_COLS}) values (${placeholders(19)})`, itemValues(item));
+    await this.db.query(`insert into items (${ITEM_COLS}) values (${placeholders(ITEM_N)})`, itemValues(item));
     return item;
   }
 
-  async updateItem(itemId: string, patch: Partial<Pick<Item, "kind" | "text" | "person" | "dueAt" | "note" | "starred" | "snoozedUntil">>): Promise<Item | null> {
+  async updateItem(itemId: string, patch: Partial<Pick<Item, "kind" | "text" | "person" | "dueAt" | "note" | "starred" | "snoozedUntil" | "tags" | "project">>): Promise<Item | null> {
     const cur = await this.getItem(itemId);
     if (!cur) return null;
     const next = { ...cur, ...patch };
     await this.db.query(
-      "update items set kind = $2, text = $3, person = $4, due_at = $5, note = $6, starred = $7, snoozed_until = $8 where id = $1",
-      [itemId, next.kind, next.text, next.person, next.dueAt, next.note ?? null, !!next.starred, next.snoozedUntil ?? null],
+      "update items set kind = $2, text = $3, person = $4, due_at = $5, note = $6, starred = $7, snoozed_until = $8, tags = $9, project = $10 where id = $1",
+      [itemId, next.kind, next.text, next.person, next.dueAt, next.note ?? null, !!next.starred, next.snoozedUntil ?? null, next.tags ?? [], next.project ?? null],
     );
     return next;
   }
@@ -556,6 +566,34 @@ export class HostedStore implements AppStore {
     if (!this.scope) return;
     const next = { ...(await this.getHealth()), ...patch };
     await this.db.query("insert into health (user_id, data) values ($1, $2) on conflict (user_id) do update set data = excluded.data", [this.scope, JSON.stringify(next)]);
+  }
+
+  // ---------- saved views (src/lib/structure/views.ts) ----------
+
+  async listViews(userId: string): Promise<SavedView[]> {
+    this.guard(userId);
+    const r = await this.db.query("select data from views where user_id = $1 order by position, id", [userId]);
+    return r.rows.map((x) => (typeof x.data === "string" ? JSON.parse(x.data) : x.data) as SavedView);
+  }
+
+  async saveView(userId: string, view: SavedView): Promise<SavedView> {
+    this.guard(userId);
+    await tx(this.db, async (q) => {
+      const cur = await q.query("select position from views where user_id = $1 and id = $2", [userId, view.id]);
+      if (cur.rows.length) {
+        await q.query("update views set data = $3, updated_at = now() where user_id = $1 and id = $2", [userId, view.id, JSON.stringify(view)]);
+      } else {
+        const max = await q.query("select coalesce(max(position), -1) as m from views where user_id = $1", [userId]);
+        await q.query("insert into views (user_id, id, data, position) values ($1, $2, $3, $4)", [userId, view.id, JSON.stringify(view), Number(max.rows[0]?.m ?? -1) + 1]);
+      }
+    });
+    return view;
+  }
+
+  async deleteView(userId: string, viewId: string): Promise<boolean> {
+    this.guard(userId);
+    const r = await this.db.query("delete from views where user_id = $1 and id = $2", [userId, viewId]);
+    return (r.rowCount ?? 0) > 0;
   }
 
   async getAiState(userId: string): Promise<AiStateDoc | null> {

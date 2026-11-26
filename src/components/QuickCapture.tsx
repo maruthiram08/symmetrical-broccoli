@@ -8,6 +8,7 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState, useTransition
 import { addItemAction, captureContextAction, deleteItemAction, updateItemAction } from "@/app/capture-actions";
 import { parseCapture } from "@/lib/capture/parse";
 import { localDate } from "@/lib/brief/time";
+import { captureTokens } from "@/lib/structure/tag-core";
 
 /** Open quick capture from anywhere: `window.dispatchEvent(new CustomEvent(OPEN_CAPTURE, { detail }))`. */
 export const OPEN_CAPTURE = "db:capture";
@@ -99,21 +100,26 @@ export function QuickCapture() {
 
   useEffect(() => { if (open) requestAnimationFrame(() => input.current?.focus()); }, [open]);
 
-  const parsed = useMemo(() => parseCapture(line, {
+  // "#tag" and "+project" words come out first; the rest reads as before.
+  const tokens = useMemo(() => captureTokens(line), [line]);
+  const parsed = useMemo(() => parseCapture(tokens.rest, {
     people: ctx?.people ?? [], self: ctx?.self ?? [], now: new Date(),
     timeZone: ctx?.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
-  }), [line, ctx]);
+  }), [tokens.rest, ctx]);
 
   // When editing, the text is saved as typed; when adding, the line is read.
   const kind = manual.kind ?? parsed.kind;
   const person = manual.person !== undefined ? manual.person : parsed.person ?? "";
   const dueDate = manual.dueDate !== undefined ? manual.dueDate : parsed.dueDate ?? "";
-  const text = editId ? line.trim() : parsed.text;
+  const text = editId ? tokens.rest : parsed.text;
   const set = (f: Field, v: string) => setManual((m) => ({ ...m, [f]: v }));
 
   const save = () => {
     if (!line.trim() || pending) return;
-    const input = { kind, text, person: person.trim() || null, dueDate: dueDate || null, note: note.trim() || null };
+    const input = {
+      kind, text, person: person.trim() || null, dueDate: dueDate || null, note: note.trim() || null,
+      ...(tokens.tags.length ? { tags: tokens.tags } : {}), ...(tokens.project ? { project: tokens.project } : {}),
+    };
     start(async () => {
       const r = editId ? await updateItemAction(editId, input) : await addItemAction(input);
       if (!r.ok) { setError(r.error); return; }
@@ -168,10 +174,12 @@ export function QuickCapture() {
               {editId ? null : <span className="db-capture__text">{text}</span>}
               {person ? <span className="db-capture__chip">{person}</span> : null}
               {dueDate ? <span className="db-capture__chip db-capture__chip--due">{dayLabel(dueDate)}</span> : null}
+              {tokens.tags.map((t) => <span key={t} className="db-capture__chip st-chip-tag">#{t}</span>)}
+              {tokens.project ? <span className="db-capture__chip st-chip-project" title="Project (a new name makes the project)">+{tokens.project}</span> : null}
               {!editId && !person.trim() && !dueDate ? <span className="db-capture__chip" title="No person or date: it waits in your Inbox">To Inbox</span> : null}
             </span>
           ) : (
-            <span className="db-capture__hint">Names, “today”, “tomorrow”, a weekday or a date are picked up as you type.</span>
+            <span className="db-capture__hint">Names, “today”, “tomorrow”, a weekday or a date are picked up as you type. #tag and +project too.</span>
           )}
         </div>
 

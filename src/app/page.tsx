@@ -22,6 +22,7 @@ import { pullState } from "@/server/local/scheduler";
 import { TopThree } from "@/components/TopThree";
 import { ExportMenu } from "@/components/ExportMenu";
 import { priorityContext, rankByPriority, topN } from "@/lib/priority";
+import { ByProject, GroupToggle } from "@/components/structure/ByProject";
 
 const countOf = (l: unknown[]) => (l.length ? String(l.length) : undefined);
 /** "in 22 min", "in 1 h 5 min" */
@@ -33,7 +34,7 @@ function minutesUntil(iso: string, now: Date): string {
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: { absolute: "Today · Daily brief" } };
 
-export default async function Today({ searchParams }: { searchParams: Promise<{ undo?: string; was?: string; meeting?: string }> }) {
+export default async function Today({ searchParams }: { searchParams: Promise<{ undo?: string; was?: string; meeting?: string; group?: string }> }) {
   const user = await me();
   if (!user) redirect("/welcome");
   const store = getStore();
@@ -44,7 +45,8 @@ export default async function Today({ searchParams }: { searchParams: Promise<{ 
   const now = new Date();
   const b = await buildBrief(store, user, now);
   const closedSinceLook = await takeCloseMoment(store, user, now);
-  const { undo, was, meeting } = await searchParams;
+  const { undo, was, meeting, group } = await searchParams;
+  const byProject = group === "project";
   const { startIso, endIso } = localDayBounds(b.date, user.timeZone);
   const todays = await store.listMeetingsBetween(user.id, startIso, endIso);
   const allItems = await store.listItems(user.id);
@@ -76,6 +78,7 @@ export default async function Today({ searchParams }: { searchParams: Promise<{ 
         {b.meetingCount ? `From ${n(b.meetingCount, "meeting")} today` : "No meetings yet today"} · Brief at{" "}
         <span className="db-mono">{formatBriefTime(user.briefTime)}</span>
         {" · "}<Link className="db-link" href="/today">With today&apos;s note</Link>
+        <GroupToggle on={byProject} any={[...b.youOwe, ...b.waitingOn].some((l) => l.project)} />
       </p>
       <div className="ex-bar"><ExportMenu type="day" id="today" label="Export brief" /></div>
       <SummaryLinks />
@@ -98,10 +101,10 @@ export default async function Today({ searchParams }: { searchParams: Promise<{ 
       {only ? null : <ContradictionCards user={user} />}
       {only ? null : <TopThree lines={top} />}
       <Section title="You owe" count={only ? countOf(keep(b.youOwe)) : owedCount} empty={only ? "Nothing you owe from this meeting." : b.meetingCount ? "Nothing owed. Go home." : "Nothing owed today."}>
-        {keep(b.youOwe).map((l) => <BriefItem key={l.itemId} line={l} />)}
+        {byProject ? <ByProject lines={keep(b.youOwe)} /> : keep(b.youOwe).map((l) => <BriefItem key={l.itemId} line={l} />)}
       </Section>
       <Section title="Waiting on" count={countOf(keep(b.waitingOn))} empty={only ? "Nobody owes you anything from this meeting." : "Nobody owes you anything today."}>
-        {keep(b.waitingOn).map((l) => <BriefItem key={l.itemId} line={l} />)}
+        {byProject ? <ByProject lines={keep(b.waitingOn)} /> : keep(b.waitingOn).map((l) => <BriefItem key={l.itemId} line={l} />)}
       </Section>
       <Section title="Decisions" count={countOf(keep(b.decisions))} empty={only ? "No decisions in this meeting." : "No decisions today."}>
         {keep(b.decisions).map((l) => <BriefItem key={l.itemId} line={l} />)}

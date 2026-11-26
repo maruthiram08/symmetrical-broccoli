@@ -10,7 +10,9 @@ import { notesDir } from "@/server/local/paths";
 import { currentWorkspace } from "@/server/local/workspaces";
 import { folderPaths, noteName, walkVault } from "@/server/local/vault";
 import { searchVault } from "@/server/local/vault-index";
+import { loadNoteTypes } from "@/server/structure/note-types";
 import { assistStatusFor } from "./editor";
+import { linkChoices } from "./structure";
 
 export interface PaletteNote { path: string; title: string; snippet: string; href: string }
 export interface PaletteDay { date: string; label: string; exists: boolean; href: string }
@@ -51,6 +53,8 @@ export async function vaultContext(user: User, now = new Date()) {
     today: localDate(now, user.timeZone),
     assist: await assistStatusFor(),
     notes,
+    types: loadNoteTypes().types,
+    links: await linkChoices(user),
   };
 }
 export type VaultContext = Awaited<ReturnType<typeof vaultContext>>;

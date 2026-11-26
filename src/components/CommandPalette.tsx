@@ -8,6 +8,7 @@ import { fold, terms } from "@/lib/search";
 import { Highlight } from "./Highlight";
 import { SearchIcon } from "./SearchIcon";
 import { OPEN_CAPTURE, type CaptureDetail } from "./QuickCapture";
+import { useStructureRows } from "./structure/usePalette";
 
 interface Nav {
   people: Array<{ name: string; slug: string; youOwe: number; theyOwe: number }>;
@@ -55,6 +56,7 @@ export function CommandPalette() {
   const [nav, setNav] = useState<Nav>({ people: [], days: [] });
   const [results, setResults] = useState<{ q: string; rows: Result[]; notes?: NoteResult[]; day?: DayResult | null }>({ q: "", rows: [] });
   const [, startTransition] = useTransition();
+  const structure = useStructureRows(open, q);
   const input = useRef<HTMLInputElement>(null);
   const list = useRef<HTMLDivElement>(null);
   const restore = useRef<HTMLElement | null>(null);
@@ -144,6 +146,9 @@ export function CommandPalette() {
     if (!ws.length) out.push(add);
     if (!addFirst) out.push(asking);
     out.push(...people, ...days);
+    // Views, tags and "New note of type…" (src/lib/structure/palette.ts).
+    if (/^new\b/i.test(q.trim())) out.unshift(...structure.filter((r) => r.group === "New note"));
+    out.push(...structure.filter((r) => !/^new\b/i.test(q.trim()) || r.group !== "New note"));
     if (ws.length) {
       for (const n of results.notes ?? []) {
         out.push({ id: `n-${n.path}`, group: "Notes", label: n.title, sub: n.snippet || n.path, href: n.href, hl: true, mark: "note" });
@@ -158,7 +163,7 @@ export function CommandPalette() {
       if (!addFirst) out.push({ ...add, group: "Add" });
     }
     return out;
-  }, [q, nav, results, router]);
+  }, [q, nav, results, router, structure]);
 
   useEffect(() => { setSel((s) => Math.min(s, Math.max(0, rows.length - 1))); }, [rows.length]);
   useEffect(() => {

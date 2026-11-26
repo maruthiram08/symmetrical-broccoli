@@ -25,6 +25,8 @@ import { ItemKeys } from "@/components/ItemKeys";
 import "./platforms.css";
 import "./ai.css";
 import "./graph.css";
+import "./canvas.css";
+import "./structure.css";
 import { PwaRegister } from "@/components/PwaRegister";
 
 const sans = Instrument_Sans({ subsets: ["latin"], weight: ["400", "500", "600"], variable: "--font-instrument-sans", display: "swap" });

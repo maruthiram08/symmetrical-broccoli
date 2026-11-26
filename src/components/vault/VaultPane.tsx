@@ -8,8 +8,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { readVaultNoteAction, saveVaultNoteAction, statVaultNoteAction, vaultBacklinksAction } from "@/app/vault-actions";
 import type { Backlink } from "@/lib/editor/links";
 import type { VaultNote } from "@/server/local/vault";
-import { LazyEditor } from "@/components/editor/LazyEditor";
 import { readDraft } from "@/components/editor/useAutosave";
+import { NoteWithProperties, bodyDraftKey } from "@/components/structure/NoteWithProperties";
+import type { LinkChoice } from "@/components/structure/PropertiesPanel";
+import type { NoteType } from "@/lib/structure/note-types";
 
 export interface PaneContext {
   workspaceId: string;
@@ -17,6 +19,9 @@ export interface PaneContext {
   today: string;
   assist: { enabled: boolean; reason?: string };
   notes: Array<{ slug: string; title: string }>;
+  /** Note types and link choices for the properties panel (src/components/structure). */
+  types?: NoteType[];
+  links?: LinkChoice[];
 }
 
 const POLL_MS = 3000;
@@ -59,9 +64,9 @@ export function VaultPane({ path, ctx, autoFocus, onNavigate, onGone }: {
     if (saving.current) return;
     if (!st) { setNotice("This note was moved or deleted outside Daily brief."); onGone?.(path); return; }
     if (st.hash === base.current) return;
-    if (readDraft(docKey)) { setNotice("Changed in another app too. Your next save keeps that version as a copy."); return; }
+    if (readDraft(docKey) || readDraft(bodyDraftKey(docKey))) { setNotice("Changed in another app too. Your next save keeps that version as a copy."); return; }
     const n = await readVaultNoteAction(path).catch(() => null);
-    if (!n || saving.current || readDraft(docKey)) return;
+    if (!n || saving.current || readDraft(docKey) || readDraft(bodyDraftKey(docKey))) return;
     base.current = n.hash;
     setNote(n);
     setVersion((v) => v + 1);
@@ -96,7 +101,9 @@ export function VaultPane({ path, ctx, autoFocus, onNavigate, onGone }: {
       ) : null}
       {notice ? <p className="db-vpane__notice" role="status">{notice}</p> : null}
       {note.readOnly ? <p className="db-vpane__notice" role="status">This file isn’t plain UTF-8 text (or is very large), so it’s open read-only to keep its bytes exactly as they are.</p> : null}
-      <LazyEditor
+      <NoteWithProperties
+        types={ctx.types}
+        links={ctx.links}
         key={`${path}:${version}`}
         docKey={docKey}
         initial={note.markdown}

@@ -60,6 +60,14 @@ A workspace can be any folder of Markdown, such as an Obsidian vault or a git re
 - **Share as protected file**: makes one HTML file whose content is encrypted in your browser (AES-256-GCM, key from your password with PBKDF2-SHA256, 310,000 iterations, WebCrypto). Send it however you like; it asks for the password and decrypts in the reader's browser. No server is involved, the password is never stored or sent, and a lost password means the file can't be opened.
 - **Themes** (Settings › Appearance): duplicate the default or start a new theme, set accent, background and ink for light and dark, a font from a safe list, density and corners, with a live preview of both. Save several and switch between them; **Export**/**Copy** a theme as JSON and **Import JSON** to bring one back. Themes only set CSS variables; the default theme writes nothing, so the app looks exactly as designed. Saved in `.daily-brief/themes.json` of your first notes folder.
 
+## Properties, types, tags, views and projects
+
+- **Properties.** A note's YAML front matter shows as a panel above the editor: text, number, date, checkbox, list, or a link to a person or note (`[[person:Nitin]]`). Editing one property rewrites only its lines; the rest of the front matter stays exactly as written. Values the panel can't edit simply (nested YAML) are shown read-only.
+- **Note types.** Meeting note, Project and Person note come with default properties and a template. Change them or add your own on **Notes → Note types** (`/note-types`); they live in `.daily-brief/note-types.json` per workspace. Make one from the slash menu (`/new project Q4 launch`, then Enter: the line becomes a link to the new note) or from ⌘K.
+- **Tags.** Write `#tag` or `#nested/tag` in a note, put `tags:` in its properties, or add `#tag` in quick capture; items can carry tags from their page. `/tags` shows the tree with counts; a tag's page lists its notes and items. ⌘-click a tag in the editor to open it. Tags are in ⌘K.
+- **Views.** Saved views over notes (by type, property or tag) or items (by status, kind, person, project or tag), with filter, sort and group, as a **Table** (click a header to sort; safe cells edit in place) or **Kanban** (drag a card, or use its Move menu, to change status or a property). They're listed on `/views`, each gets a sidebar entry, and they're kept per workspace (also in the hosted version).
+- **Projects.** A project is a note of type Project. Assign an item from its page, the "…" menu on a brief line, or quick capture (`+december-launch`: a project that doesn't exist yet is made). The project's note shows a board (You owe, Waiting on, Done) and its linked notes. **Group by project** on Today groups the brief by project.
+
 ## Your data
 
 `~/Daily Brief/` (change with `DAILY_BRIEF_DIR`):

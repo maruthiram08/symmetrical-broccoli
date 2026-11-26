@@ -5,6 +5,7 @@ import { Progress } from "./Progress";
 import { SideNav } from "./SideNav";
 import { HostedLinks } from "./HostedLinks";
 import { InboxLink, WorkspaceSwitch } from "./WorkspaceNav";
+import { StructureNav } from "./structure/StructureNav";
 
 /** Sidebar and reading column. `days` are past daily notes, newest first. */
 export function Shell({ days, current, children, footer, openCount, query, wide }: { days: Array<{ date: string; label: string }>; current: string; children: ReactNode; footer?: ReactNode; openCount?: number; query?: string; wide?: boolean }) {
@@ -28,6 +29,8 @@ export function Shell({ days, current, children, footer, openCount, query, wide 
         <Link className="db-nav" href="/ask" aria-current={current === "ask" ? "page" : undefined}>Ask</Link>
         <Link className="db-nav" href="/notes" aria-current={current === "notes" ? "page" : undefined}>Notes</Link>
         <Link className="db-nav" href="/graph" aria-current={current === "graph" || current === "meeting" ? "page" : undefined}>Graph</Link>
+        <Link className="db-nav" href="/canvas" aria-current={current === "canvas" ? "page" : undefined}>Canvas</Link>
+        <StructureNav current={current} />
         {days.length ? <div className="db-side__group">Earlier</div> : null}
         {days.map((d) => (
           <Link key={d.date} className="db-nav" href={`/day/${d.date}`} aria-current={current === d.date ? "page" : undefined}>

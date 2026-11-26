@@ -2,6 +2,7 @@ import type { ManualInput } from "@/lib/capture/items";
 import type { ChangeCtx, Directory, PeopleChange } from "@/lib/directory/directory";
 import type { CalendarCache, Health, Item, LastLook, UpcomingCache, User } from "@/lib/types";
 import type { Store } from "@/server/store";
+import type { SavedView } from "@/lib/structure/views";
 import type { OAuthClientStore } from "@/server/wispr/oauth";
 
 /** The "restored from backup" notice of the local store. The hosted store never has one. */
@@ -28,7 +29,7 @@ export interface AppStore extends Required<Store>, OAuthClientStore {
   getLastLook(userId: string): Promise<LastLook | null>;
   saveLastLook(userId: string, look: LastLook): Promise<void>;
   addManualItem(userId: string, input: ManualInput, at: string): Promise<Item>;
-  updateItem(itemId: string, patch: Partial<Pick<Item, "kind" | "text" | "person" | "dueAt" | "note" | "starred" | "snoozedUntil">>): Promise<Item | null>;
+  updateItem(itemId: string, patch: Partial<Pick<Item, "kind" | "text" | "person" | "dueAt" | "note" | "starred" | "snoozedUntil" | "tags" | "project">>): Promise<Item | null>;
   deleteItem(itemId: string): Promise<boolean>;
   setItemDue(userId: string, itemId: string, dueAt: string | null): Promise<boolean>;
   markPrepNotified(key: string): Promise<boolean>;
@@ -42,4 +43,9 @@ export interface AppStore extends Required<Store>, OAuthClientStore {
   getCalendarRaw(userId: string): Promise<CalendarCache | null>;
   getHealth(): Promise<Health>;
   setHealth(patch: Partial<Health>): Promise<void>;
+  /** Saved views over notes and items (src/lib/structure/views.ts); locally, per workspace. */
+  listViews(userId: string): Promise<SavedView[]>;
+  /** Add or replace a view (by id). */
+  saveView(userId: string, view: SavedView): Promise<SavedView>;
+  deleteView(userId: string, viewId: string): Promise<boolean>;
 }

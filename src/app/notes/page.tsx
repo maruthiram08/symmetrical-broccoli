@@ -21,7 +21,7 @@ export default async function Notes() {
     <VaultNotePage path={null}>
       <h1 className="db-title">Notes</h1>
       <p className="db-subtitle">
-        Pages of your own, each a Markdown file in <span className="db-mono">{pagesDir(notesDir()).replace(/^\/Users\/[^/]+/, "~")}</span>. Every other .md file in the folder is under Files.
+        Pages of your own, each a Markdown file in <span className="db-mono">{pagesDir(notesDir()).replace(/^\/Users\/[^/]+/, "~")}</span>. Every other .md file in the folder is under Files. <Link className="db-link" href="/note-types">Note types</Link> · <Link className="db-link" href="/tags">Tags</Link>
       </p>
       <form className="db-notes-new" action={newNoteFormAction}>
         <input className="db-input" name="title" placeholder="New note title" aria-label="New note title" maxLength={120} autoComplete="off" />
