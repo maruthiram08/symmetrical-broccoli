@@ -1,0 +1,17 @@
+/* LaTeX in notes (src/lib/editor/math.ts) and in Read mode / exports (MathML). */
+.db-ed .cm-md-math { cursor: text; color: var(--ink); }
+.db-ed .cm-md-math--inline { padding: 0 1px; border-radius: 3px; }
+.db-ed .cm-md-math--inline:hover, .db-ed .cm-md-math--block:hover { background: var(--surface-100); }
+.db-ed .cm-md-math--block { display: block; margin: 4px 0; padding: 10px 12px; overflow-x: auto; overflow-y: hidden; border-radius: var(--radius-md); text-align: center; }
+.db-ed .cm-md-math .katex { font-size: 1.08em; }
+.db-ed .cm-md-math--block .katex-display { margin: 0; }
+.db-ed .cm-md-math--loading { font-family: var(--font-mono); font-size: 0.9em; color: var(--ink-faint); }
+.db-ed .cm-md-math--error .cm-md-math__src { font-family: var(--font-mono); font-size: 0.9em; color: var(--overdue); text-decoration: underline wavy var(--overdue); text-underline-offset: 3px; }
+.db-ed .cm-md-math--error.cm-md-math--block { text-align: left; border: 1px dashed var(--overdue); }
+.db-ed .cm-md-math--empty { font-size: 13px; color: var(--ink-faint); }
+.db-ed .cm-md-mathraw { font-family: var(--font-mono); font-size: 0.92em; color: var(--ink-muted); }
+.db-ed .cm-md-mathsrc { font-family: var(--font-mono); font-size: 13px; background: var(--surface-100); color: var(--ink-muted); padding-left: 12px !important; }
+.db-ed .cm-md-mathsrc-first { border-top-left-radius: var(--radius-md); border-top-right-radius: var(--radius-md); padding-top: 4px !important; }
+.db-ed .cm-md-mathsrc-last { border-bottom-left-radius: var(--radius-md); border-bottom-right-radius: var(--radius-md); padding-bottom: 4px !important; }
+.db-ed .cm-focus-on .cm-md-math--block { opacity: 0.28; }
+math.db-math-block { display: block; margin: 8px 0; overflow-x: auto; }

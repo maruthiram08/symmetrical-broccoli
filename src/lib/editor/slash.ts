@@ -9,7 +9,7 @@ import { formatWikiLink } from "./links";
 
 export type SlashId =
   | "todo" | "owe" | "waiting" | "decision" | "date" | "person" | "link"
-  | "heading" | "quote" | "callout" | "divider" | "table" | "toggle" | "checklist";
+  | "heading" | "quote" | "callout" | "divider" | "table" | "toggle" | "checklist" | "math";
 
 export interface SlashCommand {
   id: SlashId;
@@ -36,6 +36,7 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   { id: "table", label: "Table", hint: "A 3 by 2 table", aliases: ["grid"], line: false },
   { id: "toggle", label: "Toggle", hint: "A block you can fold away", aliases: ["details", "collapse", "fold"], line: false },
   { id: "checklist", label: "Checklist", hint: "A list to tick off", aliases: ["check", "list", "tasks"], line: false },
+  { id: "math", label: "Math", hint: "A LaTeX formula block ($x$ for inline)", aliases: ["latex", "equation", "formula", "tex", "katex"], line: false },
 ];
 
 const byId = new Map(SLASH_COMMANDS.map((c) => [c.id, c]));
@@ -108,6 +109,7 @@ export function insertFor(id: SlashId, opts: { today: string; lineRest?: string;
       return rest ? { text, wholeLine: true, cursor: head.length } : { text, wholeLine: true, cursor: 18, selectTo: 18 + title.length };
     }
     case "checklist": return { text: `- [ ] ${rest}`, wholeLine: true };
+    case "math": return rest ? { text: `$$\n${rest}\n$$`, wholeLine: true, cursor: 3 + rest.length } : { text: "$$\n\n$$", wholeLine: true, cursor: 3 };
   }
 }
 

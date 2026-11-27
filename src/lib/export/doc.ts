@@ -4,6 +4,7 @@
 import type { SyntaxNode } from "@lezer/common";
 import { notesParser } from "@/lib/editor/markdown";
 import { parseWikiLink } from "@/lib/editor/links";
+import { mathEnabled, mathSource } from "@/lib/editor/math-tex";
 
 export type Inline =
   | { t: "text"; v: string }
@@ -12,7 +13,9 @@ export type Inline =
   | { t: "link"; href: string; c: Inline[] }
   /** A [[link]]: shown as its label, never as a link back to this Mac. */
   | { t: "wiki"; label: string }
-  | { t: "br" };
+  | { t: "br" }
+  /** $x$: LaTeX, drawn as MathML in HTML. */
+  | { t: "math"; tex: string };
 
 export interface ListEntry {
   /** null: not a task. */
@@ -28,7 +31,9 @@ export type Block =
   | { t: "callout"; kind: string; title: Inline[]; blocks: Block[] }
   | { t: "code"; lang: string; v: string }
   | { t: "hr" }
-  | { t: "table"; head: Inline[][]; rows: Inline[][][] };
+  | { t: "table"; head: Inline[][]; rows: Inline[][][] }
+  /** $$ … $$: a LaTeX block. */
+  | { t: "math"; tex: string };
 
 /** A page to export: a title, an optional line under it, and its Markdown. */
 export interface ExportDoc {
@@ -37,7 +42,10 @@ export interface ExportDoc {
   markdown: string;
 }
 
-const SKIP = new Set(["EmphasisMark", "CodeMark", "LinkMark", "QuoteMark", "HeaderMark", "ListMark", "TaskMarker", "StrikethroughMark", "TableDelimiter", "CodeInfo", "LinkTitle", "LinkLabel"]);
+/** Off for notes with "math: false" in their properties: their dollars stay text. */
+let mathOn = true;
+
+const SKIP = new Set(["MathMark", "EmphasisMark", "CodeMark", "LinkMark", "QuoteMark", "HeaderMark", "ListMark", "TaskMarker", "StrikethroughMark", "TableDelimiter", "CodeInfo", "LinkTitle", "LinkLabel"]);
 
 /** Text between inline nodes: soft line breaks become spaces; quote marks and indents go. */
 function gap(md: string, from: number, to: number): string {
@@ -99,6 +107,12 @@ function inlines(md: string, n: SyntaxNode, from = n.from, to = n.to): Inline[] 
         const href = md.slice(c.from, c.to).replace(/^<|>$/g, "");
         if (safeHref(href)) out.push({ t: "link", href, c: [{ t: "text", v: href }] });
         else pushText(out, href);
+        break;
+      }
+      case "InlineMath": {
+        const raw = md.slice(c.from, c.to);
+        if (mathOn) out.push({ t: "math", tex: mathSource(raw, false) });
+        else pushText(out, raw);
         break;
       }
       case "HardBreak": out.push({ t: "br" }); break;
@@ -204,6 +218,12 @@ function block(md: string, n: SyntaxNode, out: Block[]) {
       return;
     }
     case "HorizontalRule": out.push({ t: "hr" }); return;
+    case "BlockMath": {
+      const raw = md.slice(n.from, n.to);
+      if (mathOn) out.push({ t: "math", tex: mathSource(raw, true) });
+      else out.push({ t: "p", c: [{ t: "text", v: raw }] });
+      return;
+    }
     case "Table": {
       const cells = (row: SyntaxNode) => row.getChildren("TableCell").map((c) => inlines(md, c));
       const header = n.getChild("TableHeader");
@@ -241,6 +261,7 @@ export function cleanMarkdown(md: string): string {
 }
 
 export function parseBlocks(markdown: string): Block[] {
+  mathOn = mathEnabled(markdown);
   const md = cleanMarkdown(markdown);
   const tree = notesParser.parse(md);
   const out: Block[] = [];
@@ -250,7 +271,7 @@ export function parseBlocks(markdown: string): Block[] {
 
 /** The text of a run, for plain-text uses (titles, tests). */
 export function plain(c: Inline[]): string {
-  return c.map((x) => (x.t === "text" || x.t === "code" ? x.v : x.t === "wiki" ? x.label : x.t === "br" ? "\n" : plain(x.c))).join("");
+  return c.map((x) => (x.t === "text" || x.t === "code" ? x.v : x.t === "math" ? x.tex : x.t === "wiki" ? x.label : x.t === "br" ? "\n" : plain(x.c))).join("");
 }
 
 /** The doc's blocks; a first "# Heading" that repeats the title is dropped (the title is shown already). */

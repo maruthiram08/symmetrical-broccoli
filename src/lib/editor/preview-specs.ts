@@ -7,6 +7,7 @@ import type { SyntaxNode } from "@lezer/common";
 import { linkHref, parseWikiLink, type LinkKind, type LinkResolver } from "./links";
 import { parseLineCommand } from "./slash";
 import { FOOTNOTE_DEF_RE } from "./markdown";
+import { mathEnabled, mathSource } from "./math-tex";
 
 export type Spec =
   | { t: "hide"; from: number; to: number }
@@ -24,7 +25,8 @@ export type Spec =
   | { t: "embed"; from: number; to: number; target: string; label: string }
   | { t: "footref"; from: number; to: number; label: string; text: string }
   | { t: "footdef"; from: number; to: number; label: string }
-  | { t: "mermaid"; from: number; to: number; code: string };
+  | { t: "mermaid"; from: number; to: number; code: string }
+  | { t: "math"; from: number; to: number; tex: string; display: boolean };
 
 /** File types an embed or image shows as a picture. */
 export const IMAGE_RE = /\.(png|jpe?g|gif|webp|svg|avif|bmp)$/i;
@@ -67,6 +69,7 @@ export function previewSpecs(state: EditorState, opts: PreviewOptions): Spec[] {
   const onLines = (from: number, to: number) => touches(lineOf(from).from, lineOf(to).to);
   const text = (from: number, to: number) => state.sliceDoc(from, to);
   const skipSpace = (pos: number, end: number) => { while (pos < end && (doc.sliceString(pos, pos + 1) === " " || doc.sliceString(pos, pos + 1) === "\t")) pos++; return pos; };
+  const mathOn = mathEnabled(state.sliceDoc(0, Math.min(doc.length, 20_000)));
   const children = (n: SyntaxNode, name: string) => { const xs: SyntaxNode[] = []; for (let c = n.firstChild; c; c = c.nextSibling) if (c.name === name) xs.push(c); return xs; };
 
   // Footnote definitions ("[^1]: text"), by line: their text is the tooltip of each reference.
@@ -153,6 +156,24 @@ export function previewSpecs(state: EditorState, opts: PreviewOptions): Spec[] {
           else out.push({ t: "mark", from: n.from, to: n.to, cls: "cm-md-footraw" });
           return false;
         }
+        case "InlineMath": {
+          if (!mathOn) return false;
+          if (touches(n.from, n.to)) out.push({ t: "mark", from: n.from, to: n.to, cls: "cm-md-mathraw" });
+          else out.push({ t: "math", from: n.from, to: n.to, tex: mathSource(text(n.from, n.to), false), display: false });
+          return false;
+        }
+        case "BlockMath": {
+          if (!mathOn) return false;
+          const first = lineOf(n.from), last = lineOf(n.to);
+          if (onLines(n.from, n.to)) {
+            for (let ln = first.number; ln <= last.number; ln++) out.push({ t: "line", at: doc.line(ln).from, cls: `cm-md-mathsrc${ln === first.number ? " cm-md-mathsrc-first" : ""}${ln === last.number ? " cm-md-mathsrc-last" : ""}` });
+          } else out.push({ t: "math", from: first.from, to: last.to, tex: mathSource(text(n.from, n.to), true), display: true });
+          return false;
+        }
+        case "Escape":
+          // "\$" reads as "$" once you leave the line.
+          if (text(n.from, n.to) === "\\$" && !onLines(n.from, n.to)) out.push({ t: "hide", from: n.from, to: n.from + 1 });
+          return false;
         case "URL":
           if (n.parent?.name !== "Link") out.push({ t: "mark", from: n.from, to: n.to, cls: "cm-md-link", attrs: { "data-href": text(n.from, n.to) } });
           return;

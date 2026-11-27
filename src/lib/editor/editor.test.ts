@@ -24,7 +24,7 @@ describe("slash commands", () => {
   });
 
   it("ranks commands by id, then aliases", () => {
-    expect(filterCommands("")).toHaveLength(14);
+    expect(filterCommands("")).toHaveLength(15);
     expect(filterCommands("t")[0].id).toBe("todo");
     expect(filterCommands("ta")[0].id).toBe("table");
     expect(filterCommands("h2")[0].id).toBe("heading");
