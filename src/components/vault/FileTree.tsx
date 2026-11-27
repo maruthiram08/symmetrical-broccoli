@@ -23,6 +23,8 @@ interface Props {
   onChanged: () => void;
   onRenamed: (from: string, to: string) => void;
   onTrashed: (path: string, trashed: string) => void;
+  /** Open the merge dialog with this note. */
+  onMerge?: (path: string) => void;
 }
 
 type Edit =
@@ -179,6 +181,7 @@ export function FileTree(p: Props) {
               )}
               <button role="menuitem" type="button" onClick={() => { setMenu(null); setEdit({ kind: "rename", path: n.path, type: n.type }); }}>Rename</button>
               <button role="menuitem" type="button" onClick={() => { setMenu(null); setEdit({ kind: "move", path: n.path }); }}>Move to…</button>
+              {n.type === "file" && p.onMerge && !/(^|\/)\d{4}-\d{2}-\d{2}\.md$/.test(n.path) ? <button role="menuitem" type="button" onClick={() => { setMenu(null); p.onMerge?.(n.path); }}>Merge with…</button> : null}
               <button role="menuitem" type="button" className="db-tree__danger" onClick={() => void trash(n.path)}>Delete</button>
             </div>
           ) : null}

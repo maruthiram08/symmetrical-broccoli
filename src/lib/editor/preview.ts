@@ -6,6 +6,7 @@ import { Decoration, EditorView, WidgetType, type DecorationSet } from "@codemir
 import { previewSpecs, type Spec } from "./preview-specs";
 import type { LinkResolver } from "./links";
 import { mermaidCached, renderMermaid } from "./mermaid";
+import { loadKatex, renderMathSync, type MathResult } from "./math";
 
 export const setFocused = StateEffect.define<boolean>();
 
@@ -258,6 +259,38 @@ class MermaidWidget extends WidgetType {
   ignoreEvent() { return false; }
 }
 
+class MathWidget extends WidgetType {
+  constructor(readonly tex: string, readonly display: boolean, readonly from: number) { super(); }
+  eq(o: MathWidget) { return o.tex === this.tex && o.display === this.display && o.from === this.from; }
+  get estimatedHeight() { return this.display ? 56 : -1; }
+  toDOM() {
+    const el = document.createElement(this.display ? "div" : "span");
+    el.className = `cm-md-math cm-md-math--${this.display ? "block" : "inline"}`;
+    el.dataset.mathFrom = String(this.from + (this.display ? 2 : 1));
+    el.title = this.display ? `$$${this.tex}$$` : `$${this.tex}$`;
+    const draw = (r: MathResult) => {
+      el.classList.toggle("cm-md-math--loading", false);
+      if (r.ok) { el.innerHTML = r.html; return; }
+      el.textContent = "";
+      el.classList.add("cm-md-math--error");
+      const src = document.createElement("span");
+      src.className = "cm-md-math__src";
+      src.textContent = this.tex || "Empty formula";
+      el.append(src);
+      el.title = `Can't draw this formula: ${r.error}`;
+      el.setAttribute("aria-label", el.title);
+    };
+    if (!this.tex.trim()) { el.classList.add("cm-md-math--empty"); el.textContent = this.display ? "Empty formula" : "∅"; return el; }
+    const now = renderMathSync(this.tex, this.display);
+    if (now) { draw(now); return el; }
+    el.classList.add("cm-md-math--loading");
+    el.textContent = this.tex;
+    void loadKatex().then(() => { const r = renderMathSync(this.tex, this.display); if (r) draw(r); }, () => draw({ ok: false, error: "the math drawer didn't load" }));
+    return el;
+  }
+  ignoreEvent() { return false; }
+}
+
 export type WidgetConfig = Partial<Pick<PreviewConfig, "asset" | "embed">>;
 
 /** Where an image's src points: http(s) as is, files in the notes folder through the app. */
@@ -293,6 +326,7 @@ export function toDecorations(specs: Spec[], cfg: WidgetConfig = {}): Decoration
       case "embed": ranges.push(Decoration.replace({ widget: new EmbedWidget(s.target, s.label, cfg.embed) }).range(s.from, s.to)); break;
       case "footref": ranges.push(Decoration.replace({ widget: new FootRefWidget(s.label, s.text) }).range(s.from, s.to)); break;
       case "footdef": ranges.push(Decoration.replace({ widget: new FootDefWidget(s.label) }).range(s.from, s.to)); break;
+      case "math": ranges.push(s.display ? Decoration.replace({ widget: new MathWidget(s.tex, true, s.from), block: true }).range(s.from, s.to) : Decoration.replace({ widget: new MathWidget(s.tex, false, s.from) }).range(s.from, s.to)); break;
       case "mermaid": ranges.push(Decoration.replace({ widget: new MermaidWidget(s.code, s.from), block: true }).range(s.from, s.to)); break;
     }
   }
@@ -367,6 +401,13 @@ export function livePreview(cfg: PreviewConfig): Extension {
         e.preventDefault();
         if (/^https?:\/\//i.test(href)) window.open(href, "_blank", "noopener");
         else cfg.navigate(href, e.metaKey || e.ctrlKey);
+        return true;
+      }
+      const math = el.closest<HTMLElement>("[data-math-from]");
+      if (math) {
+        view.dispatch({ selection: { anchor: Number(math.dataset.mathFrom) } });
+        view.focus();
+        e.preventDefault();
         return true;
       }
       const table = el.closest<HTMLElement>("[data-table-from]");

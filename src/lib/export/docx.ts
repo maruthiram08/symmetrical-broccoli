@@ -27,6 +27,8 @@ function runs(c: Inline[], s: RunStyle = {}): ParagraphChild[] {
       case "code": out.push(new TextRun({ text: x.v, ...s, font: MONO, shading: { type: ShadingType.CLEAR, color: "auto", fill: SURFACE } })); break;
       case "wiki": out.push(new TextRun({ text: x.label, ...s, underline: { color: FAINT } })); break;
       case "br": out.push(new TextRun({ text: "", break: 1 })); break;
+      // Word gets the LaTeX itself, in its math font (Word's own equations can't be made from it here).
+      case "math": out.push(new TextRun({ text: `$${x.tex}$`, ...s, font: "Cambria Math" })); break;
       case "link": out.push(new ExternalHyperlink({ link: x.href, children: runs(x.c, s).map((r) => r) as TextRun[] })); break;
     }
   }
@@ -61,6 +63,9 @@ function paragraphs(blocks: Block[], ctx: Ctx): Array<Paragraph | Table> {
         break;
       case "p":
         out.push(new Paragraph({ children: runs(b.c, ctx.color ? { color: ctx.color } : {}), spacing: { after: 120 }, ...base() }));
+        break;
+      case "math":
+        out.push(new Paragraph({ children: [new TextRun({ text: `$$${b.tex}$$`, font: "Cambria Math" })], alignment: AlignmentType.CENTER, spacing: { after: 120 }, ...base() }));
         break;
       case "hr":
         out.push(new Paragraph({ children: [], border: { bottom: { style: BorderStyle.SINGLE, size: 6, color: BORDER, space: 1 } }, spacing: { after: 200 } }));

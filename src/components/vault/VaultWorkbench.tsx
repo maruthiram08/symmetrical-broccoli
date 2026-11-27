@@ -5,7 +5,9 @@
 // mode. The layout is remembered per workspace in this browser.
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { resolveNoteAction, restoreVaultEntryAction, vaultTreeAction, createVaultNoteAction } from "@/app/vault-actions";
+import { resolveNoteAction, restoreVaultEntryAction, vaultTreeAction, createVaultNoteAction, undoMergeAction } from "@/app/vault-actions";
+import type { MergeDone } from "@/server/local/merge";
+import { MergeDialog } from "./MergeDialog";
 import { FOCUS_EVENT, readFocusConf, toggleFocusMode, type FocusConf } from "@/lib/editor/focus-conf";
 import {
   FRONT_EVENT, activate, activePath, closeTab, cycleTab, emptyLayout, focusPane, loadLayout, newTab, noteHref, openPath, openToSide,
@@ -42,6 +44,8 @@ export function VaultWorkbench({ ctx, initialPath, children }: { ctx: WorkbenchC
   const [filesOpen, setFilesOpen] = useState(false);
   const [focus, setFocus] = useState<FocusConf>({ on: false, unit: "paragraph", typewriter: true });
   const [toast, setToast] = useState<{ text: string; undo?: () => void } | null>(null);
+  const [merging, setMerging] = useState<string | null>(null);
+  const [nonce, setNonce] = useState(0);
   const sig = useRef<string | undefined>(undefined);
   const lay = useRef(layout);
   lay.current = layout;
@@ -89,7 +93,7 @@ export function VaultWorkbench({ ctx, initialPath, children }: { ctx: WorkbenchC
     return () => { clearInterval(t); window.removeEventListener("focus", now); };
   }, [refreshTree]);
 
-  useEffect(() => { if (!toast) return; const t = setTimeout(() => setToast(null), 6000); return () => clearTimeout(t); }, [toast]);
+  useEffect(() => { if (!toast) return; const t = setTimeout(() => setToast(null), toast.undo ? 12000 : 6000); return () => clearTimeout(t); }, [toast]);
 
   const open = useCallback((path: string, o: OpenOpts = {}) => {
     setHome(false);
@@ -149,6 +153,26 @@ export function VaultWorkbench({ ctx, initialPath, children }: { ctx: WorkbenchC
     });
   }, [refreshTree]);
 
+  const onMerged = useCallback((d: MergeDone) => {
+    setMerging(null);
+    setHome(false);
+    setLayout((l) => openPath(d.sources.reduce((x, p) => removePath(x, p), l), d.target));
+    setNonce((n) => n + 1);
+    void refreshTree();
+    const n = d.sources.length;
+    setToast({
+      text: `Merged ${n === 1 ? tabName(d.sources[0]) : `${n} notes`} into ${tabName(d.target)}`,
+      undo: () => {
+        void undoMergeAction(d.id).then((r) => {
+          if (!r.ok) { setToast({ text: r.error }); return; }
+          setNonce((x) => x + 1);
+          void refreshTree();
+          setToast({ text: r.kept.length ? `Put back, except ${r.kept.map(tabName).join(", ")} (changed since)` : "Put back as it was" });
+        });
+      },
+    });
+  }, [refreshTree]);
+
   const split = layout.panes.length > 1;
   const showHome = home || (layout.panes.length === 1 && !layout.panes[0].tabs.length);
 
@@ -169,7 +193,7 @@ export function VaultWorkbench({ ctx, initialPath, children }: { ctx: WorkbenchC
       <aside className="db-vault__files" id="db-vault-files" data-open={filesOpen ? "" : undefined} aria-label="Files">
         <FileTree
           tree={tree} folders={folders} active={current} workspaceId={ctx.workspaceId} rootLabel={ctx.rootLabel} truncated={ctx.truncated}
-          onOpen={open} onChanged={() => void refreshTree()} onRenamed={onRenamed} onTrashed={onTrashed}
+          onOpen={open} onChanged={() => void refreshTree()} onRenamed={onRenamed} onTrashed={onTrashed} onMerge={(p) => setMerging(p)}
         />
       </aside>
       <div className="db-vault__main">
@@ -188,11 +212,12 @@ export function VaultWorkbench({ ctx, initialPath, children }: { ctx: WorkbenchC
                   onFocusCapture={() => { if (!focused) setLayout((l) => focusPane(l, pi)); }}
                   onMouseDownCapture={() => { if (!focused) setLayout((l) => focusPane(l, pi)); }}>
                   <TabBar layout={layout} pane={pi} onActivate={(i) => { setHome(false); setLayout((l) => activate(l, pi, i)); }} onClose={(i) => setLayout((l) => closeTab(l, pi, i))}
-                    onNew={() => { setHome(false); setLayout((l) => newTab(focusPane(l, pi))); }} split={split} onSplit={() => setLayout((l) => toggleSplit(l))} focus={focus} showTools={pi === layout.panes.length - 1} />
+                    onNew={() => { setHome(false); setLayout((l) => newTab(focusPane(l, pi))); }} split={split} onSplit={() => setLayout((l) => toggleSplit(l))} focus={focus} showTools={pi === layout.panes.length - 1}
+                    onMerge={path ? () => setMerging(path) : undefined} />
                   <div className="db-vault__body">
                     {path === null ? <p className="db-section__empty">No note open. Pick one from Files, or press ⌘T.</p>
                       : path === "" ? <NewTab files={files} onPick={(p) => open(p)} onCreate={async (name) => { const r = await createVaultNoteAction("", name); if (r.ok) { void refreshTree(); open(r.path); } }} />
-                        : <VaultPane key={path} path={path} ctx={ctx} autoFocus={focused} onNavigate={navigate} />}
+                        : <VaultPane key={`${path}:${nonce}`} path={path} ctx={ctx} autoFocus={focused} onNavigate={navigate} />}
                   </div>
                 </section>
               );
@@ -200,6 +225,7 @@ export function VaultWorkbench({ ctx, initialPath, children }: { ctx: WorkbenchC
           </div>
         )}
       </div>
+      {merging ? <MergeDialog path={merging} files={files} onClose={() => setMerging(null)} onMerged={onMerged} /> : null}
       {toast ? (
         <div className="db-vault__toast" role="status">
           <span>{toast.text}</span>
@@ -210,8 +236,8 @@ export function VaultWorkbench({ ctx, initialPath, children }: { ctx: WorkbenchC
   );
 }
 
-function TabBar({ layout, pane, home, onActivate, onClose, onNew, split, onSplit, focus, showTools = true }: {
-  layout: Layout; pane: number; home?: boolean; split: boolean; focus: FocusConf; showTools?: boolean;
+function TabBar({ layout, pane, home, onActivate, onClose, onNew, split, onSplit, focus, showTools = true, onMerge }: {
+  layout: Layout; pane: number; home?: boolean; split: boolean; focus: FocusConf; showTools?: boolean; onMerge?: () => void;
   onActivate: (i: number) => void; onClose: (i: number) => void; onNew: () => void; onSplit: () => void;
 }) {
   const p = layout.panes[pane];
@@ -231,6 +257,7 @@ function TabBar({ layout, pane, home, onActivate, onClose, onNew, split, onSplit
       </div>
       {showTools ? (
         <div className="db-tabs__tools">
+          {onMerge ? <button type="button" className="db-tabs__tool" title="Merge other notes into this one" onClick={onMerge}>Merge</button> : null}
           <button type="button" className="db-tabs__tool" aria-pressed={split} title={split ? "Join panes (⌘\\)" : "Split left and right (⌘\\)"} onClick={onSplit}>{split ? "Join" : "Split"}</button>
           <button type="button" className="db-tabs__tool" aria-pressed={focus.on} title="Focus mode (⌘⇧F)" onClick={() => toggleFocusMode()}>Focus</button>
         </div>

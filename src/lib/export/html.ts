@@ -1,6 +1,16 @@
 // A note or page as one self-contained HTML file: inline styles, no scripts, no remote fonts or
 // images, no links back to this Mac. The same file prints to PDF (print styles included).
+import katex from "katex";
 import { docBlocks, type Block, type ExportDoc, type Inline } from "./doc";
+
+/** LaTeX as MathML: browsers draw it with no fonts or scripts, so the file stays self-contained. */
+export function mathHtml(tex: string, display: boolean): string {
+  try {
+    return katex.renderToString(tex, { displayMode: display, output: "mathml", throwOnError: true, strict: "ignore", trust: false, maxExpand: 500, maxSize: 50 });
+  } catch {
+    return `<code class="math-error" title="Can't draw this formula">${esc(display ? `$$${tex}$$` : `$${tex}$`)}</code>`;
+  }
+}
 
 export const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 
@@ -15,6 +25,7 @@ export function inlineHtml(c: Inline[]): string {
       case "link": return `<a href="${esc(x.href)}" rel="noopener noreferrer">${inlineHtml(x.c)}</a>`;
       case "wiki": return `<span class="wl">${esc(x.label)}</span>`;
       case "br": return "<br>";
+      case "math": return mathHtml(x.tex, false);
     }
   }).join("");
 }
@@ -28,6 +39,7 @@ function blockHtml(b: Block): string {
     case "h": return `<h${b.level}>${inlineHtml(b.c)}</h${b.level}>`;
     case "p": return `<p>${inlineHtml(b.c)}</p>`;
     case "hr": return "<hr>";
+    case "math": return `<div class="math">${mathHtml(b.tex, true)}</div>`;
     case "code": return `<pre><code>${esc(b.v)}</code></pre>`;
     case "quote": return `<blockquote>${blocksHtml(b.blocks)}</blockquote>`;
     case "callout": return `<aside class="callout callout--${esc(b.kind)}"><p class="callout__t">${inlineHtml(b.title) || esc(b.kind[0].toUpperCase() + b.kind.slice(1))}</p>${blocksHtml(b.blocks)}</aside>`;
@@ -87,6 +99,10 @@ table{border-collapse:collapse;margin:0 0 14px;width:100%;font-size:14px}
 th,td{border:1px solid var(--border);padding:6px 10px;text-align:left;vertical-align:top}
 th{background:var(--surface);font-weight:600}
 .wl{border-bottom:1px solid var(--faint)}
+.math{margin:0 0 12px;overflow-x:auto}
+math{font-size:1.08em}
+math[display=block]{margin:4px 0}
+.math-error{color:var(--late)}
 footer{margin-top:48px;color:var(--faint);font-size:12px}
 @page{size:A4;margin:18mm 16mm}
 @media print{
