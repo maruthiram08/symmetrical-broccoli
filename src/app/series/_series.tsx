@@ -11,11 +11,13 @@ import { findSlots } from "@/lib/canvas/recurring";
 import { cadenceOf, itemLine, seriesCounts } from "@/lib/reading/library";
 import { dayName, shortDay } from "@/lib/reading/model";
 import type { Meeting } from "@/lib/types";
+import { SeriesActions } from "@/components/reading/SeriesActions";
 import { getStore, me } from "@/server/local/app";
+import { readSeriesFile } from "@/server/local/series-names";
 import { loadAll } from "../_lib/lines";
 import { readingCtx } from "../_lib/reading";
 
-interface SeriesView { key: string; href: string; title: string; meetings: Meeting[]; next: string | null; guessed: boolean; prep: string | null }
+interface SeriesView { key: string; href: string; title: string; guess: string; meetings: Meeting[]; next: string | null; guessed: boolean; prep: string | null }
 
 export async function Recurring({ pick }: { pick: { slot?: string; id?: string } | null }) {
   const user = await me();
@@ -28,20 +30,25 @@ export async function Recurring({ pick }: { pick: { slot?: string; id?: string }
   const events = freshEvents(cache, now);
   const cal: SeriesView[] = (cache?.series ?? []).map((s) => {
     const ms = seriesMeetings(s, meetings).sort((a, b) => b.startedAt.localeCompare(a.startedAt));
-    return { key: `id:${s.id}`, href: `/series/${s.id}`, title: s.title, meetings: ms, next: nextOccurrence(s, events, now)?.startsAt ?? null, guessed: false, prep: null };
+    return { key: `id:${s.id}`, href: `/series/${s.id}`, title: s.title, guess: s.title, meetings: ms, next: nextOccurrence(s, events, now)?.startsAt ?? null, guessed: false, prep: null };
   }).filter((s) => s.meetings.length);
   const slots: SeriesView[] = findSlots(meetings, now, tz, 60).map((s) => ({
-    key: `slot:${s.key}`, href: `/series?slot=${encodeURIComponent(s.key)}`, title: `${s.label} meeting`, meetings: s.meetings, next: s.next, guessed: true, prep: `/canvas/prep?slot=${encodeURIComponent(s.key)}`,
+    key: `slot:${s.key}`, href: `/series?slot=${encodeURIComponent(s.key)}`, title: `${s.label} meeting`, guess: `${s.label} meeting`, meetings: s.meetings, next: s.next, guessed: true, prep: `/canvas/prep?slot=${encodeURIComponent(s.key)}`,
   }));
   const openOf = (s: SeriesView) => seriesCounts(s.meetings, items).open;
-  const all = [...cal, ...slots].sort((a, b) => openOf(b) - openOf(a) || b.meetings.length - a.meetings.length);
+  // Names you gave a series, and the ones you said are not a series (kept at the bottom).
+  const told = readSeriesFile();
+  const hidden = new Set(told.hidden);
+  const named = [...cal, ...slots].map((s) => ({ ...s, title: told.names[s.key] ?? s.title }));
+  const sorted = named.sort((a, b) => openOf(b) - openOf(a) || b.meetings.length - a.meetings.length);
+  const shown = sorted.filter((s) => !hidden.has(s.key));
+  const notSeries = sorted.filter((s) => hidden.has(s.key));
+  const all = [...shown, ...notSeries];
   const want = pick?.id ? `id:${pick.id}` : pick?.slot ? `slot:${pick.slot}` : null;
-  const sel = want ? all.find((s) => s.key === want) ?? null : all[0] ?? null;
+  const sel = want ? all.find((s) => s.key === want) ?? null : shown[0] ?? null;
   if (want && !sel && pick?.id) notFound();
 
-  const groups: LinkGroup[] = [{
-    key: "series", label: "Most open first",
-    rows: all.map((s) => {
+  const row = (s: SeriesView) => {
       const first = s.meetings[s.meetings.length - 1];
       const last = s.meetings[0];
       return {
@@ -50,12 +57,14 @@ export async function Recurring({ pick }: { pick: { slot?: string; id?: string }
         last: last ? `Last: ${last.title || "Meeting"}, ${shortDay(last.startedAt, tz)}` : undefined,
         num: { n: openOf(s), label: "open" },
       };
-    }),
-    empty: "No meeting has come back at the same time three times yet.",
-  }];
+  };
+  const groups: LinkGroup[] = [
+    { key: "series", label: "Most open first", rows: shown.map(row), empty: notSeries.length ? "Every series here is marked as not a series." : "No meeting has come back at the same time three times yet." },
+    ...(notSeries.length ? [{ key: "hidden", label: "Not a series", rows: notSeries.map(row) }] : []),
+  ];
   const list = (
     <>
-      <ListBar title="Recurring" count={`${all.length} series`} />
+      <ListBar title="Recurring" count={`${shown.length} series`} />
       <LinkGroups groups={groups} sel={sel?.key} limit={20} foot={slots.length ? "Grouped by the time they happen, because the titles change every day. Link a calendar and these become your real calendar series." : null} />
     </>
   );
@@ -78,7 +87,7 @@ export async function Recurring({ pick }: { pick: { slot?: string; id?: string }
         rail={<>
           <Sec title="Details">
             <Kv rows={[
-              ["Usually", sel.guessed ? sel.title.replace(/ meeting$/, "") : formatTime(sel.meetings[0].startedAt, tz)],
+              ["Usually", sel.guessed ? sel.guess.replace(/ meeting$/, "") : formatTime(sel.meetings[0].startedAt, tz)],
               ["Repeats", cadenceOf(sel.meetings, tz)],
               ["Since", shortDay(first.startedAt, tz)],
               sel.next ? ["Next", `${dayName(localDate(new Date(sel.next), tz))}, ${formatTime(sel.next, tz)}${sel.guessed ? " (guess)" : ""}`] : null,
@@ -89,9 +98,12 @@ export async function Recurring({ pick }: { pick: { slot?: string; id?: string }
         </>}
       >
         <Head
-          kind="Recurring meeting" mark="ring" st={[{ text: sel.guessed ? "Guessed from times" : "From your calendar" }]} title={sel.title}
+          kind="Recurring meeting" mark="ring" st={[{ text: hidden.has(sel.key) ? "Not a series" : sel.guessed ? "Guessed from times" : "From your calendar" }, ...(sel.title !== sel.guess ? [{ text: `Was “${sel.guess}”` }] : [])]} title={sel.title}
           lede={titles.length > 1 ? `The same slot under a new title each time: ${titles.slice(0, 3).join(", ")}${titles.length > 3 ? " and more" : ""}.` : `${sel.meetings.length} meetings so far.`}
-          cta={sel.prep ? <Link className="rp-cbtn rp-cbtn--pri" href={sel.prep}><span className="rp-tick" aria-hidden="true" />Prep for the next one</Link> : null}
+          cta={<>
+            {sel.prep && !hidden.has(sel.key) ? <Link className="rp-cbtn rp-cbtn--pri" href={sel.prep}><span className="rp-tick" aria-hidden="true" />Prep for the next one</Link> : null}
+            <SeriesActions seriesKey={sel.key} name={sel.title} guess={sel.guess} hidden={hidden.has(sel.key)} />
+          </>}
         />
         <Sec title={`Last ${Math.min(12, sel.meetings.length)} meetings`}>
           <Stats items={[{ n: Math.min(12, sel.meetings.length), label: "Meetings" }, { n: c.open, label: "Still open" }, { n: c.kept, label: "Kept" }, { n: c.decisions, label: "Decisions" }]} />
