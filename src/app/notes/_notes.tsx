@@ -8,6 +8,8 @@ import { ExportMenu } from "@/components/ExportMenu";
 import { Shell } from "@/components/Shell";
 import { Chips, Detail, DetailBar, IRows, LinkGroups, ListBar, MList, NoneDetail, Sec, initials, type LinkGroup } from "@/components/reading/Frame";
 import { NotePane } from "@/components/reading/NotePane";
+import { MergeButton, MergeHint } from "@/components/vault/MergeButton";
+import { mergeCandidates } from "@/server/local/merge";
 import { blocksHtml } from "@/lib/export/html";
 import { parseBlocks } from "@/lib/export/doc";
 import { readProperties, type PropValue } from "@/lib/structure/frontmatter";
@@ -100,6 +102,8 @@ export async function NotesPanes({ path, mode = "write" }: { path: string | null
       .sort((a, b) => b.startedAt.localeCompare(a.startedAt)).slice(0, 4);
     const slug = slugOf(entry.path);
     const vctx = await vaultContext(user, now);
+    const daily = /(^|\/)\d{4}-\d{2}-\d{2}\.md$/.test(entry.path);
+    const twin = daily ? null : mergeCandidates(root, entry.path, 1).find((c) => c.score >= 0.5) ?? null;
     detail = (
       <Detail
         bar={<DetailBar crumb={[{ label: "Notes", href: "/notes" }, ...(g ? [{ label: g.label }] : []), { label: entry.title }]} listHref="/notes"
@@ -109,9 +113,11 @@ export async function NotesPanes({ path, mode = "write" }: { path: string | null
               <Link href={href(entry.path, "read")} aria-current={mode === "read" ? "true" : undefined} replace>Read</Link>
             </div>
             {slug ? <ExportMenu type="note" id={slug} label="Export" /> : null}
+            {daily ? null : <MergeButton path={entry.path} files={entries.map((e) => e.path)} />}
             <Link className="rp-btn" href={`/notes?view=files&open=${encodeURIComponent(entry.path)}`}>Open in tabs</Link>
           </>} />}
         rail={<>
+          {twin ? <Sec title="Possible duplicate"><MergeHint path={twin.path} /></Sec> : null}
           <Sec title="Outline"><MList rows={[...outline.map((h, k) => ({ key: `${k}`, label: h })), ...(live.length ? [{ key: "live", label: "From your meetings", right: live.length }] : [])]} empty="No headings yet." /></Sec>
           {ms.length ? <Sec title="Meetings about it"><MList rows={ms.map((m) => ({ key: m.id, label: m.title || "Meeting", right: shortDay(m.startedAt, user.timeZone), href: `/meeting/${encodeURIComponent(m.id)}` }))} /></Sec> : null}
           <p className="rp-note">Saved as {entry.path}. Edit it in any Markdown app and it stays in sync.</p>

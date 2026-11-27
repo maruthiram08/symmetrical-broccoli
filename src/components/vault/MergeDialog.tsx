@@ -4,6 +4,9 @@
 // then merge. Likely duplicates (a second copy of the same meeting) are listed first.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { mergeCandidatesAction, mergeNotesAction, mergePreviewAction } from "@/app/vault-actions";
+import { parseBlocks } from "@/lib/export/doc";
+import { blocksHtml } from "@/lib/export/html";
+import { readProperties } from "@/lib/structure/frontmatter";
 import type { MergeDone, MergePreview } from "@/server/local/merge";
 
 const DAY = /(^|\/)\d{4}-\d{2}-\d{2}\.md$/;
@@ -24,6 +27,7 @@ export function MergeDialog({ path, files, onClose, onMerged }: {
   const [preview, setPreview] = useState<MergePreview | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [raw, setRaw] = useState(false);
   const box = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -67,6 +71,9 @@ export function MergeDialog({ path, files, onClose, onMerged }: {
     return [...p, f];
   });
   const sources = all.filter((p) => p !== keep);
+  // blocksHtml escapes all text and keeps only safe links, as in Read mode.
+  const rendered = useMemo(() => (preview && !raw ? blocksHtml(parseBlocks(preview.markdown)) : ""), [preview, raw]);
+  const props = useMemo(() => (preview ? Object.entries(readProperties(preview.markdown)) : []), [preview]);
 
   const merge = async () => {
     if (!sources.length) return;
@@ -121,7 +128,23 @@ export function MergeDialog({ path, files, onClose, onMerged }: {
                   {preview.emptySources.length ? <li>{preview.emptySources.join(", ")} has nothing new and just moves to .trash</li> : null}
                   {preview.conflicts.map((c) => <li key={`${c.key}:${c.from}`} className="db-merge__clash">Keeps {c.key}: {c.kept || "(empty)"}, not {c.dropped} from {c.from}</li>)}
                 </ul>
-                <pre className="db-merge__preview" tabIndex={0} aria-label={`${nameOf(keep)} after merging`}>{preview.markdown}</pre>
+                <div className="db-merge__view">
+                  <span className="db-merge__label">{nameOf(keep)} after merging</span>
+                  <div className="rp-seg" role="group" aria-label="Show as">
+                    <button type="button" aria-current={!raw ? "true" : undefined} onClick={() => setRaw(false)}>Preview</button>
+                    <button type="button" aria-current={raw ? "true" : undefined} onClick={() => setRaw(true)}>Markdown</button>
+                  </div>
+                </div>
+                {raw ? <pre className="db-merge__preview" tabIndex={0} aria-label={`${nameOf(keep)} after merging, as Markdown`}>{preview.markdown}</pre> : (
+                  <div className="db-merge__preview db-merge__preview--doc" tabIndex={0} aria-label={`${nameOf(keep)} after merging`}>
+                    {props.length ? (
+                      <dl className="db-merge__props">
+                        {props.map(([k, v]) => <div key={k}><dt>{k.replace(/[_-]+/g, " ")}</dt><dd>{Array.isArray(v) ? v.join(", ") : String(v ?? "")}</dd></div>)}
+                      </dl>
+                    ) : null}
+                    <div className="rp-read rp-read__body" dangerouslySetInnerHTML={{ __html: rendered }} />
+                  </div>
+                )}
               </>
             ) : picked.length && !error ? <p className="db-merge__empty">Putting it together…</p> : null}
           </section>
