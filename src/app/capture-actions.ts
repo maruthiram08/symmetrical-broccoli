@@ -132,3 +132,11 @@ export async function saveDayNotesAction(date: string, notes: string): Promise<R
   }
   return { ok: true };
 }
+
+/** The capture card's switch: an item you owe becomes one you wait on, and back. Your own items only. */
+export async function switchKindAction(id: string): Promise<Result> {
+  const found = await mine(id);
+  if (!found || !isManual(found.item) || found.item.kind === "decision") return { ok: false, error: "Only items you added can change." };
+  await getStore().updateItem(id, { kind: found.item.kind === "owe" ? "waiting" : "owe" });
+  return done({ ok: true, id });
+}

@@ -28,6 +28,7 @@ use tauri::tray::TrayIconBuilder;
 use tauri::webview::NewWindowResponse;
 use tauri::{AppHandle, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder, WindowEvent};
 use tauri_plugin_autostart::ManagerExt;
+use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
 const PORT: u16 = 4242;
 /// The window uses localhost (not 127.0.0.1) because the server's links and the Wispr Flow
@@ -36,6 +37,12 @@ const APP_URL: &str = "http://localhost:4242";
 /// Passed by the login item, so a launch at login stays in the menu bar.
 const HIDDEN_ARG: &str = "--hidden";
 const WINDOW: &str = "main";
+/// The small "Added" card after a capture (src/app/captured/page.tsx).
+const TOAST: &str = "capture-toast";
+/// Capture from clipboard: copy (⌘C), then ⌃⌥⌘C.
+const CAPTURE_MODS: Modifiers = Modifiers::CONTROL.union(Modifiers::ALT).union(Modifiers::SUPER);
+const CAPTURE_CODE: Code = Code::KeyC;
+const CAPTURE_LABEL: &str = "⌃⌥⌘C";
 
 #[derive(Default)]
 struct Server {
@@ -49,6 +56,8 @@ struct Server {
     page: Mutex<Option<Page>>,
     /// Quick add was pressed before the app page loaded: open it with the capture input.
     want_capture: AtomicBool,
+    /// The last clipboard captured, so pressing the shortcut twice doesn't add it twice.
+    last_clip: Mutex<Option<String>>,
 }
 
 // ---------- a tiny HTTP client for 127.0.0.1 (no extra crates) ----------
@@ -697,6 +706,218 @@ fn quick_add(app: &AppHandle) {
     }
 }
 
+
+// ---------- capture from clipboard (⌃⌥⌘C) ----------
+//
+// Copy a Slack message or thread (or any text), press the shortcut, and it becomes an item: the
+// app reads the clipboard here and posts it to /api/capture/clipboard, which works out who, when and
+// the Slack link (src/lib/capture/slack.ts). Nothing is installed in or connected to Slack.
+
+/// POST a JSON body to the local server.
+fn http_post_json(path: &str, body: &str, timeout: Duration) -> std::io::Result<(u16, String)> {
+    let addr = SocketAddr::from(([127, 0, 0, 1], PORT));
+    let mut s = TcpStream::connect_timeout(&addr, timeout)?;
+    s.set_read_timeout(Some(timeout))?;
+    s.set_write_timeout(Some(timeout))?;
+    write!(
+        s,
+        "POST {path} HTTP/1.1\r\nHost: 127.0.0.1:{PORT}\r\nX-Daily-Brief: tray\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+        body.len()
+    )?;
+    let mut buf = Vec::new();
+    s.read_to_end(&mut buf)?;
+    let text = String::from_utf8_lossy(&buf).into_owned();
+    let status = text
+        .split_whitespace()
+        .nth(1)
+        .and_then(|c| c.parse().ok())
+        .unwrap_or(0);
+    Ok((status, text))
+}
+
+/// The JSON body of a response (plain or chunked): from the first '{' to the last '}'.
+fn json_body(response: &str) -> Option<serde_json::Value> {
+    let body = response.split_once("\r\n\r\n")?.1;
+    serde_json::from_str(&body[body.find('{')?..=body.rfind('}')?]).ok()
+}
+
+/// AppleScript prints the clipboard's HTML as «data HTML3C6469763E…»: hex bytes.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+fn decode_applescript_data(out: &str) -> Option<String> {
+    let hex = out.trim().strip_prefix("«data HTML")?.strip_suffix('»')?;
+    let bytes: Option<Vec<u8>> = (0..hex.len() / 2)
+        .map(|i| u8::from_str_radix(hex.get(i * 2..i * 2 + 2)?, 16).ok())
+        .collect();
+    Some(String::from_utf8_lossy(&bytes?).into_owned())
+}
+
+/// The clipboard as (plain text, HTML). macOS: pbpaste and osascript; elsewhere nothing yet.
+fn read_clipboard() -> (String, Option<String>) {
+    #[cfg(target_os = "macos")]
+    {
+        let text = Command::new("/usr/bin/pbpaste")
+            .env("LANG", "en_US.UTF-8")
+            .stdin(Stdio::null())
+            .stderr(Stdio::null())
+            .output()
+            .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
+            .unwrap_or_default();
+        let html = Command::new("/usr/bin/osascript")
+            .args(["-e", "try", "-e", "the clipboard as «class HTML»", "-e", "end try"])
+            .stdin(Stdio::null())
+            .stderr(Stdio::null())
+            .output()
+            .ok()
+            .and_then(|o| decode_applescript_data(&String::from_utf8_lossy(&o.stdout)));
+        (text, html)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        (String::new(), None)
+    }
+}
+
+fn capture_clipboard(app: &AppHandle) {
+    let app = app.clone();
+    thread::spawn(move || {
+        let (text, html) = read_clipboard();
+        let key = format!("{text}\u{0}{}", html.as_deref().unwrap_or(""));
+        if text.trim().is_empty() && html.is_none() {
+            return show_toast(&app, "error=empty");
+        }
+        if app.state::<Server>().last_clip.lock().unwrap().as_deref() == Some(key.as_str()) {
+            return show_toast(&app, "error=same");
+        }
+        let body = serde_json::json!({ "text": text, "html": html }).to_string();
+        match http_post_json("/api/capture/clipboard", &body, Duration::from_secs(15)) {
+            Ok((201, resp)) => {
+                *app.state::<Server>().last_clip.lock().unwrap() = Some(key);
+                let id = json_body(&resp)
+                    .and_then(|v| v.get("id").and_then(|i| i.as_str()).map(str::to_string))
+                    .unwrap_or_default();
+                show_toast(&app, &format!("id={}", percent_encode(&id)));
+                update_count(&app);
+            }
+            Ok((status, resp)) => {
+                eprintln!("[daily-brief] capture returned HTTP {status}");
+                let why = json_body(&resp)
+                    .and_then(|v| v.get("error").and_then(|e| e.as_str()).map(str::to_string))
+                    .unwrap_or_else(|| "Couldn't add it.".into());
+                show_toast(&app, &format!("error=other&detail={}", percent_encode(&why)));
+            }
+            Err(e) => {
+                eprintln!("[daily-brief] capture failed: {e}");
+                os_notify("Daily brief isn't running yet, so nothing was added. Try again in a moment.");
+            }
+        }
+    });
+}
+
+/// A plain notification, for when the server can't show the card.
+fn os_notify(text: &str) {
+    #[cfg(target_os = "macos")]
+    {
+        let esc = text.replace('\\', "\\\\").replace('"', "\\\"");
+        let _ = Command::new("/usr/bin/osascript")
+            .args(["-e", &format!("display notification \"{esc}\" with title \"Daily brief\"")])
+            .stdin(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn();
+    }
+    #[cfg(not(target_os = "macos"))]
+    eprintln!("[daily-brief] {text}");
+}
+
+const TOAST_W: f64 = 380.0;
+const TOAST_H: f64 = 148.0;
+
+/// The card in the top-right corner: what was added, with Undo, the kind switch and Open. It
+/// doesn't take focus from Slack, and closes itself (the page goes to /captured/close).
+fn show_toast(app: &AppHandle, query: &str) {
+    // An error card has no title line or buttons: shorter.
+    let height = if query.starts_with("error=") { 92.0 } else { TOAST_H };
+    let url: tauri::Url = match format!("{APP_URL}/captured?{query}").parse() {
+        Ok(u) => u,
+        Err(_) => return,
+    };
+    let app2 = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        let app = app2;
+        if let Some(w) = app.get_webview_window(TOAST) {
+            let _ = w.set_size(tauri::LogicalSize::new(TOAST_W, height));
+            let _ = w.navigate(url);
+            let _ = w.show();
+            return;
+        }
+        let nav_app = app.clone();
+        let built = WebviewWindowBuilder::new(&app, TOAST, WebviewUrl::External(url))
+            .title("Added to Daily brief")
+            .inner_size(TOAST_W, height)
+            .resizable(false)
+            .decorations(false)
+            .always_on_top(true)
+            .skip_taskbar(true)
+            .focused(false)
+            .visible(false)
+            .visible_on_all_workspaces(true)
+            .shadow(true)
+            .on_navigation(move |u| {
+                let path = u.path().to_string();
+                if path == "/captured/close" {
+                    close_toast(&nav_app);
+                    return false;
+                }
+                if path.starts_with("/item/") {
+                    let target = u.to_string();
+                    let a = nav_app.clone();
+                    let _ = nav_app.run_on_main_thread(move || {
+                        if let (Some(w), Ok(t)) = (a.get_webview_window(WINDOW), target.parse()) {
+                            let _ = w.navigate(t);
+                        }
+                        show_window(&a);
+                    });
+                    close_toast(&nav_app);
+                    return false;
+                }
+                path.starts_with("/captured")
+            })
+            .build();
+        match built {
+            Ok(w) => {
+                if let Ok(Some(m)) = w.current_monitor().or_else(|_| app.primary_monitor()) {
+                    let scale = m.scale_factor();
+                    let size = m.size().to_logical::<f64>(scale);
+                    let origin = m.position().to_logical::<f64>(scale);
+                    let _ = w.set_position(tauri::LogicalPosition::new(
+                        origin.x + size.width - TOAST_W - 16.0,
+                        origin.y + 40.0,
+                    ));
+                }
+                let _ = w.show();
+            }
+            Err(e) => eprintln!("[daily-brief] couldn't show the capture card: {e}"),
+        }
+    });
+}
+
+fn close_toast(app: &AppHandle) {
+    let a = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        if let Some(w) = a.get_webview_window(TOAST) {
+            let _ = w.destroy();
+        }
+    });
+}
+
+fn register_capture_key(app: &AppHandle) {
+    if let Err(e) = app
+        .global_shortcut()
+        .register(Shortcut::new(Some(CAPTURE_MODS), CAPTURE_CODE))
+    {
+        eprintln!("[daily-brief] couldn't set {CAPTURE_LABEL} (another app may use it): {e}");
+    }
+}
+
 fn quit(app: &AppHandle) {
     app.state::<Server>().quitting.store(true, Ordering::SeqCst);
     stop_server(app);
@@ -707,6 +928,13 @@ fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
     let at_login = app.autolaunch().is_enabled().unwrap_or(false);
     let open = MenuItem::with_id(app, "open", "Open Daily brief", true, None::<&str>)?;
     let quick = MenuItem::with_id(app, "quick", "Quick add…", true, None::<&str>)?;
+    let clip = MenuItem::with_id(
+        app,
+        "clip",
+        "Add what I copied",
+        true,
+        Some("Ctrl+Alt+Cmd+C"),
+    )?;
     let browser = MenuItem::with_id(app, "browser", "Open in browser", true, None::<&str>)?;
     let check = MenuItem::with_id(app, "check", "Check meetings now", true, None::<&str>)?;
     let login = CheckMenuItem::with_id(
@@ -723,7 +951,7 @@ fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
     let menu = Menu::with_items(
         app,
         &[
-            &open, &quick, &browser, &check, &sep1, &login, &sep2, &quit_item,
+            &open, &quick, &clip, &browser, &check, &sep1, &login, &sep2, &quit_item,
         ],
     )?;
 
@@ -737,6 +965,7 @@ fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
         .on_menu_event(move |app, event| match event.id.as_ref() {
             "open" => show_window(app),
             "quick" => quick_add(app),
+            "clip" => capture_clipboard(app),
             "browser" => open_in_browser(APP_URL),
             "check" => {
                 check_meetings_now();
@@ -775,6 +1004,17 @@ fn main() {
                 .args([HIDDEN_ARG])
                 .build(),
         )
+        .plugin(
+            tauri_plugin_global_shortcut::Builder::new()
+                .with_handler(|app, shortcut, event| {
+                    if event.state() == ShortcutState::Pressed
+                        && shortcut.matches(CAPTURE_MODS, CAPTURE_CODE)
+                    {
+                        capture_clipboard(app);
+                    }
+                })
+                .build(),
+        )
         .manage(Server::default())
         .setup(move |app| {
             #[cfg(target_os = "macos")]
@@ -782,6 +1022,7 @@ fn main() {
                 app.set_activation_policy(tauri::ActivationPolicy::Accessory);
             }
             setup_tray(app.handle())?;
+            register_capture_key(app.handle());
             start(app.handle().clone(), start_hidden);
             Ok(())
         })
@@ -843,6 +1084,16 @@ mod tests {
             Some(("".into(), "Nothing owed today".into()))
         );
         assert_eq!(parse_widget("HTTP/1.1 500 x\r\n\r\noops"), None);
+    }
+
+    #[test]
+    fn reads_the_clipboard_html_from_applescript() {
+        assert_eq!(
+            decode_applescript_data("«data HTML3C623E68693C2F623E»\n"),
+            Some("<b>hi</b>".into())
+        );
+        assert_eq!(decode_applescript_data(""), None);
+        assert_eq!(decode_applescript_data("«data RTF 7B»"), None);
     }
 
     #[test]

@@ -97,6 +97,10 @@ export async function ItemDetail({ item, items, meetings, user, now, crumb, back
   const due = item.dueAt ? `${shortDay(item.dueAt, tz)}, ${formatTime(item.dueAt, tz)}` : "No date said";
   let projectTitle = item.project ? projectLabel(item.project) : "";
   try { projectTitle = projectRows().find((r) => r.slug === item.project)?.title ?? projectTitle; } catch { /* no notes folder */ }
+  // Captured from the clipboard: only a real Slack permalink becomes a link.
+  const slackUrl = item.origin?.url && /^https:\/\/[a-z0-9.-]+\.slack\.com\//i.test(item.origin.url) ? item.origin.url : null;
+  const clipAt = item.origin?.sentAt ?? item.createdAt;
+  const clipHeard = `${shortDay(clipAt, tz)}, ${formatTime(clipAt, tz)}`;
   const comesBack = open && item.snoozedUntil ? dayName(item.snoozedUntil) : "—";
 
   return (
@@ -127,7 +131,23 @@ export async function ItemDetail({ item, items, meetings, user, now, crumb, back
             ) : null}
           </div>
 
-          {item.quote || item.note ? (
+          {item.origin ? (
+            <blockquote className="rp-quote rp-quote--clip">
+              <p>{item.quote || item.origin.text}</p>
+              <footer>
+                <span className="rp-quote__av" aria-hidden="true">{initials(item.origin.from ?? user.name).slice(0, 1) || "S"}</span>
+                <span>{item.origin.from ?? (item.origin.app === "slack" ? "Slack" : "Copied")}{item.origin.app === "slack" ? " on Slack" : ""} · {clipHeard}</span>
+                {slackUrl ? <a href={slackUrl} target="_blank" rel="noopener noreferrer">Open in Slack</a> : null}
+              </footer>
+              {item.origin.text && item.origin.text.replace(/\s+/g, " ").trim() !== (item.quote || "").replace(/…$/, "").trim() ? (
+                <details className="rp-clip">
+                  <summary>Everything you copied</summary>
+                  <pre>{item.origin.text}</pre>
+                </details>
+              ) : null}
+              {item.note ? <p className="rp-clip__note">{item.note}</p> : null}
+            </blockquote>
+          ) : item.quote || item.note ? (
             <blockquote className="rp-quote">
               <p>{manual ? item.note : <>&ldquo;{item.quote}&rdquo;</>}</p>
               <footer>
@@ -191,8 +211,13 @@ export async function ItemDetail({ item, items, meetings, user, now, crumb, back
             <dl className="rp-kv">
               <dt>Status</dt><dd className={late ? "rp-late" : undefined}>{status}</dd>
               <dt>Person</dt><dd>{slug ? <Link href={`/people/${encodeURIComponent(slug)}`}>{item.person}</Link> : item.person ?? "Just you"}</dd>
-              <dt>Meeting</dt><dd>{m ? <Link href={`/meeting/${encodeURIComponent(m.id)}`}>{m.title || "Meeting"}</Link> : manual ? "Added by you" : "—"}</dd>
-              <dt>Heard</dt><dd>{heard}</dd>
+              {item.origin ? (
+                <><dt>From</dt><dd>{slackUrl ? <a href={slackUrl} target="_blank" rel="noopener noreferrer">{item.origin.workspace ? `Slack · ${item.origin.workspace}` : "Slack"}</a> : item.origin.app === "slack" ? "Slack" : "Clipboard"}</dd>
+                <dt>Sent</dt><dd>{clipHeard}</dd></>
+              ) : (
+                <><dt>Meeting</dt><dd>{m ? <Link href={`/meeting/${encodeURIComponent(m.id)}`}>{m.title || "Meeting"}</Link> : manual ? "Added by you" : "—"}</dd>
+                <dt>Heard</dt><dd>{heard}</dd></>
+              )}
               {actionable ? <><dt>Due</dt><dd className={late ? "rp-late" : undefined}>{due}</dd></> : null}
               {actionable ? <><dt>Comes back</dt><dd>{comesBack}</dd></> : null}
               <dt>Project</dt>
@@ -245,7 +270,7 @@ function HistoryEvent({ e, item, tz, itemHref }: { e: TimelineEvent; item: Item;
   const where = (m: Meeting | null) => (m ? ` in ${m.title || "a meeting"}` : "");
   switch (e.kind) {
     case "made":
-      return <li><b>{isManual(item) ? "Added" : item.kind === "decision" ? "Decided" : "Heard"}</b> {when(e.at)}{where(e.meeting)}</li>;
+      return <li><b>{item.origin ? (item.origin.app === "slack" ? "Captured from Slack" : "Captured") : isManual(item) ? "Added" : item.kind === "decision" ? "Decided" : "Heard"}</b> {when(e.at)}{where(e.meeting)}</li>;
     case "mentioned":
       return <li><b>Came up again</b> {when(e.at)}{where(e.meeting)}: <Link href={itemHref(e.itemId)} scroll={false}>&ldquo;{e.quote}&rdquo;</Link></li>;
     case "due":
