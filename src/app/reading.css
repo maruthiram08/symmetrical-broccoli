@@ -666,3 +666,47 @@ a.rp-mrow:hover { background: var(--surface-100); }
 }
 .rp-acts .ex-menu__btn { height: 34px; box-sizing: border-box; display: inline-flex; align-items: center; padding: 0 12px; border-radius: 8px; font: 500 13px/18px var(--font-sans); list-style: none; }
 .rp-acts .ex-menu__btn::-webkit-details-marker { display: none; }
+/* Recurring: rename in place */
+.rp-rename { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; width: 100%; }
+.rp-rename__in { flex: 1 1 260px; min-width: 0; height: 40px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--border-strong); background: var(--bg); color: var(--ink); font: 500 14px/20px var(--font-sans); outline: none; }
+.rp-rename__in:focus { border-color: var(--ink); }
+.rp-cbtn:disabled { opacity: .5; cursor: default; }
+/* Notes: Write / Read */
+.rp-read { max-width: 720px; font-size: 15px; line-height: 24px; color: var(--ink); }
+.rp-read h1 { margin: 0 0 10px; font: 600 30px/38px var(--font-sans); letter-spacing: -.02em; }
+.rp-read .rp-props { margin: 0 0 18px; }
+.rp-read__body h2 { margin: 26px 0 8px; font: 600 20px/28px var(--font-sans); letter-spacing: -.01em; }
+.rp-read__body h3 { margin: 22px 0 6px; font: 600 16px/24px var(--font-sans); }
+.rp-read__body h4, .rp-read__body h5, .rp-read__body h6 { margin: 18px 0 4px; font: 600 14px/22px var(--font-sans); }
+.rp-read__body p { margin: 0 0 12px; }
+.rp-read__body ul, .rp-read__body ol { margin: 0 0 12px; padding-left: 22px; }
+.rp-read__body li { margin: 2px 0; }
+.rp-read__body li > p { margin: 0; }
+.rp-read__body a { color: var(--ink); text-underline-offset: 2px; }
+.rp-read__body .wl { border-bottom: 1px solid var(--border-strong); }
+.rp-read__body blockquote { margin: 0 0 12px; padding: 2px 0 2px 14px; border-left: 3px solid var(--border-strong); color: var(--ink-muted); }
+.rp-read__body code { font: 400 13px/20px var(--font-mono, ui-monospace, monospace); background: var(--surface-100); border-radius: 4px; padding: 1px 4px; }
+.rp-read__body pre { margin: 0 0 12px; padding: 14px 16px; background: var(--surface-100); border: 1px solid var(--border); border-radius: 10px; overflow: auto; }
+.rp-read__body pre code { background: none; padding: 0; }
+.rp-read__body hr { border: 0; border-top: 1px solid var(--border); margin: 20px 0; }
+.rp-read__body table { border-collapse: collapse; margin: 0 0 12px; font-size: 14px; display: block; overflow-x: auto; }
+.rp-read__body th, .rp-read__body td { border: 1px solid var(--border); padding: 6px 10px; text-align: left; }
+.rp-read__body .callout { margin: 0 0 12px; padding: 10px 14px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-100); }
+.rp-read__body .callout__t { font-weight: 600; margin-bottom: 4px; }
+.rp-read__body ul.tasks { list-style: none; padding-left: 4px; }
+.rp-read__body .box { display: inline-flex; width: 16px; height: 16px; margin-right: 10px; vertical-align: -2px; align-items: center; justify-content: center; border: 1.5px solid var(--border-strong); border-radius: 4px; font-size: 11px; line-height: 1; }
+.rp-read__body .box--on { background: var(--ink); border-color: var(--ink); color: var(--on-ink); }
+.rp-read__body li.done { color: var(--ink-faint); text-decoration: line-through; }
+@media (max-width: 900px) { .rp-acts .rp-seg--keep { display: inline-flex; } }
+/* Ask: a drafted message as a card */
+.rp-answer--parts { display: flex; flex-direction: column; gap: 10px; }
+.rp-answer__text p { margin: 0 0 8px; }
+.rp-answer__text p:last-child { margin-bottom: 0; }
+.rp-draft { margin: 0; border: 1px solid var(--ink); border-radius: 12px; background: var(--bg); padding: 14px 16px; font-size: 14px; line-height: 21px; }
+.rp-draft--writing { border-style: dashed; border-color: var(--border-strong); }
+.rp-draft__h { font-size: 12px; font-weight: 600; color: var(--ink-faint); margin-bottom: 6px; }
+.rp-draft__h span { font-weight: 400; }
+.rp-draft__b { white-space: pre-wrap; overflow-wrap: anywhere; }
+.rp-draft__a { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; }
+.rp-draft__a .rp-btn { height: 30px; }
+.rp-draft__done { font-size: 12px; color: var(--ink-faint); }

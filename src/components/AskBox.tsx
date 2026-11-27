@@ -7,9 +7,11 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { citedNumbers, parseCitations } from "@/lib/ask/cite";
+import { draftTarget, splitDrafts, type DraftPart } from "@/lib/ask/drafts";
 import type { AskTurn } from "@/lib/ask/threads";
 import type { ConversationRow, ThreadView } from "@/server/ask-threads";
 import { branchAction, deleteThreadAction, openThreadAction, renameThreadAction } from "@/app/ask-actions";
+import { markStartedAction } from "@/app/handoff-actions";
 import { Mark } from "./Mark";
 
 interface ItemSrc {
@@ -244,7 +246,7 @@ export function AskBox({ initial, ready, hint, conversations: initialConvs, view
                     </details>
                   ) : null}
                   {branchName && !view?.turns.length ? <p className="at__quote">Branched from {branchName}. Ask a follow-up about it.</p> : null}
-                  {view?.turns.map((t) => <TurnCard key={t.id} turn={t} onBranch={doBranch} chat />)}
+                  {view?.turns.map((t, k) => <TurnCard key={t.id} turn={t} onBranch={doBranch} chat onShorter={k === view.turns.length - 1 && !asking ? () => { void ask("Make that draft shorter.", view.id); } : undefined} />)}
                   {live ? <LiveCard live={live} chat /> : null}
                   {empty ? (
                     <div className="rp-chat__empty">
@@ -357,7 +359,7 @@ export function AskBox({ initial, ready, hint, conversations: initialConvs, view
         ) : null}
         {branchName && !view?.turns.length ? <p className="at__quote">Branched from {branchName}. Ask a follow-up about it.</p> : null}
 
-        {view?.turns.map((t) => <TurnCard key={t.id} turn={t} onBranch={doBranch} />)}
+        {view?.turns.map((t, k) => <TurnCard key={t.id} turn={t} onBranch={doBranch} onShorter={k === view.turns.length - 1 && live?.state !== "asking" ? () => { void ask("Make that draft shorter.", view.id); } : undefined} />)}
         {live ? <LiveCard live={live} /> : null}
         <div ref={end} />
 
@@ -389,7 +391,7 @@ function LiveCard({ live, chat }: { live: Live; chat?: boolean }) {
   return (
     <section className={`db-ask__result at__turn${chat ? " rp-turn" : ""}`} aria-live="polite" aria-busy={live.state === "asking"}>
       <p className="db-ask__q">{live.question}</p>
-      {live.answer ? <Answer text={live.answer} sources={live.sources} /> : live.state === "asking" ? (
+      {live.answer ? <Answer text={live.answer} sources={live.sources} writing={live.state === "asking"} /> : live.state === "asking" ? (
         <div className="db-ask__loading"><span /><span /><span className="db-ask__sr">Thinking</span></div>
       ) : null}
       {live.error ? <p className="db-ask__error" role="alert">{live.error}</p> : null}
@@ -401,13 +403,15 @@ function LiveCard({ live, chat }: { live: Live; chat?: boolean }) {
   );
 }
 
-function TurnCard({ turn, onBranch, muted, chat }: { turn: AskTurn; onBranch: (turnId: string, quote: string | null) => void; muted?: boolean; chat?: boolean }) {
+function TurnCard({ turn, onBranch, muted, chat, onShorter }: { turn: AskTurn; onBranch: (turnId: string, quote: string | null) => void; muted?: boolean; chat?: boolean; onShorter?: () => void }) {
   const sources = turn.sources as unknown as Source[];
   const cited = citedNumbers(turn.answer, sources.length).map((n) => sources[n - 1]).filter(Boolean);
+  // "Mark as started" covers the open promises the answer cites, the ones a draft is about.
+  const starts = cited.filter((x): x is ItemSrc => isItem(x) && x.kind === "owe" && x.status === "open");
   return (
     <section className={`db-ask__result at__turn${muted ? " at__turn--muted" : ""}${chat ? " rp-turn" : ""}`}>
       <p className="db-ask__q">{turn.question}</p>
-      {turn.answer ? <Answer text={turn.answer} sources={sources} /> : null}
+      {turn.answer ? <Answer text={turn.answer} sources={sources} drafts={muted ? { items: [] } : { items: starts, onShorter }} /> : null}
       {turn.error ? <p className="db-ask__error">{turn.error}</p> : null}
       <p className="db-ask__meta">
         {sources.length ? `From ${sources.length} source${sources.length === 1 ? "" : "s"}` : "No matching items"}
@@ -453,8 +457,49 @@ function TurnCard({ turn, onBranch, muted, chat }: { turn: AskTurn; onBranch: (t
   );
 }
 
+/** The answer: its text, and any message it drafted as a card you can copy. */
+function Answer({ text, sources, drafts, writing }: { text: string; sources: Source[]; drafts?: { items: ItemSrc[]; onShorter?: () => void }; writing?: boolean }) {
+  const parts = splitDrafts(text);
+  if (parts.length === 1 && parts[0].type === "text") return <AnswerText text={text} sources={sources} />;
+  return (
+    <div className="db-ask__answer rp-answer--parts">
+      {parts.map((p, i) => p.type === "text"
+        ? <AnswerText key={i} text={p.text} sources={sources} bare />
+        : <DraftCard key={i} d={p} writing={writing || !p.done} items={drafts?.items ?? []} onShorter={drafts?.onShorter} actions={!!drafts} />)}
+    </div>
+  );
+}
+
+function DraftCard({ d, writing, items, onShorter, actions }: { d: DraftPart; writing: boolean; items: ItemSrc[]; onShorter?: () => void; actions: boolean }) {
+  const [flash, setFlash] = useState<string | null>(null);
+  const [started, setStarted] = useState<string | null>(null);
+  const show = (s: string) => { setFlash(s); setTimeout(() => setFlash(null), 2000); };
+  const copy = async () => { try { await navigator.clipboard.writeText(d.body); show("Copied"); } catch { show("Couldn't copy"); } };
+  const start = async () => {
+    const target = draftTarget(d.via);
+    const labels = await Promise.all(items.map((i) => markStartedAction(i.itemId, target, "copy")));
+    const ok = labels.filter(Boolean);
+    setStarted(ok.length ? `${ok.length === 1 ? ok[0] : `${ok.length} ${ok[0]!.replace(/^Started/, "started")}`}` : "Couldn't mark them");
+  };
+  const head = [d.to ? `To ${d.to}` : "Draft", d.via].filter(Boolean).join(" · ");
+  return (
+    <figure className={`rp-draft${writing ? " rp-draft--writing" : ""}`} aria-busy={writing}>
+      <figcaption className="rp-draft__h">{head}{writing ? <span> · writing…</span> : null}</figcaption>
+      <div className="rp-draft__b">{d.body}</div>
+      {actions && !writing ? (
+        <div className="rp-draft__a">
+          <button type="button" className="rp-btn rp-btn--pri" onClick={() => void copy()}>{flash ?? "Copy"}</button>
+          {onShorter ? <button type="button" className="rp-btn" onClick={onShorter}>Make it shorter</button> : null}
+          {items.length && !started ? <button type="button" className="rp-btn" onClick={() => void start()}>{items.length === 1 ? "Mark as started" : `Mark the ${items.length} as started`}</button> : null}
+          {started ? <span className="rp-draft__done" role="status">{started}</span> : null}
+        </div>
+      ) : null}
+    </figure>
+  );
+}
+
 /** Paragraphs and "- " bullets, with [n] as links to the source (the quote on hover). */
-function Answer({ text, sources }: { text: string; sources: Source[] }) {
+function AnswerText({ text, sources, bare }: { text: string; sources: Source[]; bare?: boolean }) {
   const blocks: Array<{ list: boolean; lines: string[] }> = [];
   for (const raw of text.split("\n")) {
     const l = raw.trimEnd();
@@ -475,8 +520,9 @@ function Answer({ text, sources }: { text: string; sources: Source[] }) {
         </Link>
       );
     });
+
   return (
-    <div className="db-ask__answer">
+    <div className={bare ? "rp-answer__text" : "db-ask__answer"}>
       {blocks.filter((b) => b.lines.length).map((b, i) =>
         b.list ? (
           <ul key={i}>{b.lines.map((l, j) => <li key={j}>{inline(l, `${i}-${j}`)}</li>)}</ul>

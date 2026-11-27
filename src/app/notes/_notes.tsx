@@ -8,7 +8,9 @@ import { ExportMenu } from "@/components/ExportMenu";
 import { Shell } from "@/components/Shell";
 import { Chips, Detail, DetailBar, IRows, LinkGroups, ListBar, MList, NoneDetail, Sec, initials, type LinkGroup } from "@/components/reading/Frame";
 import { NotePane } from "@/components/reading/NotePane";
-import { readProperties } from "@/lib/structure/frontmatter";
+import { blocksHtml } from "@/lib/export/html";
+import { parseBlocks } from "@/lib/export/doc";
+import { readProperties, type PropValue } from "@/lib/structure/frontmatter";
 import { editedLabel, groupNotes, itemLine, noteGroupOf, type NoteEntry } from "@/lib/reading/library";
 import { shortDay } from "@/lib/reading/model";
 import { me } from "@/server/local/app";
@@ -21,7 +23,13 @@ import { vaultContext } from "../_lib/vault";
 
 const MAX_NOTES = 600;
 
-export async function NotesPanes({ path }: { path: string | null }) {
+export type NoteMode = "write" | "read";
+export const noteMode = (v: string | undefined): NoteMode => (v === "read" ? "read" : "write");
+
+const propText = (v: PropValue): string => (Array.isArray(v) ? v.join(", ") : v === null ? "" : String(v));
+const propLabel = (k: string) => (k[0].toUpperCase() + k.slice(1)).replace(/[_-]+/g, " ");
+
+export async function NotesPanes({ path, mode = "write" }: { path: string | null; mode?: NoteMode }) {
   const user = await me();
   if (!user) redirect("/setup");
   const root = notesDir();
@@ -40,7 +48,9 @@ export async function NotesPanes({ path }: { path: string | null }) {
   const ctx = readingCtx(user, meetings, now);
   const sel = path ?? groups[0]?.notes[0]?.path ?? null;
   const slugOf = (p: string) => (/^notes\/[^/]+\.md$/i.test(p) ? p.replace(/^notes\//, "").replace(/\.md$/i, "") : null);
-  const href = (p: string) => { const s = slugOf(p); return s ? `/notes/${encodeURIComponent(s)}` : `/notes/${p.split("/").map(encodeURIComponent).join("/")}`; };
+  const base = (p: string) => { const s = slugOf(p); return s ? `/notes/${encodeURIComponent(s)}` : `/notes/${p.split("/").map(encodeURIComponent).join("/")}`; };
+  // Read mode follows you from note to note until you switch back to Write.
+  const href = (p: string, m: NoteMode = mode) => `${base(p)}${m === "read" ? "?mode=read" : ""}`;
   const open = items.filter((i) => i.status === "open" && i.kind !== "decision");
   const liveFor = (n: NoteEntry) => {
     const g = noteGroupOf(n);
@@ -94,6 +104,10 @@ export async function NotesPanes({ path }: { path: string | null }) {
       <Detail
         bar={<DetailBar crumb={[{ label: "Notes", href: "/notes" }, ...(g ? [{ label: g.label }] : []), { label: entry.title }]} listHref="/notes"
           acts={<>
+            <div className="rp-seg rp-seg--keep" role="group" aria-label="Write or read">
+              <Link href={href(entry.path, "write")} aria-current={mode === "write" ? "true" : undefined} replace>Write</Link>
+              <Link href={href(entry.path, "read")} aria-current={mode === "read" ? "true" : undefined} replace>Read</Link>
+            </div>
             {slug ? <ExportMenu type="note" id={slug} label="Export" /> : null}
             <Link className="rp-btn" href={`/notes?view=files&open=${encodeURIComponent(entry.path)}`}>Open in tabs</Link>
           </>} />}
@@ -103,7 +117,7 @@ export async function NotesPanes({ path }: { path: string | null }) {
           <p className="rp-note">Saved as {entry.path}. Edit it in any Markdown app and it stays in sync.</p>
         </>}
       >
-        <NotePane path={entry.path} ctx={vctx} />
+        {mode === "read" ? <ReadNote markdown={note?.markdown ?? ""} title={entry.title} writeHref={href(entry.path, "write")} /> : <NotePane path={entry.path} ctx={vctx} />}
         {live.length ? (
           <div className="rp-live">
             <div className="rp-live__h"><span className="rp-m rp-m--owe" aria-hidden="true" />From your meetings · {live.length} open<span>Updates by itself</span></div>
@@ -114,4 +128,23 @@ export async function NotesPanes({ path }: { path: string | null }) {
     );
   }
   return <Shell current="notes" list={list} detail={detail} show={path ? "detail" : "list"} />;
+}
+
+/** Read mode: the note as a page, with its properties as one quiet strip and nothing to edit. */
+function ReadNote({ markdown, title, writeHref }: { markdown: string; title: string; writeHref: string }) {
+  const props = Object.entries(readProperties(markdown)).filter(([k, v]) => k !== "title" && propText(v));
+  const blocks = parseBlocks(markdown);
+  const h = blocks[0];
+  const hasTitle = h && h.t === "h" && h.level === 1;
+  return (
+    <article className="rp-read">
+      {hasTitle ? null : <h1>{title}</h1>}
+      {hasTitle ? <div dangerouslySetInnerHTML={{ __html: blocksHtml([h]) }} /> : null}
+      {props.length ? <div className="rp-props">{props.map(([k, v]) => <span key={k}>{propLabel(k)} <b>{propText(v)}</b></span>)}</div> : null}
+      {blocks.length > (hasTitle ? 1 : 0)
+        // blocksHtml escapes every bit of text and keeps only safe link targets.
+        ? <div className="rp-read__body" dangerouslySetInnerHTML={{ __html: blocksHtml(hasTitle ? blocks.slice(1) : blocks) }} />
+        : <p className="rp-quiet">Nothing written yet. <Link href={writeHref} replace>Start writing</Link></p>}
+    </article>
+  );
 }
