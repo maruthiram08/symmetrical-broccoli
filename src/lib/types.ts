@@ -159,6 +159,23 @@ export interface Item {
   projectBy?: "auto" | "you" | null;
   /** Why an automatic filing chose its project: `matched “stock split”`. */
   projectWhy?: string | null;
+  /** Captured from the clipboard (the Mac app's shortcut): where the message came from. */
+  origin?: ItemOrigin | null;
+}
+
+/** A captured message: Slack (permalink, sender, when) or any other copied text. */
+export interface ItemOrigin {
+  app: "slack" | "clipboard";
+  /** The Slack permalink, when the copy had one. */
+  url: string | null;
+  /** Who wrote the message, as Slack showed the name. */
+  from: string | null;
+  /** When the message was sent (UTC ISO), from the permalink. */
+  sentAt: string | null;
+  /** "acme" in acme.slack.com. */
+  workspace: string | null;
+  /** Everything that was copied (a thread keeps every message). */
+  text: string;
 }
 
 export type TicketProvider = "jira" | "linear" | "notion" | "todoist";

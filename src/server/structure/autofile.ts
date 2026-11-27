@@ -14,7 +14,7 @@ import { noteSlug } from "@/lib/editor/links";
 import { deletePage } from "@/server/local/pages";
 import { noteRows, projectRows, setNoteProperties } from "./notes";
 
-type FilingStore = Pick<MemoryStore, "listItems" | "listMeetingsBetween" | "fileItems">;
+export type FilingStore = Pick<MemoryStore, "listItems" | "listMeetingsBetween" | "fileItems">;
 
 interface FilingFile { version: 1; examples: FilingExample[] }
 const filePath = () => join(dataDir(), "project-filing.json");

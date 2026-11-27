@@ -82,7 +82,7 @@ export function itemLine(i: Item, ctx: Ctx, href: string, opts: { small?: "meeti
   const mark = markOf(i, ctx.now);
   const small = opts.small === "none" ? ""
     : opts.small === "quote" ? (i.quote ? `“${i.quote}”` : m?.title ?? "")
-      : [m?.title || (i.source === "manual" ? "Added by you" : ""), i.person ?? ""].filter(Boolean).join(" · ");
+      : [m?.title || (i.origin ? (i.origin.app === "slack" ? "From Slack" : "From clipboard") : i.source === "manual" ? "Added by you" : ""), i.person ?? ""].filter(Boolean).join(" · ");
   return { key: i.id, href, mark, title: i.text, small, badge: opts.badge ?? badgeOf(i, ctx, { showBack: true }), late: mark === "late", done: i.status === "done" };
 }
 

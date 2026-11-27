@@ -1,6 +1,6 @@
 // Your own items, stars and snoozes: small pure helpers shared by the store, the brief and the pages.
 
-import type { BriefLine, Item } from "@/lib/types";
+import type { BriefLine, Item, ItemOrigin } from "@/lib/types";
 
 /** Manual items belong to no meeting; they carry this in meetingId. */
 export const MANUAL_MEETING_ID = "manual";
@@ -50,6 +50,9 @@ export interface ManualInput {
   project?: string | null;
   /** The meeting it came up in (Cross-check's "Add as You owe"). Missing = no meeting. */
   meetingId?: string;
+  /** Captured from the clipboard: the message as copied, and where it came from. */
+  quote?: string;
+  origin?: ItemOrigin | null;
 }
 
 /** Quick-captured with neither a person nor a due date: it goes to the Inbox. */
@@ -59,9 +62,10 @@ export const goesToInbox = (input: { person?: string | null; dueAt?: string | nu
 export function manualItem(id: string, userId: string, input: ManualInput, at: string): Item {
   return {
     id, userId, kind: input.kind, text: input.text.trim(), person: input.person?.trim() || null,
-    quote: "", meetingId: input.meetingId || MANUAL_MEETING_ID, dueAt: input.dueAt, status: input.inbox ? "inbox" : "open",
+    quote: input.quote?.trim() ?? "", meetingId: input.meetingId || MANUAL_MEETING_ID, dueAt: input.dueAt, status: input.inbox ? "inbox" : "open",
     closedByMeetingId: null, closeQuote: null, createdAt: at, closedAt: null,
     source: "manual", note: input.note?.trim() || null, starred: false, snoozedUntil: null,
     ...(input.tags?.length ? { tags: [...new Set(input.tags)] } : {}), ...(input.project ? { project: input.project } : {}),
+    ...(input.origin ? { origin: input.origin } : {}),
   };
 }

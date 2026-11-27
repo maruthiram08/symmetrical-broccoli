@@ -99,13 +99,13 @@ export function toRow(i: Item, ctx: Ctx, opts: { showBack?: boolean } = {}): Row
   const m = ctx.meetings.get(i.meetingId);
   const meta = [
     i.person ?? "",
-    m ? m.title || "Meeting" : isManual(i) ? "Added by you" : "",
+    m ? m.title || "Meeting" : i.origin ? (i.origin.app === "slack" ? "From Slack" : "From clipboard") : isManual(i) ? "Added by you" : "",
     shortDay(heardAt(i, ctx.meetings), ctx.timeZone),
   ].filter(Boolean).join(" · ");
   const late = lateMinutes(i, ctx.now) !== null;
   return {
     id: i.id, kind: i.kind, status: i.status, mark: markOf(i, ctx.now), title: i.text,
-    quote: isManual(i) ? (i.note ?? "") : i.quote, meta, badge: badgeOf(i, ctx, opts), late, done: i.status === "done",
+    quote: i.origin ? i.quote : isManual(i) ? (i.note ?? "") : i.quote, meta, badge: badgeOf(i, ctx, opts), late, done: i.status === "done",
   };
 }
 
