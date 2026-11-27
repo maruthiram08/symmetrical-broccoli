@@ -18,6 +18,7 @@ import {
   resolveNotePath, saveVaultNote, statVaultNote, trashVaultEntry, treeSignature, walkVault, TRASH, VaultError, type TreeNode, type VaultNote, type VaultSave,
 } from "@/server/local/vault";
 import { refreshVaultIndex, vaultIndexChanged, vaultTexts } from "@/server/local/vault-index";
+import { mergeCandidates, mergeVaultNotes, previewMerge, undoMerge, type MergeDone, type MergePreview, type UndoResult } from "@/server/local/merge";
 
 type Done<T = object> = ({ ok: true } & T) | { ok: false; error: string };
 
@@ -220,4 +221,44 @@ export async function createDayAction(date: string): Promise<{ ok: boolean; href
   }
   revalidatePath("/", "layout");
   return { ok: true, href: `/day/${date}` };
+}
+
+// ---------- merging notes (src/server/local/merge.ts) ----------
+
+export async function mergePreviewAction(target: string, sources: string[]): Promise<Done<{ preview: MergePreview }>> {
+  const r = await root();
+  if (!r) return { ok: false, error: "Set up Daily brief first." };
+  if (typeof target !== "string" || !Array.isArray(sources)) return { ok: false, error: "Pick the notes to merge." };
+  try { return { ok: true, preview: previewMerge(r, target, sources.filter((s) => typeof s === "string")) }; } catch (e) { return fail(e); }
+}
+
+export async function mergeNotesAction(target: string, sources: string[]): Promise<Done<{ done: MergeDone }>> {
+  const r = await root();
+  if (!r) return { ok: false, error: "Set up Daily brief first." };
+  if (typeof target !== "string" || !Array.isArray(sources)) return { ok: false, error: "Pick the notes to merge." };
+  try {
+    const done = mergeVaultNotes(r, target, sources.filter((s) => typeof s === "string"));
+    revalidatePath("/notes");
+    return { ok: true, done };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function undoMergeAction(id: string): Promise<Done<UndoResult>> {
+  const r = await root();
+  if (!r) return { ok: false, error: "Set up Daily brief first." };
+  try {
+    const res = undoMerge(r, String(id ?? ""));
+    revalidatePath("/notes");
+    return { ok: true, ...res };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function mergeCandidatesAction(path: string): Promise<Array<{ path: string; name: string; score: number }>> {
+  const r = await root();
+  if (!r || typeof path !== "string") return [];
+  try { return mergeCandidates(r, path); } catch { return []; }
 }
