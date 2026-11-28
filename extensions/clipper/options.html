@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Daily brief clipper options</title>
+  <link rel="stylesheet" href="popup.css">
+  <style>.clip { width: auto; max-width: 520px; margin: 24px auto; } code { font-size: 12px; word-break: break-all; }</style>
+</head>
+<body>
+  <main class="clip">
+    <h1>Daily brief clipper</h1>
+    <p>Clips go to Daily brief on this computer through its local API. Nothing is sent anywhere else.</p>
+    <ol>
+      <li>In Daily brief, open <b>Settings › Local API</b> and create a token. Paste it below.</li>
+      <li>In the same section, add this extension's origin to <b>Also allow these browser origins</b>:<br><code id="origin"></code></li>
+    </ol>
+    <label class="field">Daily brief address <input id="base" type="url" placeholder="http://localhost:4242"></label>
+    <label class="field">Token <input id="token" type="password" autocomplete="off" spellcheck="false" placeholder="dbk_…"></label>
+    <button id="save" type="button">Save</button>
+    <p id="status" role="status"></p>
+  </main>
+  <script src="lib/api.js"></script>
+  <script src="options.js"></script>
+</body>
+</html>

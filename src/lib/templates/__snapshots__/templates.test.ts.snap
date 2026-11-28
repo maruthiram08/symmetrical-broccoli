@@ -1,0 +1,92 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`default templates reproduce the notes exactly > daily note snapshot 1`] = `
+"---
+date: 2026-11-26
+meetings: 2
+promises_made: 3
+kept: 1
+late: 1
+---
+
+# Thursday, 26 November
+
+From 2 meetings today.
+
+## You owe
+
+- [ ] Share the Q4 plan with Priya **(2d late)**
+  "I'll share the plan tonight" · Planning, 9:00 AM
+- [ ] ★ Send Nitin the final banner text (Fri)
+  "I'll send you the banner copy by Friday" · Growth standup, 10:30 AM
+- [ ] Book the venue
+  Added by you · Ask for the terrace
+
+## Waiting on
+
+- [ ] Tarun to send the API spec (Tomorrow)
+  "I'll get you the spec tomorrow" · Growth standup, 10:30 AM
+
+## Decisions
+
+- Ship the dividend banner on Friday
+  "Let's just ship it Friday" · Growth standup, 10:30 AM
+
+## Closed today
+
+- [x] ~~Send the invoice to Meera~~
+  Closed: "Got the invoice, thanks" in Finance sync, 26 Nov
+
+## Still open from before (6)
+
+- [ ] Review the onboarding copy
+  "I'll review it this week" · Design review, 18 Nov, 4:00 PM
+- …and 5 more
+
+## Tomorrow at a glance
+
+- 11:00 AM · Weekly with Priya (with Priya)
+  - [ ] You owe Priya: Share the Q4 plan with Priya **(2d late)**
+
+## Wrap
+
+- Meetings: 2
+- Promises made: 3
+- Kept: 1
+- Late: 1
+- Still open: 4
+"
+`;
+
+exports[`default templates reproduce the notes exactly > meeting note snapshot 1`] = `
+"---
+meeting: "Growth standup"
+date: 2026-11-26
+time: 10:30 AM
+---
+
+# Growth standup
+
+2026-11-26, 10:30 AM · with Nitin, Priya
+
+## You owe
+
+- [ ] Send Nitin the final banner text (due 2026-11-27)
+  "I'll send you the banner copy by Friday"
+
+## Waiting on
+
+- [ ] Priya to send the launch numbers
+  "I'll send numbers after lunch"
+
+## Decisions
+
+- Ship the dividend banner on Friday
+  "Let's just ship it Friday"
+
+## Closed here
+
+- [x] ~~Send the deck to Nitin~~
+  "Got the deck, thanks"
+"
+`;

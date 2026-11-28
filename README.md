@@ -1,36 +1,432 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Daily brief (local)
 
-## Getting Started
+Your meetings, turned into your day: what you owe, what you're waiting on, and what was decided. Everything runs on your Mac. Nothing is hosted, and your data stays in one folder.
 
-First, run the development server:
+## Run it
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+cp .env.example .env.local   # add your ANTHROPIC_API_KEY
+npm run app                  # builds, then serves http://localhost:4242
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open http://localhost:4242. The first run is three short steps on one page: your name and brief time, connecting Wispr Flow, and how far back to read (7 days by default). It counts those meetings and shows the rough cost (about ₹3.50 a meeting) before reading anything.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Meetings others shared with you in Wispr Flow are left out unless you turn on **Include meetings others shared with me** in Settings. From a shared meeting, something counts as yours to do only when you speak in it; otherwise you see only what others promised you and decisions that name you, marked *shared*.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+While the app is running it:
+- checks Wispr Flow for new meetings every 30 minutes (or press **Check meetings now**),
+- extracts what you owe, what you're waiting on and decisions, and closes items when a later meeting shows they're done,
+- at your brief time, writes `~/Daily Brief/YYYY-MM-DD.md`, adds the day's decisions to `decisions.md`, and shows a Mac notification. If the Mac was asleep (or offline) at brief time, today's brief still goes out once after it wakes, after a fresh check of Wispr Flow.
 
-## Learn More
+When something needs you, every page says so with a button: Wispr Flow signed you out (**Reconnect Wispr Flow**), the Anthropic key was rejected or the account is out of credit, or a meeting couldn't be read after a few tries (**Retry**). Busy or overloaded API calls are retried with backoff by themselves. **Settings › Health** shows the last check, last meeting read, last brief, errors in the last 24 hours, the data file size and the app version.
 
-To learn more about Next.js, take a look at the following resources:
+## The reading pane
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Today, All open, a person's page and Projects show three panes: the sidebar, the list and the selected item's detail. Each scrolls on its own. The selection is in the URL (`?item=<id>`, `?project=<slug>` on Projects), so a reload or a shared link opens the same item. Long groups show six rows, then "Show N more".
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- **Today:** Late, On today's brief, Back tomorrow and Kept today. Before you pick an item, the right side shows the day's overview: the three to do first and why, today's meetings, what was kept, and what comes back tomorrow and after.
+- **All open:** grouped by the day each item comes back; the list's options switch to grouping by person or project.
+- **Projects:** each project with its open items, decisions, meetings and people; the Filing tab is next to By project.
+- **Item detail:** Mark done, Snooze, Block 30 min, the quote with Open transcript, Get it done (message the person or hand it to Claude through Start this, or make a ticket when Send to is set up in Settings), other items from the same meeting, and the history. `/item/<id>` shows the same detail as a page.
+- **Keys:** `j`/`k` or ↑/↓ move, `e` marks done, `s` snoozes, `b` blocks 30 minutes, `t` starts it, `p` moves it to a project, `f` stars it, Shift+`C` copies the quote, `w` marks it not a promise, `.` opens the ⋯ menu. `c` still adds an item.
+- **Light/Dark:** the switch at the bottom of the sidebar sets the same Mode as Settings › Appearance.
+- Under 900px wide it shows one pane at a time: the list, then the item with a Back button. The sidebar is the Menu button.
 
-## Deploy on Vercel
+## Add your own, star and snooze
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+- Press **c** anywhere (or ⌘K › Add…, or **Quick add…** in the menu bar) and type one line: "send Nitin the deck by Fri", "Tarun owes me API spec tomorrow". It's read on your Mac, no AI: kind, person and due date (today, tomorrow, a weekday or a date), which you can change before saving. Items you add show "added by you" and can be edited or deleted.
+- On any list: **j**/**k** move, **s** star (pins it to the top), **z** snooze until a day, **d** done, **w** wrong, **e** edit your own, **F** follow up (Start this).
+- On an earlier day's page, **Your notes** saves into that day's `.md` between `<!-- daily-brief:your-notes -->` markers, and stays when the brief is written again (see Notes below).
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Routines
+
+Things you do regularly live under **Routines** in the sidebar (`/routines`), right under Recurring (which is recurring *meetings*).
+
+- **Add one** with New routine: what, how often (every day, weekdays, weekly on chosen days, monthly on day N, or every N days), an optional time and who it's for. Day 29–31 means the month's last day in shorter months. Or type it in quick add (`c`): "every Monday send sprint report to Tarun", "weekdays at 10 post the standup notes", "har Friday update bhejna".
+- **Today** shows a Routines section with what's due today, plus anything missed since you last did it (up to a week back), marked "overdue since Mon" in red. Tick it to mark that day done, Skip to let it go, or Tomorrow to snooze it. Only that day changes: the next one comes back on schedule. Routines never count as open items.
+- **The page** lists each routine in plain words ("Every Friday", "Weekdays at 10:00", "Monthly on the 1st") with when it's next due, when you last did it and a quiet "4 in a row". Edit, archive or delete from the row.
+- **The brief** (daily note, notification, Slack, Telegram, WhatsApp) adds "Routines due today" when any are.
+- **Timed routines** show a Mac notification at their time on the days they're due, once, unless you've already ticked, skipped or snoozed that day.
+- **From meetings:** when you promise something on a schedule in a meeting ("every Monday I'll send the report", "weekly I'll share the metrics", "har Friday main update bhejunga"), it doesn't become a one-off item. It waits on `/routines` under "Suggested from your meetings", with the quote and a link to the meeting: Add, Edit first, or Dismiss. Nothing becomes a routine until you tap.
+
+Routines are local-only for now; the hosted version doesn't have them yet.
+
+## Notes
+
+Daily notes (**Your notes** on a day, and **Today's note** in the Today view) and free-form pages under **Notes** use one editor. It edits the Markdown itself with a live preview: markup hides except on the line you're on, so files stay byte-for-byte what you typed (line endings included) and open cleanly in any other app. Pages are `~/Daily Brief/notes/<name>.md`, newest first on `/notes`.
+
+- **Saving.** As you type, on blur, on leaving the page and on ⌘S. Until a save lands the text is also kept in the browser, so a closed window or a stopped server doesn't lose it; it saves when the app is reachable again. If a page changed in another app while it was open, that version is kept as `notes/<name>.conflict-<time>.md`.
+- **Slash commands.** Type `/`: **/todo**, **/owe**, **/waiting** (type the line, press Enter: it is read by the same parser as quick capture and becomes one of your items, written back as a linked checkbox), **/decision** (a decision callout), **/date** (today, or `/date fri`), **/person**, **/link**, **/heading**, **/quote**, **/callout**, **/divider**, **/table**, **/toggle**, **/checklist**.
+- **Links.** Type `[[` (or ⌘K) to link a person, note, meeting or item, or make a new note. Links are written `[[person:Nitin K]]`, `[[note:q4-plan|Q4 plan]]`, `[[item:<id>|Send the deck]]`, `[[day:2026-11-26]]`; click one to open it. People, notes and days show **Linked from** with the lines that link there. Ticking an item's checkbox in a note marks the item done.
+- **Rich blocks** are plain Markdown underneath: callouts `> [!note] Title`, toggles `<details><summary>…</summary>`, GFM tables and `- [ ]` checklists.
+- **Keys.** ⌘B bold, ⌘I italic, ⌘E code, ⇧⌘X strike, ⌘Enter checkbox, Tab/⇧Tab indent.
+- **Writing assist.** Select text for **Tidy**, **Shorter**, **Slack message** or **Hinglish → English** (⌘J, then 1-4). Only the selected text goes to Claude, with your key and model (`EXTRACTION_MODEL`); the estimate shows before and the cost after, usually well under ₹0.5. **Replace**, **Insert below** or **Copy**. Off without `ANTHROPIC_API_KEY`, and paused while the key or credit banner is showing.
+
+### Any Markdown folder, tabs and focus mode
+
+A workspace can be any folder of Markdown, such as an Obsidian vault or a git repo of notes: add it under **Settings › Workspaces** and pick the folder. `/notes` then shows **Files**, a tree of its folders and `.md` files.
+
+- **Files.** Click to open, ⌘-click for a new tab, ⌥-click to open on the right. **⋯** on a row: new note or folder, rename, **Move to…**, delete. You can also drag a note or folder onto a folder. Delete moves it into the folder's `.trash` (the same place Obsidian uses), with **Undo**. Hidden folders (`.obsidian`, `.git`, `.trash`), `node_modules`, anything in a `.gitignore` and Obsidian's *Excluded files* are left out.
+- **Any note at its path.** `/notes/Projects/Alpha.md` opens that file; `/notes/q4-plan` still opens `notes/q4-plan.md`. Files are read and written byte for byte, and a file is only written when you change it. A file that isn't valid UTF-8 opens read-only. Renames don't rewrite links in other notes.
+- **Changes from other apps.** An open note picks up edits made elsewhere (Obsidian, git, iCloud) within a few seconds; if you were typing at the same time, their version is kept as `<name>.conflict-<time>.md` next to it. New, renamed and removed files show up in Files the same way.
+- **Search.** ⌘K searches the text of every note in the folder (a small local index, updated as files change) alongside items and meetings.
+- **Dates.** ⌘K also takes a day: *yesterday*, *last tuesday*, *3 days ago*, *next fri*, *25 nov*. It opens that day's page, or offers to create it.
+- **Tabs and split.** ⌘T new tab, ⌘W close tab, ⌘\ split left/right (or join), ⌃Tab / ⌃⇧Tab next and previous tab. The layout is remembered per workspace in this browser. In a plain browser tab, ⌘T, ⌘W and ⌃Tab go to the browser itself; they work in the Mac app, and the **+**, **×** and **Split** buttons work everywhere.
+- **Focus mode.** ⇧⌘F (or **Focus**) dims everything but the paragraph you're writing and keeps the cursor line in the middle of the screen.
+- **Live preview** hides Markdown markup except on the line you're on, and draws images (`![](pic.png)`, `![[Pasted image.png]]`), embedded notes (`![[Other note]]`), `==highlights==`, inline code, footnotes (`[^1]`) and Mermaid diagrams (a ` ```mermaid ` block; Mermaid loads only when a note has one).
+
+**Today view** (`/today`, or *With today's note* on Today) puts the brief and today's note side by side on a wide window.
+
+## People, threads, export, protected sharing and themes
+
+- **Graph is retired** (`/graph` now opens People). What it was for lives on two pages:
+  - **People** lists everyone with something open, in three groups: **Met since, still open** (you've met again since the oldest promise, most meetings first), **Gone quiet** (no meeting since, last met two weeks or more ago) and **This week**. Pick someone to see each open item with one dot per meeting held since it was said (red when late or after five), your record with them, the projects and threads you share, and other spellings of their name. **Send <name> an update** (U) writes a Slack-ready status of what you owe, asking about the oldest "Still needed, or drop it?"; it uses the provider set for Nudges in Settings › AI, only when you press it, and the plain template otherwise. A meeting counts as "met" when an item from it names them: Wispr Flow sends no attendee lists. **Everyone** keeps the old table.
+  - **Projects** shows **Yours** and **Found in your meetings**: threads of four or more meetings with two or more people that share a distinctive phrase ("stock split", "chart alerts") or that a later meeting closed. A found thread shows where it stands, how its decision moved (First call, Changes, Adds to it, Stands now) and what's still open. Found threads are suggestions only: nothing is filed until you press **Keep as a project** (it makes a Project note and files the thread's items as yours; Undo takes it back). **Not one thread** hides it for good (remembered in `.daily-brief/threads.json`). "Where it stands" is a plain summary until you press **Write with AI**; the AI text is cached and marked out of date when the thread changes. **Copy status for PBR** (S) copies a plain status.
+- **Export** on a note, an earlier day and Today: **PDF** (opens a print view; choose Save as PDF), **HTML** (one self-contained file: no scripts, remote fonts or images, and `[[links]]` become plain labels), **Word** (.docx). In the Mac app these open in your browser, which saves and prints files reliably.
+- **Share as protected file**: makes one HTML file whose content is encrypted in your browser (AES-256-GCM, key from your password with PBKDF2-SHA256, 310,000 iterations, WebCrypto). Send it however you like; it asks for the password and decrypts in the reader's browser. No server is involved, the password is never stored or sent, and a lost password means the file can't be opened.
+- **Themes** (Settings › Appearance): duplicate the default or start a new theme, set accent, background and ink for light and dark, a font from a safe list, density and corners, with a live preview of both. Save several and switch between them; **Export**/**Copy** a theme as JSON and **Import JSON** to bring one back. Themes only set CSS variables; the default theme writes nothing, so the app looks exactly as designed. Saved in `.daily-brief/themes.json` of your first notes folder.
+
+## Properties, types, tags, views and projects
+
+- **Properties.** A note's YAML front matter shows as a panel above the editor: text, number, date, checkbox, list, or a link to a person or note (`[[person:Nitin]]`). Editing one property rewrites only its lines; the rest of the front matter stays exactly as written. Values the panel can't edit simply (nested YAML) are shown read-only.
+- **Note types.** Meeting note, Project and Person note come with default properties and a template. Change them or add your own on **Notes → Note types** (`/note-types`); they live in `.daily-brief/note-types.json` per workspace. Make one from the slash menu (`/new project Q4 launch`, then Enter: the line becomes a link to the new note) or from ⌘K.
+- **Tags.** Write `#tag` or `#nested/tag` in a note, put `tags:` in its properties, or add `#tag` in quick capture; items can carry tags from their page. `/tags` shows the tree with counts; a tag's page lists its notes and items. ⌘-click a tag in the editor to open it. Tags are in ⌘K.
+- **Views.** Saved views over notes (by type, property or tag) or items (by status, kind, person, project or tag), with filter, sort and group, as a **Table** (click a header to sort; safe cells edit in place) or **Kanban** (drag a card, or use its Move menu, to change status or a property). They're listed on `/views`, each gets a sidebar entry, and they're kept per workspace (also in the hosted version).
+- **Projects.** A project is a note of type Project. Assign an item from its page, the "…" menu on a brief line, or quick capture (`+december-launch`: a project that doesn't exist yet is made). The project's note shows a board (You owe, Waiting on, Done) and its linked notes. **Group by project** on Today groups the brief by project.
+
+## Your data
+
+`~/Daily Brief/` (change with `DAILY_BRIEF_DIR`):
+- `2026-11-25.md`, one plain Markdown note per day. Open it in any editor.
+- `decisions.md`, every decision with its quote.
+- `.daily-brief/state.json`, items and meetings (no transcripts, ever). Readable only by you.
+- `.daily-brief/state.json.bak` and `state.json.bak-daily`, hourly and daily copies of it. If `state.json` is ever damaged, the app keeps it as `state.json.corrupt-<time>`, restores the newest good copy and tells you on every page.
+- `.daily-brief/scheduler.lock`, so only one copy of the app (say, the Mac app and the launchd agent) checks meetings and sends the brief.
+- `.daily-brief/key`, a local key for the Wispr Flow sign-in step.
+- `.daily-brief/phone.json`, Phone access: on or off, paired phones and widget tokens (hashes only).
+- `.daily-brief/prefs.json`, which model reads meetings (Claude or a local Ollama model).
+
+To start over, quit the app and delete `.daily-brief/`.
+
+## On your phone
+
+Daily brief works as an app on your phone (a PWA): Today, All open and People, with the same
+buttons. It is off by default; the app only answers on this computer (127.0.0.1).
+
+**Turn it on:** Settings › **Phone access**. The app then also listens on your Mac's Wi-Fi address,
+on port 4243 (say `http://192.168.1.20:4243`), and shows a 6-digit pairing code. On the phone, open
+that address, enter the code, then:
+
+- **iPhone:** Safari › Share › **Add to Home Screen**.
+- **Android:** Chrome › ⋮ › **Add to Home screen** (or **Install app**).
+
+How it is kept safe:
+
+- The app itself still listens on 127.0.0.1 only. A separate small server on the LAN address checks
+  every request before passing it on, refuses requests for any other host name, and is not started
+  at all while Phone access is off.
+- A pairing code is good for one phone, for 10 minutes and 5 tries. Each phone gets its own random
+  key in an HttpOnly cookie; only its hash is stored (`.daily-brief/phone.json`). **Remove** a phone
+  in Settings to sign it out, or **Sign out all phones**.
+- Phone access, widget tokens and the reading model can only be changed on the Mac, never from a phone.
+- Plain Wi-Fi means plain HTTP: someone else on the same network could read the pages you load. Turn
+  it on at home or on networks you trust. For HTTPS, point the app at a certificate in
+  `.daily-brief/settings.env`:
+
+  ```bash
+  PHONE_TLS_CERT=/path/to/cert.pem
+  PHONE_TLS_KEY=/path/to/key.pem
+  PHONE_HOSTNAME=my-mac.tailnet-name.ts.net   # the name in the certificate
+  ```
+
+  The easy way is [Tailscale](https://tailscale.com): `tailscale cert my-mac.tailnet-name.ts.net`
+  makes a real certificate, and your phone reaches the Mac from anywhere on your tailnet. `PHONE_BIND`
+  (an address) and `PHONE_PORT` change where it listens. Restart the app after changing these.
+
+**Offline:** once it is served over HTTPS (or on the Mac at `localhost`), a service worker keeps
+Today, All open and People (and any person or item you opened) on the device, so they open
+read-only without a connection, with an *Offline* pill. Pages it never saved show a short offline
+page. Phones only allow this over HTTPS, so over plain Wi-Fi the phone needs the Mac awake and nearby.
+
+**Widget:** an iOS Shortcut or widget can show *3 you owe today · 1 overdue* from `/api/widget`
+with a widget token from Settings › **Phone widget**. Recipe: [`docs/WIDGET.md`](docs/WIDGET.md). The
+Mac's menu bar item shows the same count as its title.
+
+## Reading meetings on this computer (Ollama)
+
+Settings › **Reading model** › **Local (Ollama)** reads meetings with a model on this computer
+instead of Claude: transcripts never leave it and reading costs nothing. It uses the same prompt and
+output schema (Ollama's JSON mode), and the same check that every quote is really in the transcript.
+
+```bash
+brew install ollama        # or see ollama.com for Windows and Linux
+ollama serve &
+ollama pull qwen2.5:14b    # or llama3.1:8b on a smaller machine
+```
+
+Then pick Local, set the model, and press **Save and test Ollama**. Expect lower quality: local
+models miss more promises, close fewer items and handle Hinglish worse. If Ollama isn't running, a
+meeting waits and is tried again later. Claude stays the default; Ask, nudges and changed-decision
+checks keep using Claude when a key is set, unless you pick another provider for them in Settings › AI.
+
+## Settings › AI: other providers, per job
+
+Settings › **AI** picks a provider and model for each job: **Extraction** (reading meetings),
+**Ask**, **Writing assist**, **Nudges** (nudge drafts and changed-decision checks) and **Canvas**
+(Ask on the canvas and the draft window when you start an item). The Anthropic API with your
+existing key stays the default for every job; nothing changes until you pick something else. The
+one exception is Canvas with no Anthropic key: it uses your Claude plan through Claude Code when
+that's installed, as before (`DAILY_BRIEF_CANVAS_AI=key` turns that off). Providers: Anthropic, OpenAI, Google Gemini, OpenRouter, Groq, DeepSeek, Mistral,
+xAI, any OpenAI-compatible server (LM Studio, vLLM, llama.cpp: give its base URL), Ollama, and
+**Your Claude plan (Claude Code)**.
+
+- **Keys** are your own. Paste one in that provider's card: it goes to the macOS Keychain (service
+  `app.dailybrief`, accounts like `OPENAI_API_KEY`), or to `.daily-brief/secrets.json` (0600) outside
+  the Mac app. Only the last four characters are shown again. The Anthropic key stays where it was.
+- **Model** is free text. The suggestions under it are editable: after **Test** they come from the
+  provider's own model list (listing models costs nothing).
+- **Test** checks the key and lists models. A rejected key, or no credit, shows a banner for that
+  provider in Settings › AI (the same wording as the Anthropic errors); it never stops the brief.
+- **Costs** next to each job are estimates for a typical meeting or question, from list prices:
+  Anthropic's built-in table, OpenRouter's published prices, or prices you enter in the
+  **Prices** table. Ollama is free; the Claude plan shows "on your plan".
+- **Extraction** on another provider uses the same prompt and output schema, in tool mode or
+  JSON-schema mode (pick per provider), and the same check that every quote is in the transcript.
+- **Your Claude plan (Claude Code)** runs the `claude` CLI you already signed in to, so it needs no
+  key and has no per-call charge. Uses your own Claude Code sign-in on this Mac. For personal use.
+  It is off by default, only in the local app, and hidden and refused in the hosted version.
+
+**Compare** (Settings › AI › Compare models) reads one past meeting with 2 or 3 provider/model pairs
+side by side. It shows each pair's estimated cost first and runs only after you tick the
+confirmation and press **Run**, once per estimate. Results show which finds each model made, what
+differs, closes, time, quotes dropped by the check, and the cost. Nothing is saved as items.
+
+## Ask: local search and threads
+
+Ask searches on this computer first: items, meeting summaries, transcripts from local recorder
+files (in chunks) and your notes, ranked with BM25. Only the top passages go to the model, and each
+keeps its citation. **Search on this Mac only** (Settings › AI › Search, on by default) means search
+never calls an API. You can add embeddings for better matches: **Ollama** (local, for example
+`ollama pull nomic-embed-text`), or, with the setting off, an OpenAI or OpenAI-compatible embeddings
+model. Vectors are cached in `.daily-brief/ask-embeddings.json` (transcript vectors only in memory).
+Wispr Flow transcripts aren't stored, so they aren't searched.
+
+Conversations are kept per workspace (`.daily-brief/ask-threads.json`). Follow-ups see the earlier
+turns. **Branch from here** on an answer, or **Branch from this quote** on a cited source, starts a
+side thread that sees the conversation up to that point and leaves the main thread as it was. The
+side rail shows the conversations and the thread tree; breadcrumbs, **Rename** and **Delete**
+(which removes that thread's own branches too) sit above the answer.
+
+## Web clipper (Chrome and Firefox)
+
+`extensions/clipper/` is a small browser extension that saves the selection, or the page's readable
+article, as Markdown into your **Inbox** note (`notes/inbox`) or a new note, through the local API.
+It isn't in any store: load it yourself (Chrome: `chrome://extensions` › Developer mode › Load
+unpacked; Firefox: `about:debugging` › Load Temporary Add-on › `manifest.json`). Create a token in
+Settings › Local API, paste it in the clipper's options, and add the extension's origin (shown in
+its options, like `chrome-extension://…`) under allowed origins. Details in
+[extensions/clipper/README.md](extensions/clipper/README.md).
+
+## Workspaces, templates, links and sync
+
+- **Workspaces** (Settings › Workspace, or `/workspaces`): each workspace is a notes folder with its own items, daily notes, `.daily-brief/` data and Wispr Flow connection. The first one is always `~/Daily Brief` (or `DAILY_BRIEF_DIR`); the list lives in its `.daily-brief/workspaces.json`, and the one you pick is remembered. Switch from the sidebar once there are two. Background checks and briefs run for every workspace. Removing a workspace only takes it off the list; its folder is left alone. The Anthropic key, `settings.env` and the token key are shared.
+- **Inbox** (`/inbox`): anything you add with **c** that names no person and no day lands here instead of on your lists. Give it You owe or Waiting on, a person and a date and move it, or delete it.
+- **Automatic links** (on by default, Settings › Notes, links and sync): notes link people (`[[Nitin]]`), meetings (`[[2026-11-25 Standup|Standup]]`) and decisions (`[[decisions#^d-1a2b3c4d|decision log]]`), and the brief writes `people/<Name>.md` and `meetings/<date> <title>.md` so backlinks work in Obsidian. Decisions logged before links were on have no block id. Turn it off for the plain notes.
+- **Templates** (Settings › Edit templates): the daily note, weekly recap and meeting note use `{{field}}`, `{{#if}}…{{else}}…{{/if}}`, `{{#each}}…{{/each}}` templates with a live preview, kept in `.daily-brief/templates/`. The defaults write exactly the notes as before. A broken template never stops a brief: the default is used and Settings says why.
+- **Folder sync** (off by default): after each brief, daily notes, `decisions.md`, weekly recaps and `people/`, `meetings/` pages are copied one way into `<folder>/daily-brief/` (an iCloud Drive folder or an Obsidian vault). Writes are atomic and skipped when unchanged; only files it put in `daily-brief/` are ever removed.
+- **Git**: if the notes folder is a git repo (`git init` in it), each brief commits the notes it wrote as “Daily brief 2026-11-26” with your git name and email. **Then push** is off by default and pushes to a named remote (default `origin`) with your own git credentials; the app never stores a URL or token, and git is never allowed to prompt, so a push that needs a password is skipped and reported in Settings.
+
+## Delivery: email, Slack, Telegram, WhatsApp
+
+The brief is always written to `~/Daily Brief` with a Mac notification. **Settings › Delivery** can also send it where you already are. Every channel is off until you turn it on, and each one chooses what it gets: the **Daily brief**, the **Evening wrap** (the day's promises made, kept and late), and the **Friday recap**. They go out at your brief time, after the note is written. Each channel works on its own: if Slack fails, email still goes, the brief is still marked sent, and **Settings › Health › Delivery** shows the failure (the error is logged with tokens removed). Nothing is sent twice for the same day. **Send test** saves the form and sends today's brief (or wrap, or recap) marked "Test".
+
+Tokens and passwords go to the Keychain (service `app.dailybrief`, accounts `CHANNEL_*`), never to `channels.json` (`.daily-brief/channels.json` holds only the non-secret settings). Off a Mac (development on Linux) they go to `.daily-brief/channel-secrets.json`, readable only by you. Links in messages point to this Mac (`http://localhost:4242`), so they open only here.
+
+- **Email:** your own SMTP server or a Resend API key. Gmail: turn on 2-Step Verification, make an app password at myaccount.google.com/apppasswords, then smtp.gmail.com, port 587, STARTTLS, your address as user. Resend: verify a domain, create a sending key, use an address on that domain as From. The email is the same HTML and text email the hosted build used, with an Open link per item.
+- **Slack:** create an app at api.slack.com/apps. With a **bot token** (`xoxb-`, scopes `chat:write`, `im:write`, `users:read`, and `users:read.email` to find people by email) and your member ID, the brief arrives as a DM from the app, in Block Kit, with item quotes collapsed into one attachment. Or paste an **incoming webhook** URL to post to one channel.
+- **Telegram:** make a bot with @BotFather, message it once, and read your chat ID from `https://api.telegram.org/bot<token>/getUpdates`. Items are numbered and quotes sit in collapsed blockquotes. Turn on **Close items from Telegram** to reply `/done 3`: the app asks Telegram for replies every 5 minutes (no webhook, nothing listens on your Mac) and only messages from your chat count.
+- **WhatsApp** (Meta WhatsApp Cloud API): create a Business app with WhatsApp at developers.facebook.com, note the phone number ID, add your number, and make a permanent system-user token with `whatsapp_business_messaging`. Create a **Utility** template named `daily_brief` (English) with the body `Daily brief, {{1}}: {{2}} {{3}}`: the date, a one-line summary, and the link you set (empty means "Open Daily brief on your Mac"). Meta must approve the template before sends work.
+
+**Nudges on Slack.** With a Slack bot token saved, a nudge draft shows **Send on Slack…**. It looks the person up in your workspace (or by email), then a dialog shows the recipient and the exact text. Nothing is sent until you press **Send** in that dialog, every time; the confirmation is signed for that person and that text and works once, for ten minutes. With a user token (`xoxp-`, same scopes as user scopes) it is sent as you; otherwise the app sends it, starting "From <your name>:".
+
+## Ask Claude about your brief
+
+A local MCP server lets Claude Desktop or Claude Code read your brief and close items: "what do I owe Tarun?", "what did we decide about the dividend banner?", "mark the venue booking done".
+
+```bash
+npm run mcp:install   # prints the config to copy; it changes nothing
+```
+
+It prints a `daily-brief` entry for Claude Desktop's `claude_desktop_config.json` (Claude > Settings > Developer > Edit Config) and the line for Claude Code:
+
+```bash
+claude mcp add daily-brief -- npm --prefix /path/to/daily-brief run -s mcp
+```
+
+Tools: `today` (the Today screen), `list_open` (by kind and person), `person` (everything with one person, fuzzy name), `search`, `decisions` (by topic and date), and `mark_item` (done / wrong / reopen, the same change as the buttons). Answers carry the item id, person, due date, meeting and the exact quote.
+
+It reads the same `state.json` as the app (`DAILY_BRIEF_DIR` works here too), re-reading it on every call, and the app picks up `mark_item` changes on its next read. It never calls the Anthropic API or Wispr Flow, and the app doesn't need to be running.
+
+## Ask, nudges and changed decisions
+
+These use your Anthropic key and the same model as extraction (`EXTRACTION_MODEL`). Only stored items go to Claude (text, person, quote, meeting title and date), never transcripts, and nothing is ever sent to anyone unless you confirm it (see Nudges on Slack above).
+
+- **Ask** (`/ask`, or ⌘K then type a question and pick *Ask*): Claude answers from up to 40 matching items, found locally with search, and cites them as [1], [2], each linking to the item with its quote. When nothing matches it says "I don't see that in your meetings" without calling Claude. The page shows the estimated and actual cost; about ₹0.5-1.5 a question with the default model.
+- **Nudges**: once a day, after the brief, each thing you're waiting on that is 3+ days overdue gets a short Slack-style nudge draft (Hinglish if the quote was), shown on the item with Copy and Start this. Drafted once per item and kept in `.daily-brief/ai.json`; at most 10 a day, about ₹0.2-0.5 each.
+- **Changed decisions**: a new decision is compared with earlier ones on the same topic (word overlap, locally); only when one is similar does Claude get one small call to judge it. Today then shows "This may change the decision from 20 Nov: …" with *Keep both* or *Mark old as replaced*. About ₹0.2-0.5 per similar decision (at most 10 calls a run); decisions from before you turned this on are never checked.
+
+A Claude skill for the MCP tools is in `skills/daily-brief/SKILL.md` (meeting prep, weekly review, and how to quote evidence).
+
+## Check names (people directory)
+
+Transcription misspells names ("Mangku", "Mungu", "Munkku") and sometimes guesses a name that is really someone you already know, or someone new. People shows **"N names to check"**: open it (`/people/review`) and say who each name is:
+
+- **Same as …** (keys `1`–`3`, or `p` to pick anyone): the name becomes another spelling of that person. Suggestions are ranked by how the names sound (th/t, ee/i, a/u, doubled letters), spelling, first name and shared meetings.
+- **New person** (`n`, optional email), **Rename** (`r`, fix the spelling), **Not a person** (`i`, transcription noise: its items show no name).
+- `j`/`k` move, `u` undoes the last answer; every answer has its own Undo. Names with no look-alike can be confirmed in one go.
+
+On a person's page, **Merge or split** merges them into someone else, moves selected items to another (or a new) person, and edits name, email and note. Items always keep the name as it was heard; every page, search, the prep card, person hover and the MCP tools show it through the directory. New meetings are read with your confirmed people and their spellings, so names come back as you spell them. People hides anyone with nothing open and nothing in the last 30 days behind **Show everyone**; names not checked yet carry a small "check" mark. No directory (nothing checked yet) means names show exactly as before. Generic transcription labels ("Speaker 5", "Speaker A", "Unknown", "Participant 2", "Guest") are never people or review cards: their items show "someone (unlabelled speaker)" (the stored name is kept), and Check names lists them under a collapsed "N unlabelled speakers hidden" note. A Split can still give such an item to a real person. Calendar attendees (prep, Recurring, due hints, tomorrow at a glance) also show through the directory, and confirmed people are never merged by a first-name guess. A `[[person:X]]` link always opens a page: a confirmed person with nothing yet shows "No items yet"; an unknown name offers "Add as a new person" or "Or it's someone you know".
+## Send to Jira, Linear, Notion or Todoist
+
+Settings › **Send to** connects each service with your own token. All four are off until you add one. Tokens are kept in the macOS Keychain (service `app.dailybrief`); outside the Mac app, in `.daily-brief/secrets.json` (0600). **Save and test** checks the token and switches the service on only when it works.
+
+| Service | You need | Where tickets go |
+| --- | --- | --- |
+| Jira Cloud | site, your Atlassian email, an API token (id.atlassian.com › Security), project key | an issue of the type you pick (Task by default) |
+| Linear | a personal API key (Settings › Security & access), team key | an issue in that team |
+| Notion | an internal integration secret (notion.so/profile/integrations), a database shared with it | a page in that database |
+| Todoist | the API token (Settings › Integrations › Developer), optionally a project id | a task (Inbox by default) |
+
+Then every open item has **Send to …** in its actions (under **…** on a phone), in the **Start this** panel and on its History page. The ticket gets the item as its title, the quote, the meeting and date, the due date and a link back to the item on this Mac, and is assigned to the person when exactly one user there has that name (you, for things you owe). The item then shows **Ticket: LIN-123**. When the ticket is closed there, the item closes here with "Closed in Linear": checked every 30 minutes, only for open items with a ticket.
+
+## Local API and webhooks
+
+- **Local API:** Settings › Local API › **Create a token** turns on a REST API at `http://localhost:4242/api/v1` (`/items`, `/decisions`, `/people`, `/meetings`, `POST /items`, `PATCH /items/:id`). Only localhost, 120 requests a minute, other websites refused. See [docs/API.md](docs/API.md) for curl examples.
+- **Webhooks:** Settings › Webhooks posts signed JSON (HMAC-SHA256) to your URLs when an item is created or closed, or a decision is made. Off by default; failed deliveries are retried for about 7 hours. Verifying the signature is in [docs/API.md](docs/API.md#webhooks).
+
+Non-secret settings for these live in `.daily-brief/integrations.json`.
+
+## Other recorders: Granola, Zoom, Google Meet, phone calls
+
+Settings > Other recorders reads meetings recorded outside Wispr Flow. Each source is off until you turn it on, everything is read on this Mac, and transcripts are read from their files when a meeting is read, never copied into the app's data.
+
+| Source | What it reads | Where |
+| --- | --- | --- |
+| Granola | Meetings and transcripts in Granola's local cache | `~/Library/Application Support/Granola/cache-v*.json` (the newest version) |
+| Zoom recordings | `.vtt` transcripts and saved closed captions, one meeting per recording folder | `~/Documents/Zoom` (change it in Settings) |
+| Google Meet and transcript files | Any `.docx`, `.txt`, `.vtt`, `.srt` or `.md` dropped in the inbox, or uploaded in Settings. For Meet: open the transcript in Google Docs, File > Download > Microsoft Word | `~/Daily Brief/inbox/` |
+| Phone calls | Call transcripts as text (iOS Notes, Just Press Record) | `~/Daily Brief/inbox/phone/`, or a name like "Call with Ravi.txt" |
+
+- Turning Granola or Zoom on reads the last 7 days, not the whole history (each meeting is one AI read, about ₹3.50). Settings shows how many it found first.
+- A meeting's title comes from its title line or heading, else the file name; its time from the contents, else the file name ("2026-11-24 10.00.00 …", "GMT20261124-043000"), else the file's modified time less the recording's length.
+- The same meeting recorded twice (say Wispr Flow and Granola: starts within 10 minutes and alike titles) is read once.
+- Files are checked every 5 minutes by modified time; a file that changed in the last minute waits for the next check.
+- Granola's cache is not a public format. The shape we expect is written down in `src/server/recorders/granola.ts`; if it changes, Settings says it couldn't read it and nothing else happens.
+- Google Meet straight from Google Drive (without downloading) needs Google sign-in, which isn't built yet.
+
+## The command line
+
+`daily-brief` reads and writes the same `state.json` as the app (the app picks up changes on its next read).
+
+```bash
+npm run cli:install          # links bin/daily-brief into /opt/homebrew/bin or ~/.local/bin (prints the command; never sudo)
+daily-brief today            # Top 3, You owe, Waiting on, Decisions, Closed today
+daily-brief owe tarun        # most pressing first; waiting [person] works the same way
+daily-brief decisions --since 2026-11-01 banner
+daily-brief search "payout" --all
+daily-brief person Nitin
+daily-brief add "send Nitin the deck by Fri"
+daily-brief done 1a2b3c4d    # also: wrong, undo, star, unstar, snooze <id> tomorrow|mon|next week|2026-12-01|off
+daily-brief ask "what did I promise Priya this week?"
+daily-brief open review      # opens the app (or an item: open <id>)
+```
+
+Without installing: `npm run -s cli -- today`. Reads take `--json`; `--limit N` and `--no-color` work everywhere. Colours only show on a terminal (and never with `NO_COLOR`). Ids are the 8 characters at the end of each item's second line. `ask` is the only command that calls the Anthropic API: it uses `ANTHROPIC_API_KEY`, or the key you saved in Settings (Keychain), and costs about the same as Ask in the app.
+
+## Priority and Top 3
+
+You owe on Today and in `daily-brief owe` is ordered by a local score: overdue (more the later it is), due within a day or three, starred, how many other things the same person is waiting on from you, and how long it has been open. The three highest show as "Top 3 today" above You owe; hover one to see why. No API calls.
+
+## Cross-check with Wispr Flow
+
+Wispr Flow writes its own action items in each meeting's Flow Summary ("Next steps", "Action items", "Follow-ups"). The cross-check puts them next to what Daily brief found, so you can see what either side missed.
+
+- **Turn it on** in Settings › AI › Cross-check with Wispr Flow (off by default, Mac app only). After that, each Wispr Flow meeting is cross-checked right after it is read. A failed cross-check never affects the read.
+- **Older meetings:** open `/crosscheck` (Review › Wispr cross-check) and press **Cross-check all meetings**. It runs one meeting at a time in the background, like the other long jobs, and shows progress. Running it again keeps your Ignore and Add choices.
+- **What it sends:** the summary is fetched from Wispr Flow without the transcript, and one small call per meeting goes to the model picked for **Extraction** in Settings › AI (your Anthropic key, your Claude plan or any other provider). That call gets only the summary, the item texts and your name and aliases, never the transcript. With Anthropic, it costs well under ₹1 a meeting.
+- **What you see:** totals for Matched, Missed by Daily brief, Only in Daily brief and Not yours (tasks between other people, which Daily brief leaves out on purpose). Each missed item has **Add as You owe**, **Add as Waiting on** (a new item of yours, linked to the meeting) and **Ignore**. A meeting's page shows "Wispr Flow also listed…" when it has missed items.
+
+## Monthly review and Year in review
+
+Review in the sidebar opens `/review/month/YYYY-MM` (and `/review/year/YYYY`): promises made, kept, late and closed by meetings, the people you promised most, decisions by week or month, the longest-open and fastest-closed items. Download HTML saves the review as one static file to share. Quotes from meetings are left out unless you press Include quotes first.
+
+## The Mac app
+
+`Daily Brief.app` is a small Tauri window and menu bar item around the same server. It starts the server with the Node.js runtime it carries inside (Node 22 LTS, so you don't need Node installed to run it), or reuses one already running on port 4242, and stops the one it started when you quit. Closing the window keeps it in the menu bar, where you also find **Check meetings now**, **Open in browser** and **Launch at login**.
+
+Build it (Apple Silicon; needs Xcode Command Line Tools and Rust):
+
+```bash
+xcode-select --install                     # if you don't have them yet
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && source "$HOME/.cargo/env"
+npm install
+npm run mac:build                          # prints the .app and .dmg paths
+npm run keychain:import                    # moves ANTHROPIC_API_KEY from .env.local into the Keychain
+npm run uninstall-login                    # if you used npm run install-login before
+cp -R "src-tauri/target/aarch64-apple-darwin/release/bundle/macos/Daily Brief.app" /Applications/
+```
+
+The app keeps its secrets in the macOS Keychain (service `app.dailybrief`), not in files: the Anthropic API key, and the Wispr Flow token key, which moves there from `.daily-brief/key` on first start. `EXTRACTION_MODEL` and `WISPR_MCP_URL` go in `.daily-brief/settings.env` (`keychain:import` copies them). `npm start` still reads `.env.local` and falls back to the Keychain. The app always uses `~/Daily Brief`. The log is `~/Library/Logs/daily-brief.log`; the app rotates it at 5 MB and keeps three old copies (`.1` to `.3`). It never holds keys, tokens or transcript text.
+
+**What `mac:build` does.** It builds the standalone server, downloads the pinned Node runtime (`NODE_VERSION` in `scripts/node-runtime.mjs`; just the `node` binary and its license, no npm) from nodejs.org, checks it against the official `SHASUMS256.txt`, and caches it in `src-tauri/target/node-cache` so the next build doesn't download it again. That adds about 108 MB to the .app (about 40 MB to the .dmg). Building still needs Node 18.18+ on your Mac; running the app doesn't. A build without the runtime (say `tauri dev`) falls back to your system Node. The .app is built first and the .dmg is made after it with `hdiutil`, retried a few times; if the .dmg still fails you get the .app anyway (`scripts/make-dmg.sh` makes the .dmg again by hand).
+
+**First launch.** The app isn't signed with an Apple Developer ID. A copy you built yourself opens normally. If macOS says it can't be opened (say, you copied it from another Mac): right-click (or Control-click) the app in Finder, choose **Open**, then **Open** again. Or allow it under System Settings › Privacy & Security › **Open Anyway**, or run `xattr -dr com.apple.quarantine "/Applications/Daily Brief.app"`.
+
+## Windows and Linux
+
+The same app builds for Windows (x64) and Linux (AppImage and .deb), each with Node bundled.
+`.github/workflows/desktop.yml` builds macOS (Apple Silicon), Windows and Linux. Run it on any
+branch from Actions › Desktop builds › **Run workflow** (or `gh workflow run desktop.yml --ref <branch>`)
+and download the installers from the run's artifacts. Pushing a version tag does the same and
+attaches the installers to a draft GitHub release:
+
+```bash
+git tag v0.2.0 && git push origin v0.2.0
+```
+
+To build one yourself: `node scripts/stage-server.mjs` (the standalone server),
+`node scripts/node-runtime.mjs` (the bundled Node for this machine; `--target <triple>` for another),
+then `npx tauri build`. On Linux first install `libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf libxdo-dev libssl-dev`.
+
+What differs per system:
+
+| | macOS | Windows | Linux |
+| --- | --- | --- | --- |
+| Node.js | Bundled; else Homebrew or your shell's PATH (18.18+) | Bundled; else Program Files, nvm-windows, Volta, or `where node` | Bundled; else /usr/bin, /usr/local/bin, Volta, snap, or your login shell (nvm) |
+| Secrets | Keychain | Credential Manager (`app.dailybrief:<NAME>`) | Desktop keyring through `secret-tool` (package `libsecret-tools`) |
+| Notifications | Notification Center | Toast | `notify-send` (package `libnotify-bin`) |
+| Launch at login | LaunchAgent | Run key in the registry | `~/.config/autostart` |
+| Log | `~/Library/Logs/daily-brief.log` | `%LOCALAPPDATA%\Daily Brief\daily-brief.log` | `~/.local/state/daily-brief/daily-brief.log` |
+
+Put your key in the secret store with `npm run keychain:import` (from a checkout with `.env.local`),
+or by hand: `cmdkey /generic:app.dailybrief:ANTHROPIC_API_KEY /user:ANTHROPIC_API_KEY /pass` on
+Windows, `secret-tool store --label="Daily brief ANTHROPIC_API_KEY" service app.dailybrief account ANTHROPIC_API_KEY`
+on Linux. Your notes folder is `~/Daily Brief` on every system. The builds are unsigned: Windows
+SmartScreen asks once (**More info › Run anyway**); on Linux, `chmod +x` the AppImage.
+
+## Keep it running at login without the app
+
+`npm run install-login` sets up a launchd agent (`app.dailybrief`) that runs `npm start` at login. The Mac app replaces it: turn on **Launch at login** in the menu bar, and remove the agent with `npm run uninstall-login`. While the agent runs, the app reuses its server.
+
+## Hosted version (for friends)
+
+The same app can run on Vercel + Supabase for a few people, with nothing to install: sign in with an email link, connect your own Wispr Flow, get the brief by email (or Slack). Set `DAILY_BRIEF_MODE=hosted`; without it the app is the local Mac app, unchanged. Optional billing (Razorpay **test mode** only, ₹500/month, free tier of 20 meetings, referral codes) and teams (shared decisions, who owes whom, manager brief, audit log) are off until you turn them on.
+
+Setup, step by step: [docs/HOSTED.md](docs/HOSTED.md). Check your settings with `npm run hosted:check`, create the tables with `npm run hosted:migrate`.
+
+## Develop
+
+`npm test`, `npm run typecheck`, `npm run lint`, `npm run eval` (extraction accuracy on real meetings; see `eval/README.md`).
+
+The hosted version (Supabase, email, Vercel cron) lives on the `sprint-1` branch.

@@ -39,3 +39,8 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# desktop app build output: the staged server, the bundled Node runtime and its download cache
+# (scripts/stage-server.mjs, scripts/node-runtime.mjs). Never commit these binaries.
+/build/node-runtime/
+/src-tauri/target/

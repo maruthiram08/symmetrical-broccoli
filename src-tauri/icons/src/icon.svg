@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- Daily brief: three lines of a note, the middle one marked with the app's lime highlighter. -->
+  <rect x="100" y="100" width="824" height="824" rx="184" fill="#ffffff"/>
+  <rect x="100.5" y="100.5" width="823" height="823" rx="183.5" fill="none" stroke="#e4e4e4" stroke-width="3"/>
+  <rect x="262" y="452" width="452" height="120" rx="18" fill="#d6ff3d"/>
+  <rect x="300" y="332" width="424" height="56" rx="28" fill="#0a0a0a"/>
+  <rect x="300" y="484" width="352" height="56" rx="28" fill="#0a0a0a"/>
+  <rect x="300" y="636" width="256" height="56" rx="28" fill="#0a0a0a"/>
+</svg>

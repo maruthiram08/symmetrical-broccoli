@@ -1,0 +1,60 @@
+/* Routines: /routines, the Routines section on Today, and the routine chip in quick capture. */
+
+/* A routine's mark: a hollow rounded square (things you owe are the filled lime square). */
+.rt-mark { border: 1.5px solid var(--ink); border-radius: 3px; box-sizing: border-box; }
+
+/* Today: the tick in the icon column. */
+.rt-item { grid-template-columns: 18px minmax(0, 1fr) auto; }
+.rt-item .db-item__icon { margin: 0; }
+.rt-tick { position: relative; width: 18px; height: 18px; padding: 0; border: 1.5px solid var(--border-strong); border-radius: 5px; background: var(--bg); cursor: pointer; transition: background var(--duration-fast), border-color var(--duration-fast); }
+.rt-tick::after { content: ""; position: absolute; left: 5px; top: 1.5px; width: 4px; height: 9px; border: solid var(--ink); border-width: 0 1.5px 1.5px 0; transform: rotate(45deg); opacity: 0; transition: opacity var(--duration-fast); }
+.rt-tick:hover { border-color: var(--ink); background: var(--highlight-soft); }
+.rt-tick:hover::after, .rt-tick:focus-visible::after { opacity: 1; }
+.rt-tick:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+
+/* /routines */
+.rt-row .db-item__text b, .rt-item .db-item__text b, .rt-suggest__title b { font-weight: 600; }
+.rt-row--archived .db-item__text { color: var(--ink-faint); }
+.rt-row--editing { padding: var(--space-2) 0; }
+.rt-streak { font-family: var(--font-mono); font-size: 12px; }
+.rt-add { margin: var(--space-4) var(--space-4) 0; }
+.rt-new-box { margin: 0 calc(-1 * var(--space-4)); }
+.rt-archived { margin-top: var(--space-8); }
+.rt-archived > summary { padding: 0 var(--space-4) var(--space-2); font: 500 13px/18px var(--font-sans); color: var(--ink-muted); cursor: pointer; list-style: none; }
+.rt-archived > summary::-webkit-details-marker { display: none; }
+.rt-archived > summary::before { content: "›"; display: inline-block; width: 12px; transition: transform var(--duration-fast); }
+.rt-archived[open] > summary::before { transform: rotate(90deg); }
+
+/* The editor, in the capture dialog's look. */
+.rt-editor { display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--bg); box-shadow: 0 1px 2px rgb(0 0 0 / 0.04); }
+.rt-editor__line { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--border); }
+.rt-editor__title { flex: 1; min-width: 0; height: 28px; border: 0; background: transparent; color: var(--ink); font: 500 16px/24px var(--font-sans); letter-spacing: -0.01em; outline: none; }
+.rt-editor__title::placeholder { color: var(--ink-faint); }
+.rt-editor__row { display: flex; flex-wrap: wrap; gap: var(--space-2); padding: var(--space-3) var(--space-4) 0; }
+.rt-seg { flex-wrap: wrap; }
+.rt-days { gap: 6px; }
+.rt-day { width: 34px; height: 30px; padding: 0; border: 1px solid var(--border); border-radius: var(--radius-full); background: var(--bg); color: var(--ink-muted); font: 500 12px/16px var(--font-sans); cursor: pointer; }
+.rt-day:hover { background: var(--surface-200); color: var(--ink); }
+.rt-day[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: var(--on-ink); }
+.rt-editor__fields { padding-top: var(--space-3); }
+.rt-editor__foot { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); padding: var(--space-3) var(--space-4); border-top: 1px solid var(--border); background: var(--surface-100); border-radius: 0 0 var(--radius-lg) var(--radius-lg); }
+.rt-editor__read { font-size: 12px; line-height: 16px; color: var(--ink-muted); }
+.rt-editor__end { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-left: auto; }
+
+/* Suggestions from meetings. */
+.rt-suggest { display: flex; flex-direction: column; gap: 6px; margin: 0 var(--space-4) var(--space-2); padding: var(--space-3) var(--space-4); border: 1px dashed var(--border-strong); border-radius: var(--radius-md); }
+.rt-suggest.rt-row--editing { border: 0; padding: 0; margin: 0 0 var(--space-2); }
+.rt-suggest__head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: var(--space-1) var(--space-3); }
+.rt-suggest__title { font: 500 16px/24px var(--font-sans); letter-spacing: -0.01em; color: var(--ink); }
+.rt-suggest__when { font-size: 12px; line-height: 16px; color: var(--ink-muted); }
+.rt-suggest__quote { margin: 0; font: 400 13px/18px var(--font-sans); color: var(--ink-muted); }
+.rt-suggest__acts { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: 2px; }
+
+/* Quick capture: "every Monday ..." reads as a routine. */
+.db-capture__chip.rt-chip { gap: 6px; }
+.db-capture__chip.rt-chip .rt-mark { width: 9px; height: 9px; }
+
+@media (max-width: 480px) {
+  .rt-day { width: 32px; }
+  .rt-editor__end { margin-left: 0; width: 100%; }
+}
